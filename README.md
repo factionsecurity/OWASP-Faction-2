@@ -1,4 +1,4 @@
-# OWASP-Faction-2
+# OWASP Faction 2.0
 
 Thanks everyone that came to our talk at BlackHat 2026! 
 
