@@ -36,6 +36,12 @@ Self-hosted, Apache-2.0, and yours to modify.
 ## Generate Professional Reports Using Your Existing DOCX Templates
 <img width="1728" height="1003" alt="image" src="https://github.com/user-attachments/assets/0603d356-ca43-412e-813c-76e0e0dfddea" />
 
+## Use AI to Update Summaries, Vulnerabilities, and any Text input 
+<img width="1728" height="1002" alt="image" src="https://github.com/user-attachments/assets/4266017e-9635-4354-b00a-c2f22b610796" />
+
+## Craft Your Own Custom AI Prompts So Reports Match Your Voice and Style of Reporting
+<img width="840" height="887" alt="image" src="https://github.com/user-attachments/assets/44bb1691-9761-4d7e-b5de-54768c4eb103" />
+
 ## Application Inventory and Application Security Posture Management
 <img width="1727" height="1002" alt="image" src="https://github.com/user-attachments/assets/3b7df17a-3bc6-4ed3-8893-adc55d159681" />
 
