@@ -32,6 +32,20 @@ mailing list at https://www.factionsecurity.com/signup.
 
 Self-hosted, Apache-2.0, and yours to modify.
 
+
+## Generate Professional Reports Using Your Existing DOCX Templates
+<img width="1728" height="1003" alt="image" src="https://github.com/user-attachments/assets/0603d356-ca43-412e-813c-76e0e0dfddea" />
+
+## Application Inventory and Application Security Posture Management
+<img width="1727" height="1002" alt="image" src="https://github.com/user-attachments/assets/3b7df17a-3bc6-4ed3-8893-adc55d159681" />
+
+## Email Alerts and Notifications when Vulnerabilties are Approaching SLAs
+<img width="865" height="502" alt="image" src="https://github.com/user-attachments/assets/4fc2273b-addf-44c5-8fa2-8cb3f8e00ac9" />
+
+## Manage Exceptions, Communications, and Retests All In One Place:
+<img width="865" height="502" alt="image" src="https://github.com/user-attachments/assets/246aab4b-a973-4d6c-9279-84c2d0b396e7" />
+
+
 ## Scope of this edition
 
 This repository is complete as it stands: it builds, tests and runs on its own,
