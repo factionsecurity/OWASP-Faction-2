@@ -1,0 +1,151 @@
+/* Dual List Box Container */
+.dual-list-box {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  width: 100%;
+}
+
+.dual-list-box.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Panel Container */
+.dual-list-box-panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color, #dee2e6);
+  border-radius: 4px;
+  background-color: transparent;
+  overflow: hidden;
+}
+
+/* Header Section */
+.dual-list-box-header {
+  padding: 0.75rem;
+  background-color: transparent;
+  border-bottom: 1px solid var(--border-color, #dee2e6);
+}
+
+.dual-list-box-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-primary, #212529);
+  margin-bottom: 0.5rem;
+}
+
+/* Search Box */
+.dual-list-box-search {
+  position: relative;
+}
+
+.dual-list-box-search .search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6c757d;
+  pointer-events: none;
+}
+
+.dual-list-box-search input {
+  width: 100%;
+  padding-left: 2.5rem;
+  font-size: 0.875rem;
+}
+
+/* List Container */
+.dual-list-box-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 300px;
+  min-height: 200px;
+}
+
+/* Scrollbar Styling */
+.dual-list-box-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dual-list-box-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dual-list-box-list::-webkit-scrollbar-thumb {
+  background: #dee2e6;
+  border-radius: 3px;
+}
+
+.dual-list-box-list::-webkit-scrollbar-thumb:hover {
+  background: #adb5bd;
+}
+
+/* List Item */
+.dual-list-box-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.15s ease;
+  margin: 0;
+}
+
+.dual-list-box-item:last-child {
+  border-bottom: none;
+}
+
+.dual-list-box-item:hover {
+  background-color: var(--hover-bg);
+}
+
+.dual-list-box-item input[type="checkbox"] {
+  margin-top: 0.125rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dual-list-box-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.dual-list-box-item-name {
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text-primary, #212529);
+  margin-bottom: 0.125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dual-list-box-item-email {
+  font-size: 0.75rem;
+  color: #6c757d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Empty State */
+.dual-list-box-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dual-list-box {
+    grid-template-columns: 1fr;
+  }
+
+  .dual-list-box-list {
+    max-height: 250px;
+  }
+}

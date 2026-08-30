@@ -1,0 +1,143 @@
+/* ── Searchable Select ─────────────────────────────────────
+   Styles for SearchableSelect / MultiSelect. Pages that still keep a local copy of the
+   pattern (Applications, ApplicationsAssessmentsTab) import this file directly. */
+
+/* The row of filter pills a DataTable renders via headerChildren. */
+.ss-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.ss-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.ss-trigger {
+  display: inline-flex;
+  align-items: center;
+  /* Pin the label left and the chevron/clear right. No-op when the trigger is content-width
+     (the filter bar); keeps the chevron at the right edge when it stretches (advanced panel). */
+  justify-content: space-between;
+  gap: 0.375rem;
+  height: 34px;
+  padding: 0 0.625rem;
+  background: var(--input-bg, var(--secondary-bg));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s;
+}
+
+.ss-trigger:hover {
+  border-color: var(--primary-color);
+}
+
+.ss-trigger--active {
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+}
+
+.ss-trigger-label {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.ss-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.ss-clear {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  border-radius: 50%;
+  padding: 1px;
+}
+
+.ss-clear:hover {
+  color: var(--text-primary);
+  background: var(--tertiary-bg);
+}
+
+.ss-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  min-width: 220px;
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+  overflow: hidden;
+}
+
+.ss-search-wrap {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ss-search {
+  width: 100%;
+  height: 30px;
+  padding: 0 0.5rem;
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.ss-search:focus {
+  border-color: var(--primary-color);
+}
+
+.ss-list {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+}
+
+.ss-option {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.8125rem;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ss-option:hover {
+  background: var(--tertiary-bg);
+}
+
+.ss-option--selected {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.ss-empty {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  text-align: center;
+}

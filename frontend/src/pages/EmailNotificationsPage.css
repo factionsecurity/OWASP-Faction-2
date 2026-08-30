@@ -1,0 +1,297 @@
+.email-notifications-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.email-notifications-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}
+
+/* ── Cards ── */
+.email-notifications-card {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.email-notifications-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: var(--tertiary-bg);
+}
+
+.email-notifications-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.email-notifications-intro,
+.email-notifications-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* ── Banners ── */
+.email-notifications-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.email-notifications-banner--warning {
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  color: #eab308;
+}
+
+.email-notifications-banner--error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+}
+
+.email-notifications-banner svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+/* ── Event table ── */
+.email-notifications-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.email-notifications-table th {
+  padding: 0 0.5rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.email-notifications-table th:first-child {
+  padding-left: 0;
+}
+
+.email-notifications-table td {
+  padding: 0.65rem 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: top;
+}
+
+.email-notifications-table td:first-child {
+  padding-left: 0;
+}
+
+.email-notifications-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Narrow enough that the event column keeps the room it needs to stay readable.
+   With five audiences plus the message column the row is tight, so the headings are
+   allowed to wrap rather than forcing the table wider than the page. */
+.email-notifications-audience {
+  width: 4.25rem;
+  text-align: center;
+}
+
+.email-notifications-table th.email-notifications-audience {
+  white-space: normal;
+  line-height: 1.25;
+}
+
+/* Below the point where the columns stop fitting, the table scrolls inside its own box
+   instead of the page scrolling sideways. */
+.email-notifications-table-scroll {
+  overflow-x: auto;
+}
+
+.email-notifications-table-scroll .email-notifications-table {
+  min-width: 34rem;
+}
+
+.email-notifications-label {
+  font-weight: 500;
+  font-size: 0.86rem;
+}
+
+.email-notifications-description {
+  margin-top: 0.15rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.email-notifications-na {
+  color: var(--border-color);
+  font-size: 0.85rem;
+}
+
+/* ── Custom message ── */
+.email-notifications-message-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--primary-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.email-notifications-message-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--text-primary);
+}
+
+/* Set apart so an admin can see at a glance which emails carry their own wording. */
+.email-notifications-message-btn--set {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.email-notifications-message-row td {
+  padding-top: 0;
+  background: var(--primary-bg);
+}
+
+.email-notifications-message-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.email-notifications-message-input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--secondary-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.email-notifications-message-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+/* ── Past-due repeats ── */
+.email-notifications-repeats {
+  margin-top: 0.35rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.email-notifications-repeat-fields {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.email-notifications-repeat-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  max-width: 12rem;
+}
+
+/* ── Switches ──
+   Defined here rather than borrowed from EmailConfigPage.css / ProfilePage.css, which
+   this page does not import: the controls would render as bare checkboxes for anyone who
+   had not visited those pages first. */
+.email-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.email-toggle input,
+.notif-toggle input {
+  display: none;
+}
+
+.email-toggle-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.notif-toggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.email-toggle-track,
+.notif-toggle-track {
+  width: 36px;
+  height: 20px;
+  background: var(--border-color);
+  border-radius: 5px;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.email-toggle-track::after,
+.notif-toggle-track::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.email-toggle input:checked ~ .email-toggle-track,
+.notif-toggle input:checked ~ .notif-toggle-track {
+  background: var(--primary-color);
+}
+
+.email-toggle input:checked ~ .email-toggle-track::after,
+.notif-toggle input:checked ~ .notif-toggle-track::after {
+  transform: translateX(16px);
+}
+
+.email-toggle input:disabled ~ .email-toggle-track,
+.notif-toggle input:disabled ~ .notif-toggle-track {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

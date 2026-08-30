@@ -1,0 +1,493 @@
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.application-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-panel {
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Override form-group and form-row margins within form-section to use gap instead */
+.form-section .form-group,
+.form-section .form-row {
+  margin-bottom: 0;
+}
+
+.form-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.list-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.75rem;
+  background-color: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: 0.5rem;
+}
+
+.list-item-content {
+  flex: 1;
+}
+
+.list-item-content .link {
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.list-item-content .link:hover {
+  color: var(--primary-color-hover, #0056b3);
+  text-decoration: underline;
+}
+
+.technology-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.technology-tag {
+  padding: 0.1rem 0.5rem;
+  background-color: var(--primary-color);
+  color: white;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.technology-tag button {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.technology-tag.selectable {
+  background-color: var(--tertiary-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.technology-tag.selectable:hover {
+  background-color: var(--secondary-bg);
+  border-color: var(--primary-color);
+}
+
+.technology-tag.selected {
+  background-color: var(--primary-color);
+  color: white;
+  opacity: 0.7;
+}
+
+.technology-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.error-message {
+  padding: 0.75rem;
+  background-color: var(--danger-color);
+  color: white;
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+/* ── Tab Navigation ─────────────────────────────────────── */
+.app-tab-nav {
+  display: flex;
+  /* flex-end keeps the tabs (and their active underline) pinned to the bottom border rule
+     even when the taller Create button grows the row upward. */
+  align-items: flex-end;
+  gap: 0;
+  border-bottom: 2px solid var(--border-color);
+  margin-bottom: 1.5rem;
+}
+
+/* Action buttons at the right end of the tab bar (only on the All Applications tab).
+   1rem clearance above the border rule matches the page-header button→content gap on the
+   other create pages (Organizations/Teams/Roles/Users). */
+.app-tab-actions {
+  margin-left: auto;
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Kept in the layout (reserving its exact height) but hidden off the All Applications tab,
+   so the tab bar stays the same height on every tab without a guessed min-height. */
+.app-tab-action--hidden {
+  visibility: hidden;
+}
+
+.app-tab-btn {
+  padding: 0.6rem 1.25rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.app-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.app-tab-btn.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+/* ── Applications page tab content ──────────────────────── */
+.applications-page > .vsp-grid,
+.vulnerabilities-page > .vsp-grid {
+  margin-bottom: 1.25rem;
+}
+
+/* ── Assessments Tab ─────────────────────────────────────── */
+.app-assessments-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ── Stats Bar ───────────────────────────────────────────── */
+.app-vuln-stats {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.app-vuln-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-lg);
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  min-width: 90px;
+  flex: 1;
+}
+
+.app-stat-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+}
+
+.app-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.app-stat-placeholder {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+.app-stat-total   .app-stat-value { color: #3b82f6; }
+.app-stat-critical .app-stat-value { color: #ef4444; }
+.app-stat-high    .app-stat-value { color: #f97316; }
+.app-stat-medium  .app-stat-value { color: #eab308; }
+.app-stat-low     .app-stat-value { color: #22c55e; }
+.app-stat-pastdue .app-stat-value { color: var(--text-muted); }
+
+/* ── Donut card (VulnTrendPanel) ─────────────────────────── */
+.vdash-card {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+}
+
+.vdash-card-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+  flex-shrink: 0;
+}
+
+.vdash-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.vdash-card-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.vdash-donut-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.vdash-donut {
+  flex: 1;
+  min-width: 0;
+}
+
+.vdash-total {
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-top: 0.25rem;
+}
+
+.vdash-bar {
+  flex: 1;
+  min-width: 0;
+}
+
+.vdash-legend {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.vdash-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.vdash-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.vdash-legend-name {
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.vdash-legend-count {
+  color: var(--text-primary);
+  font-weight: 600;
+  min-width: 1.5rem;
+  text-align: right;
+}
+
+/* ── Vulnerability Trend Chart ───────────────────────────── */
+.app-vuln-chart-card {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+}
+
+.app-vuln-chart-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.app-vuln-chart-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.app-chart-empty {
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ── Severity counts in table ────────────────────────────── */
+.vuln-severity-counts {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.vuln-count {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.vuln-critical { background-color: #ef4444; }
+.vuln-high     { background-color: #f97316; }
+.vuln-medium   { background-color: #eab308; color: #1a1a1a; }
+.vuln-low      { background-color: #22c55e; }
+
+/* ── Vulnerabilities Tab ─────────────────────────────────── */
+.app-vulns-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.app-vulns-show-closed {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.app-vulns-show-closed input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .technology-input-group {
+    flex-direction: column;
+  }
+
+  .app-assessments-filters .filter-item {
+    max-width: 100%;
+  }
+}
+
+
+/* ── CSV sync dialog ───────────────────────────────────────────────────────── */
+
+.app-import {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.app-import-lede {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.app-import-file {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.app-import-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.app-import-counts {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Failures are the part worth reading, so the table scrolls on its own rather than
+   stretching the dialog. */
+.app-import-errors {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  display: block;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.app-import-errors th,
+.app-import-errors td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: top;
+}
+
+.app-import-errors th {
+  color: var(--text-muted);
+  font-weight: 600;
+}

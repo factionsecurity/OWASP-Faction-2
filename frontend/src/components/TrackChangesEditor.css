@@ -1,0 +1,196 @@
+.tce-wrap {
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  /* Anchors the lock overlay. */
+  position: relative;
+  /* No overflow:hidden — it would clip the author tooltip on a first-line change. The corners
+     are rounded on the toolbar and body instead. */
+}
+
+.tce-toolbar { border-radius: 2px 2px 0 0; }
+.tce-body { border-radius: 0 0 2px 2px; }
+
+.tce-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-color);
+  background: #f9fafb;
+  flex-shrink: 0;
+}
+
+.tce-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.tce-btn:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+.tce-btn:active {
+  background: var(--hover-bg);
+  opacity: 0.8;
+}
+
+.tce-body {
+  padding: 0.5rem 0.75rem;
+  min-height: 100px;
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: #374151;
+  background: #ffffff;
+  word-break: break-word;
+}
+
+.tce-body p { margin: 0.25em 0; }
+.tce-body ul,
+.tce-body ol { padding-left: 1.5em; margin: 0.25em 0; }
+.tce-body a { color: #4f46e5; text-decoration: underline; }
+
+.tce-body--disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: default;
+}
+
+/* ── Track-changes markup ──────────────────────────────────────────────── */
+
+/* Insertions: green background + subtle outline */
+ins[data-author-id] {
+  background: rgba(34, 197, 94, 0.14);
+  outline: 1px solid rgba(34, 197, 94, 0.55);
+  border-radius: 2px;
+  text-decoration: none;
+  padding: 0 1px;
+}
+
+/* Deletions: red strikethrough, visible but muted */
+del[data-author-id] {
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+  text-decoration: line-through;
+  text-decoration-color: #ef4444;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* These selectors also apply inside the read-only diff view */
+.pr-diff-ice-view ins[data-author-id],
+.pr-ice-view ins[data-author-id] {
+  background: rgba(34, 197, 94, 0.14);
+  outline: 1px solid rgba(34, 197, 94, 0.55);
+  border-radius: 2px;
+  text-decoration: none;
+  padding: 0 1px;
+}
+
+.pr-diff-ice-view del[data-author-id],
+.pr-ice-view del[data-author-id] {
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+  text-decoration: line-through;
+  text-decoration-color: #ef4444;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ── Edit lock (another reviewer is in this editor) ─────── */
+
+/* Tinted, not opaque: their edits keep arriving and the viewer needs to see them land. Input is
+   blocked by contentEditable=false and the inert toolbar, not by this element. */
+.tce-lock-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 4px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+
+.tce-lock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #b45309;
+  background: linear-gradient(rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.16)), #ffffff;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+[data-theme='dark'] .tce-lock-pill {
+  color: #fbbf24;
+  background: linear-gradient(rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.16)), #111827;
+}
+
+/* Kept in place so the editor does not change height as a lock comes and goes. */
+.tce-toolbar--locked {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+/* ── Author tooltip on tracked changes ──────────────────── */
+
+/* Driven straight off the `data-author` the editor stamps when it creates the change, so there is
+   nothing to keep in sync — and unlike a native `title` it appears at once instead of after the
+   browser's ~1s delay. */
+.tce-body ins[data-author],
+.tce-body del[data-author] {
+  position: relative;
+}
+
+.tce-body ins[data-author]::after,
+.tce-body del[data-author]::after {
+  content: attr(data-author);
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  z-index: 30;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #111827;
+  /* The change itself is coloured and struck through by inline ICE styles; none of that should
+     reach the pill. */
+  color: #f9fafb;
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-style: normal;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(3px);
+  transition: opacity 90ms ease-out, transform 90ms ease-out;
+}
+
+.tce-body ins[data-author]:hover::after,
+.tce-body del[data-author]:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

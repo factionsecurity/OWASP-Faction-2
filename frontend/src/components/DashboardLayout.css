@@ -1,0 +1,778 @@
+.dashboard-layout {
+  /* Fixes the footer's height so the sidebar's collapse bubble can be centred on the
+     footer's top border, which is the line the two share. */
+  --app-footer-height: 30px;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--primary-bg);
+}
+
+.sidebar {
+  background-color: var(--secondary-bg);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.sidebar.open {
+  width: 224px;
+}
+
+.sidebar.closed {
+  width: 60px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  padding: 0.9rem 0.75rem;
+}
+/* Expanded: the full lockup. The negative bottom margin lets the mark render larger than
+   the space it claims, so the header stays tight — it does not crop the image (neither
+   shipped mark has meaningful whitespace baked in; the margin is a layout trick). The
+   inline height from the branding config overrides the value here. */
+.sidebar-logo {
+  height: 70px;
+  width: auto;
+  object-fit: contain;
+  min-width: 70px;
+  /* Lets the mark render larger than the space it claims, keeping the header tight. It
+     does not crop the image — neither shipped mark has meaningful whitespace baked in. */
+  margin-bottom: -35px;
+}
+
+/* The OWASP lockup stacks a badge above the wordmark, so it stands ~18px taller than the
+   wordmark-only mark and pushes the header down with it. More height keeps the wordmark
+   itself the same size; the negative top margin gives back what the extra height took.
+   -14px is the floor — the header's 14.4px top padding is all the room there is, and the
+   sidebar clips anything above it. */
+.sidebar-logo--lockup {
+  height: 88px;
+  margin-top: -12px;
+  margin-bottom: -40px;
+}
+
+/* Collapsed: the square mark, in a 60px rail that leaves ~36px between the
+   header's padding. The wordmark's min-width and crop margin don't apply —
+   at 70px square they overflowed the rail on both sides. */
+.sidebar.closed .sidebar-logo {
+    height: 76px;
+    min-width: 55px;
+    max-width: 100%;
+    margin-bottom: -36px;
+    margin-top: -16px;
+}
+
+/* A custom logo is sized and positioned by the admin's height setting alone: the crop
+   margins above exist only to trim whitespace baked into the shipped Faction image, and
+   applying them to someone else's logo cuts it off. */
+.sidebar-logo--custom,
+.sidebar.closed .sidebar-logo--custom {
+  min-width: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.sidebar-brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.4rem;
+  overflow-y: auto;
+}
+
+.nav-group {
+  margin-bottom: 0.25rem;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.125rem;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  width: 100%;
+  position: relative;
+}
+
+.nav-item:hover {
+  background-color: var(--tertiary-bg);
+  color: var(--text-primary);
+}
+
+.nav-item.active {
+  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+  color: white;
+}
+
+.nav-icon {
+  min-width: 20px;
+  display: inline-flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-label {
+  overflow: hidden;
+  flex: 1;
+}
+
+.nav-arrow {
+  margin-left: auto;
+  transition: transform 0.2s ease;
+}
+
+.nav-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.nav-submenu {
+  display: flex;
+  flex-direction: column;
+  margin-left: 1rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
+  border-left: 2px solid var(--border-color);
+  padding-left: 0.5rem;
+}
+
+.nav-subitem {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.45rem 0.7rem;
+  margin-bottom: 0.0625rem;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.nav-subitem:hover {
+  background-color: var(--tertiary-bg);
+  color: var(--text-primary);
+}
+
+.nav-subitem.active {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+/* Flyout submenu shown when the sidebar is collapsed */
+.nav-flyout {
+  position: fixed;
+  z-index: 60;
+  min-width: 210px;
+  margin-left: 0.5rem;
+  padding: 0.375rem;
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+
+.nav-flyout-title {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.nav-flyout-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.nav-flyout-item:hover {
+  background-color: var(--tertiary-bg);
+  color: var(--text-primary);
+}
+
+.nav-flyout-item.active {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.sidebar.closed .nav-label {
+  display: none;
+}
+
+.sidebar.closed .nav-arrow {
+  display: none;
+}
+
+.sidebar.closed .nav-submenu {
+  display: none;
+}
+
+/* Collapse control: a round bubble sitting astride the sidebar's right border, centred on
+   the footer's top border where the two lines meet. */
+.sidebar-toggle-bubble {
+  position: absolute;
+  bottom: var(--app-footer-height);
+  right: -11px;
+  transform: translateY(50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  background-color: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-toggle-bubble:hover {
+  background-color: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.sidebar-toggle-bubble:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.top-bar {
+  padding: 0.55rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.top-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Breadcrumb trail shown in place of the page title on detail pages */
+.page-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.page-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.page-breadcrumb-sep {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.page-breadcrumb-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+  white-space: nowrap;
+}
+
+.page-breadcrumb-icon {
+  flex-shrink: 0;
+}
+
+.page-breadcrumb-link:hover {
+  color: var(--primary-color);
+  text-decoration: underline;
+}
+
+.page-breadcrumb-current {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* User Dropdown */
+.user-dropdown {
+  position: relative;
+}
+
+.user-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.375rem 0.75rem 0.375rem 0.375rem;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.user-dropdown-trigger:hover {
+  background-color: var(--tertiary-bg);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.user-avatar.large {
+  width: 40px;
+  height: 40px;
+  font-size: 0.8125rem;
+}
+
+/* Image avatar (uploaded profile image or identicon) in the top bar / dropdown */
+.user-avatar-img {
+  flex-shrink: 0;
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+}
+
+.user-name {
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.dropdown-arrow {
+  transition: transform 0.2s ease;
+  color: var(--text-muted);
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.user-dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  width: 240px;
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+  overflow: hidden;
+}
+
+.dropdown-header {
+  padding: 1rem;
+}
+
+.dropdown-user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dropdown-username {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dropdown-role {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin-top: 0.125rem;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background-color: var(--border-color);
+}
+
+.dropdown-section {
+  padding: 0.5rem;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  background: transparent;
+  border: none;
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background-color: var(--tertiary-bg);
+  color: var(--text-primary);
+}
+
+.logout-item:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--danger-color);
+}
+
+/* Theme Toggle Row */
+.theme-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-md);
+  transition: background-color 0.2s ease;
+}
+
+.theme-toggle-row:hover {
+  background-color: var(--tertiary-bg);
+}
+
+.theme-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Default editor view radio group */
+.editor-view-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.editor-view-options {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0.75rem 0.5rem 2.25rem;
+  gap: 0.25rem;
+}
+
+.editor-view-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.125rem 0;
+}
+
+.editor-view-option input {
+  accent-color: var(--primary-color, #3b82f6);
+  cursor: pointer;
+}
+
+.editor-view-option:hover {
+  color: var(--text-primary);
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background-color: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  background-color: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.toggle-switch input:checked + .toggle-track::after {
+  left: calc(100% - 18px);
+  background-color: white;
+}
+
+.content-area {
+  flex: 1;
+  padding: var(--content-padding);
+  overflow-y: auto;
+  /* Lets RichTextEditor's sticky toolbar/tabs cancel this padding and hug the
+     visible edges of the scrollport (see .rte-toolbar). */
+  --rte-sticky-offset: var(--content-padding);
+}
+
+@media (max-width: 768px) {
+  .sidebar.open {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 20;
+  }
+
+  .sidebar.closed {
+    transform: translateX(-100%);
+  }
+
+  .content-area {
+    padding: 1rem;
+  }
+
+  .top-bar {
+    padding: 1rem;
+  }
+
+  .user-name {
+    display: none;
+  }
+
+  .user-dropdown-menu {
+    width: 220px;
+  }
+}
+
+/* Keep sidebar dark in light mode so white logos remain visible */
+[data-theme="light"] .sidebar {
+  background-color: #111827;
+  border-right-color: #374151;
+}
+
+/* Queue-count badge on nav items */
+.nav-badge {
+  margin-left: auto;
+  background: var(--primary-color);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.2rem 0.4rem;
+  border-radius: 999px;
+  min-width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.nav-badge--purple { background: #8b5cf6; }
+.nav-badge--amber  { background: #f59e0b; }
+.nav-badge--blue   { background: #3b82f6; }
+.nav-badge--green  { background: #22c55e; }
+.nav-badge--sky    { background: #38bdf8; }
+.nav-badge--red    { background: #ef4444; }
+
+/* Collapsed sidebar: shrink the badge onto the icon's corner */
+.sidebar.closed .nav-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  margin-left: 0;
+  font-size: 0.5625rem;
+  padding: 0.15rem 0.3rem;
+  min-width: 14px;
+}
+
+[data-theme="light"] .nav-item {
+  color: #d1d5db;
+}
+
+[data-theme="light"] .nav-item:hover {
+  background-color: #1f2937;
+  color: #f9fafb;
+}
+
+[data-theme="light"] .nav-subitem {
+  color: #d1d5db;
+}
+
+[data-theme="light"] .nav-subitem:hover {
+  background-color: #1f2937;
+  color: #f9fafb;
+}
+
+[data-theme="light"] .nav-submenu {
+  border-left-color: #374151;
+}
+
+/* The sidebar stays dark in light mode, so the bubble on its border does too. */
+[data-theme="light"] .sidebar-toggle-bubble {
+  background-color: #1f2937;
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+[data-theme="light"] .sidebar-toggle-bubble:hover {
+  background-color: #374151;
+  color: #f9fafb;
+}
+
+/* Keep the flyout dark in light mode to match the sidebar */
+[data-theme="light"] .nav-flyout {
+  background-color: #111827;
+  border-color: #374151;
+}
+
+[data-theme="light"] .nav-flyout-title {
+  color: #9ca3af;
+}
+
+[data-theme="light"] .nav-flyout-item {
+  color: #d1d5db;
+}
+
+[data-theme="light"] .nav-flyout-item:hover {
+  background-color: #1f2937;
+  color: #f9fafb;
+}
+
+.app-footer {
+  flex-shrink: 0;
+  height: var(--app-footer-height);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-color);
+  padding: 0 var(--content-padding);
+  text-align: right;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  opacity: 0.75;
+  user-select: none;
+}
+
+@media (max-width: 768px) {
+  .app-footer {
+    padding: 0 1rem;
+  }
+}

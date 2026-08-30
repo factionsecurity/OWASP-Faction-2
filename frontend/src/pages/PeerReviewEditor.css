@@ -1,0 +1,514 @@
+.pr-editor {
+}
+
+.pr-editor-loading,
+.pr-editor-error {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.pr-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--secondary-bg, #111827);
+  flex-wrap: wrap;
+}
+
+.pr-editor-title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.pr-editor-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Who submitted the review, who owns it, and who is in it right now. */
+.pr-editor-people {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.pr-editor-people strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.pr-editor-present {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.pr-editor-present-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.pr-editor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+[data-theme='dark'] .pr-editor-chip {
+  color: #fbbf24;
+}
+
+/* Your own chip is context, not a warning — the amber is for the other person's lock. */
+.pr-editor-chip--me {
+  color: var(--text-secondary);
+  background: var(--tertiary-bg);
+  border-color: var(--border-color);
+}
+
+.pr-editor-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.pr-editor-title h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.pr-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pr-save-indicator {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.pr-save-indicator--saving { color: var(--text-muted); }
+.pr-save-indicator--saved  { color: var(--color-success); }
+.pr-save-indicator--error  { color: var(--color-danger); }
+
+.pr-editor-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.pr-editor-section {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1.25rem;
+  background: var(--secondary-bg, #111827);
+}
+
+.pr-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+  color: var(--text-primary);
+}
+
+.pr-field-block {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-subtle, var(--border-color));
+}
+
+.pr-field-block:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.pr-field-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+/* Assessment Variables panel: 3-up grid of variable + notes cells */
+.pr-vars-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem 1.25rem;
+}
+
+@media (max-width: 1100px) {
+  .pr-vars-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .pr-vars-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pr-var-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.pr-var-value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.pr-field-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15em 0.5em;
+  border-radius: 3px;
+  background: var(--tertiary-bg, #1f2937);
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.pr-field-badge--revised {
+  background: rgba(34, 197, 94, 0.12);
+  color: #166534;
+}
+
+[data-theme="light"] .pr-field-badge--revised {
+  background: rgba(34, 197, 94, 0.18);
+  color: #15803d;
+  font-weight: 700;
+}
+
+.pr-field-badge--notes {
+  background: rgba(234, 179, 8, 0.15);
+  color: #854d0e;
+}
+
+[data-theme="light"] .pr-field-badge--notes {
+  background: rgba(234, 179, 8, 0.22);
+  color: #b45309;
+  font-weight: 700;
+}
+
+.pr-field-original,
+.pr-field-revised,
+.pr-field-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.pr-rich-block {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.pr-rich-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pr-viewer-wrap {
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 0.5rem;
+  min-height: 80px;
+  background: var(--tertiary-bg, #1f2937);
+}
+
+.pr-field-notes-full {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pr-text-input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  font-size: 0.875rem;
+  background: var(--tertiary-bg, #1f2937);
+  color: var(--text-primary);
+}
+
+.pr-text-input:disabled {
+  background: var(--tertiary-bg, #1f2937);
+  color: var(--text-muted);
+}
+
+.pr-textarea {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  font-size: 0.875rem;
+  resize: vertical;
+  background: var(--tertiary-bg, #1f2937);
+  color: var(--text-primary);
+}
+
+.pr-textarea:disabled {
+  background: var(--tertiary-bg, #1f2937);
+  color: var(--text-muted);
+}
+
+.pr-vuln-block {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: var(--tertiary-bg, #1f2937);
+}
+
+.pr-vuln-block:last-child {
+  margin-bottom: 0;
+}
+
+.pr-vuln-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.pr-vuln-scoring {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+
+.pr-cvss-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.12);
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.pr-cvss-badge-value {
+  padding: 0.3rem 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: var(--secondary-bg, #111827);
+}
+
+.pr-cvss-badge-label {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: center;
+  color: #fff;
+}
+
+.pr-vuln-cvss-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.pr-vuln-cvss-string {
+  font-size: 0.78rem;
+  font-family: monospace;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.pr-vuln-rated-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pr-vuln-rated-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.pr-vuln-meta-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Side-by-side layout: editor left, notes right */
+.pr-col-header {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+}
+
+.pr-col-header .pr-field-label {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.pr-notes-col-label {
+  flex-shrink: 0;
+  width: 33.333%;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.pr-field-with-notes {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .pr-field-with-notes {
+    grid-template-columns: 1fr;
+  }
+  .pr-notes-col-label { display: none; }
+}
+
+.pr-field-notes-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* SunEditor + ICE track-changes block */
+.pr-ice-editor-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pr-ice-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Read-only ICE HTML display (completed reviews) */
+.pr-ice-view {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--tertiary-bg, #1f2937);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  min-height: 60px;
+}
+
+.pr-ice-view p { margin: 0.25em 0; }
+.pr-ice-view ul, .pr-ice-view ol { padding-left: 1.5em; }
+
+/* Ensure SunEditor toolbar fits the theme */
+.sun-editor .se-toolbar {
+  background: var(--secondary-bg, #111827) !important;
+  border-color: var(--border-color) !important;
+}
+
+.sun-editor .se-wrapper {
+  background: var(--tertiary-bg, #1f2937) !important;
+}
+
+/* Tooltip host for a header action that can be disabled — see PeerReviewEditor.tsx */
+.pr-editor-action {
+  display: inline-flex;
+}
+
+/* ── Review / Checklists tabs ───────────────────────────── */
+.pr-editor-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 1.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--secondary-bg, #111827);
+  flex-shrink: 0;
+}
+
+.pr-editor-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.pr-editor-tab:hover {
+  color: var(--text-primary);
+}
+
+.pr-editor-tab--active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+/* The checklist view carries the drawer's own gutters; the editor body already has padding. */
+.pr-editor-checklists .clv-tabs,
+.pr-editor-checklists .clv-toolbar,
+.pr-editor-checklists .clv-rows {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.pr-editor-checklists .clv-tabs {
+  padding-top: 0;
+}

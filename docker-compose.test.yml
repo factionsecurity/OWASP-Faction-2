@@ -1,0 +1,84 @@
+services:
+  # TimescaleDB instance (no persistent volume)
+  timescaledb-test:
+    image: timescale/timescaledb:latest-pg16
+    container_name: test-timescaledb
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: clientportal
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d clientportal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Backend service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: test-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      SPRING_DATASOURCE_URL: jdbc:postgresql://timescaledb-test:5432/clientportal
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      JWT_SECRET: test-secret-key-for-testing-only-do-not-use-in-production
+      JWT_EXPIRATION: 86400000
+    networks:
+      - test-network
+    depends_on:
+      timescaledb-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: test-frontend
+    networks:
+      - test-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Playwright test runner
+  playwright-tests:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.test
+    container_name: test-playwright
+    environment:
+      BASE_URL: http://frontend
+      API_URL: http://backend:8080/api/v1
+      TEST_SUPERADMIN_USERNAME: admin
+      TEST_SUPERADMIN_PASSWORD: admin123
+      CI: "true"
+    networks:
+      - test-network
+    depends_on:
+      frontend:
+        condition: service_healthy
+    volumes:
+      - ./frontend/playwright-report:/app/playwright-report
+      - ./frontend/test-results:/app/test-results
+
+networks:
+  test-network:
+    driver: bridge

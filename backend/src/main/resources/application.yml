@@ -1,0 +1,108 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: client-portal
+  servlet:
+    multipart:
+      max-file-size: 1GB
+      max-request-size: 1GB
+  datasource:
+    url: jdbc:postgresql://${DATABASE_HOST:localhost}:${DATABASE_PORT:5432}/${DATABASE_NAME:clientportal}
+    username: ${DATABASE_USERNAME:admin}
+    password: ${DATABASE_PASSWORD:admin123}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    # OSIV holds a DB connection for the life of the request; SSE requests
+    # (/notifications/stream, /assessments/{id}/events) never complete, so each
+    # browser tab leaked one connection until the Hikari pool drained and every
+    # DB-backed endpoint hung. No entity has lazy relations, so OSIV is unused.
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          time_zone: UTC
+  # Flyway owns the TimescaleDB-specific objects (extension, hypertable, continuous
+  # aggregate) that Hibernate cannot express; ddl-auto still manages the entity tables.
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # Migrations are timestamp-versioned (V<yyyyMMddHHmmss>__), so a branch merged
+    # late can carry a version older than one already applied — apply it anyway.
+    out-of-order: true
+
+storage:
+  # Internal address only — the browser never talks to object storage. Every
+  # read and write is streamed through an authenticated backend endpoint, so
+  # this host should not be reachable from outside the application network.
+  endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
+  access-key: ${STORAGE_ACCESS_KEY:minioadmin}
+  secret-key: ${STORAGE_SECRET_KEY:minioadmin123}
+  bucket: ${STORAGE_BUCKET:assessments}
+  region: ${STORAGE_REGION:us-east-1}
+  # Keep at or below nginx's client_max_body_size, or the proxy rejects large
+  # uploads before the application can return a JSON error.
+  max-upload-bytes: ${STORAGE_MAX_UPLOAD_BYTES:524288000}
+
+jwt:
+  secret: ${JWT_SECRET:your-secret-key-change-this-in-production-must-be-at-least-256-bits}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  backend-url: ${BACKEND_URL:http://localhost:8080}
+  # Stamped by the release workflow via the APP_VERSION Docker build arg
+  version: ${APP_VERSION:dev}
+  notifications:
+    # When the SLA digests go out. Daily rather than hourly: they are summaries of a
+    # deadline measured in days, and a finding entering its warning window at 02:00
+    # does not need telling anyone about before the working day starts.
+    vulnerability-digest-cron: ${VULNERABILITY_DIGEST_CRON:0 0 8 * * *}
+
+sso:
+  encryption-key: ${SSO_ENCRYPTION_KEY:}
+
+faction:
+  default-vulnerabilities:
+    import-url: ${DEFAULT_VULNERABILITIES_IMPORT_URL:https://codeload.github.com/factionsecurity/default-vulnerabilities/zip/refs/heads/main}
+
+  # Development override for exercising the open source edition from this build.
+  # Set to "community" to suppress EnterpriseEditionPolicy, which caps every quota and
+  # turns every paid feature off. It can only take capability away — in the open source
+  # build the enterprise policy is not on the classpath at all, so there is nothing here
+  # that could unlock anything. Leave unset in production.
+  edition: ${FACTION_EDITION:enterprise}
+
+  # Optional link shown beside features this build does not include. Blank by default:
+  # nothing ships pointing at a commercial site. Set it if this deployment has somewhere
+  # of its own to point.
+  upgrade-url: ${FACTION_UPGRADE_URL:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+logging:
+  level:
+    com.faction.clientportal: DEBUG
+    org.springframework.security: DEBUG
+
+management:
+   endpoints:
+     web:
+       exposure:
+         include: health,info
+   endpoint:
+     health:
+       show-details: always
+       db:
+         enabled: true

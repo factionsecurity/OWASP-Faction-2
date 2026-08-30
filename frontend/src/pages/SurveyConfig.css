@@ -1,0 +1,197 @@
+.survey-config-page {
+}
+
+/* Section title shown when embedded as an Assessment Config tab */
+.survey-config-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.survey-config-loading,
+.survey-config-empty {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-top: 1rem;
+}
+
+/* Simple table */
+.survey-config-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.survey-config-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.survey-config-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.survey-config-table tr:last-child td {
+  border-bottom: none;
+}
+
+.survey-config-name {
+  font-weight: 500;
+}
+
+/* Modal body */
+.survey-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.survey-modal-error {
+  color: var(--danger-color, #e53e3e);
+  font-size: 0.875rem;
+}
+
+.survey-questions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.survey-questions-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.survey-no-questions {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  padding: 0.75rem 0;
+}
+
+/* Question list */
+.survey-questions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.survey-question-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--input-background, var(--card-background));
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.survey-question-row.dragging {
+  opacity: 0.5;
+}
+
+.survey-question-drag {
+  display: flex;
+  align-items: center;
+  padding-top: 0.5rem;
+  color: var(--text-secondary);
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.survey-question-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.survey-question-text-input {
+  width: 100%;
+}
+
+.survey-question-type-select {
+  width: 180px;
+}
+
+.survey-question-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-top: 0.3rem;
+}
+
+.survey-question-remove:hover {
+  color: var(--danger-color, #e53e3e);
+  background: var(--danger-bg, rgba(229, 62, 62, 0.08));
+}
+
+/* Dropdown options */
+.survey-dropdown-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--background-secondary, var(--background));
+  border-radius: 3px;
+  border: 1px solid var(--border-color);
+}
+
+.survey-dropdown-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.survey-dropdown-option-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.survey-dropdown-option-input {
+  flex: 1;
+}
+
+.survey-remove-option-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 3px;
+}
+
+.survey-remove-option-btn:hover {
+  color: var(--danger-color, #e53e3e);
+}
+
+.survey-add-option-btn {
+  background: none;
+  border: none;
+  color: var(--primary-color, #4299e1);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.2rem 0;
+  text-align: left;
+}
+
+.survey-add-option-btn:hover {
+  text-decoration: underline;
+}

@@ -1,0 +1,47 @@
+/* ── Page layout framework ─────────────────────────────────────────
+   Every routed page wraps its content in <Page>. By default a page
+   fills the content area edge-to-edge (full width) so tables and
+   content are never artificially constrained.
+
+   Variants:
+     narrow  — constrained, CENTERED column for forms & settings
+               (avoids a one-sided gap on the right)
+     flush   — edge-to-edge; cancels the content-area padding
+               (full-bleed editors / canvases)
+
+   Modifier:
+     fill    — stretch to the full height of the content area for
+               split / scroll-managed layouts
+   ------------------------------------------------------------------- */
+
+.page {
+  width: 100%;
+  min-width: 0;
+}
+
+.page--narrow {
+  max-width: var(--page-narrow-width);
+  margin-inline: auto;
+}
+
+.page--flush {
+  margin: calc(var(--content-padding) * -1);
+  /* .page's width:100% spans only the content box — compensate for the
+     cancelled padding or the page ends 2×padding short of the right edge
+     (same reasoning as the flush+fill height rule below). */
+  width: calc(100% + var(--content-padding) * 2);
+}
+
+.page--fill {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* flush cancels the content-area padding with negative margins, but height:100%
+   only spans the content box — without this the page starts flush at the top yet
+   ends 2×padding short of the bottom edge. */
+.page--flush.page--fill {
+  height: calc(100% + var(--content-padding) * 2);
+}

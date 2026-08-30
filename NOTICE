@@ -1,0 +1,25 @@
+OWASP Faction
+Copyright 2026 Faction Security
+
+This product includes software developed by Faction Security
+(https://www.factionsecurity.com/).
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+--------------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------------
+
+This distribution bundles a LibreOffice UNO Java binding at
+backend/lib/libreoffice.jar, used to convert generated DOCX reports to PDF.
+
+    LibreOffice — Copyright The Document Foundation
+    Licensed under the Mozilla Public License v2.0 and the GNU Lesser General
+    Public License v3.0. https://www.libreoffice.org/about-us/licenses/
+
+The jar is redistributed unmodified. Its licences apply to that file only and
+do not extend to the rest of this project.
+
+Remaining dependencies are declared in backend/pom.xml and
+frontend/package.json, and are obtained from their own distributions rather
+than bundled here.

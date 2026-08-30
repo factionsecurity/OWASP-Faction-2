@@ -1,0 +1,290 @@
+.email-config-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.email-config-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}
+
+/* ── Cards ── */
+.email-config-card {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.email-config-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: var(--tertiary-bg);
+}
+
+.email-config-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* ── Provider grid ── */
+.email-provider-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.email-provider-btn {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--primary-bg);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.email-provider-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--text-primary);
+}
+
+.email-provider-btn--active {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+/* ── Layout helpers ── */
+.email-config-section-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0.5rem 0 0;
+}
+
+.email-config-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.email-config-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0.25rem 0 0;
+}
+
+/* ── Enable toggle ── */
+.email-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.email-toggle input {
+  display: none;
+}
+
+.email-toggle-track {
+  width: 36px;
+  height: 20px;
+  background: var(--border-color);
+  border-radius: 5px;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.email-toggle-track::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.email-toggle input:checked ~ .email-toggle-track {
+  background: var(--primary-color);
+}
+
+.email-toggle input:checked ~ .email-toggle-track::after {
+  transform: translateX(16px);
+}
+
+.email-toggle-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* ── Inline auth toggle ── */
+.email-inline-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.email-inline-toggle input[type="checkbox"] {
+  accent-color: var(--primary-color);
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Save actions ── */
+.email-config-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: flex-end;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+  margin-top: 0.25rem;
+}
+
+.email-config-saved {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #22c55e;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* ── Test result ── */
+.email-test-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  font-size: 0.875rem;
+}
+
+.email-test-result--success {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.email-test-result--error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.email-test-result-message {
+  font-weight: 500;
+}
+
+.email-test-result-details {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+/* ── Encryption notice ── */
+.email-config-notice {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 0.75rem 1rem;
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  line-height: 1.5;
+}
+
+.email-config-notice code {
+  background: var(--primary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 0.05em 0.35em;
+  font-size: 0.85em;
+}
+
+/* ── Logo upload ── */
+.email-logo-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.email-logo-upload:hover {
+  border-color: var(--primary-color);
+  color: var(--text-primary);
+}
+
+.email-logo-preview {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.email-logo-img {
+  max-height: 48px;
+  max-width: 200px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  padding: 6px;
+  background: #7c3aed;
+}
+
+.email-logo-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.email-logo-remove:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+/* ── Spinner ── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+}

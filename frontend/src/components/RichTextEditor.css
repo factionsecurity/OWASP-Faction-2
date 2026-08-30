@@ -1,0 +1,854 @@
+.rte-wrap {
+  position: relative;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  /* No overflow:hidden — it would make the wrap the sticky containing block and
+     defeat the sticky toolbar/tabs below. Corner clipping is handled with matching
+     radii on the toolbar and tabs instead. */
+  display: flex;
+  flex-direction: column;
+}
+
+.rte-wrap:has(.rte-body--disabled) {
+  border: none;
+  border-radius: 0;
+}
+
+.rte-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-color);
+  background: #f9fafb;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  /* Stay visible while scrolling long content. --rte-sticky-offset is declared by
+     each scroll container (.content-area, drawer bodies) as its own padding, so the
+     toolbar hugs the container's visible edge instead of leaving a see-through gap. */
+  position: sticky;
+  /* extra 4px bleed so no content seam shows above the bar while stuck */
+  top: calc(-1 * var(--rte-sticky-offset, 0px) - 4px);
+  z-index: 20;
+  border-radius: 3px 3px 0 0;
+}
+
+.rte-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.rte-btn:hover:not(:disabled) {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+.rte-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.rte-btn--heading {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.rte-btn--color {
+  min-width: 26px;
+}
+
+.rte-sep {
+  width: 1px;
+  height: 18px;
+  background: #d1d5db;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Font color */
+.rte-color-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.rte-color-a {
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  text-decoration-style: solid;
+  text-underline-offset: 2px;
+}
+
+.rte-color-palette {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 18px);
+  gap: 3px;
+  padding: 6px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 10001;
+}
+
+.rte-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s;
+}
+
+.rte-color-swatch:hover {
+  transform: scale(1.2);
+  border-color: rgba(0, 0, 0, 0.5);
+}
+
+.rte-color-palette-label {
+  grid-column: 1 / -1;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 0 1px;
+}
+
+.rte-color-picker-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.rte-color-picker {
+  flex: 1;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+}
+
+.rte-color-picker-apply {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #6366f1;
+  border-radius: 3px;
+  background: #6366f1;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rte-color-picker-apply:hover {
+  background: #4f46e5;
+  border-color: #4f46e5;
+}
+
+/* Link input */
+.rte-link-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rte-link-input {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  color: #374151;
+  background: #fff;
+  width: 180px;
+  outline: none;
+}
+
+.rte-link-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+/* Editor body */
+.rte-body {
+  padding: 0.5rem 0.75rem;
+  min-height: 100px;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: #374151;
+  background: #ffffff;
+  word-break: break-word;
+  outline: none;
+  cursor: text;
+}
+
+.rte-body--disabled {
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  min-height: unset;
+  padding: 0;
+}
+
+.rte-body--hidden {
+  display: none;
+}
+
+/* Markdown source view — CodeMirror mounts into this div; its actual visual styling
+   (font, padding, colors, syntax highlighting) is configured via the `markdownEditorTheme`
+   / `markdownHighlightStyle` extensions in RichTextEditor.tsx, not here. */
+.rte-markdown-body {
+  display: block;
+  width: 100%;
+  /* Match the CodeMirror editor so a taller sibling pane in split view never
+     exposes the page background below the markdown source. */
+  background: #ffffff;
+}
+
+/* Split view — markdown source on the left, read-only WYSIWYG preview on the right.
+   row-reverse because the CodeMirror container is the later DOM sibling. */
+.rte-panes--split {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: stretch;
+}
+
+.rte-panes--split > .rte-body,
+.rte-panes--split > .rte-markdown-body {
+  flex: 1 1 50%;
+  width: 50%;
+  min-width: 0;
+}
+
+.rte-panes--split > .rte-body {
+  border-left: 1px solid var(--border-color, #e5e7eb);
+  cursor: default;
+}
+
+/* Rich text / markdown mode tabs */
+.rte-mode-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  border-top: 1px solid var(--border-color);
+  background: #f9fafb;
+  flex-shrink: 0;
+  /* Counterpart of the sticky toolbar — tabs pin to the bottom of the viewport
+     while the editor is taller than the visible area. */
+  position: sticky;
+  /* extra 4px bleed so no content seam shows below the bar while stuck */
+  bottom: calc(-1 * var(--rte-sticky-offset, 0px) - 4px);
+  z-index: 20;
+  border-radius: 0 0 3px 3px;
+}
+
+.rte-mode-tab {
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.rte-mode-tab:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.rte-mode-tab--active {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+/* Placeholder */
+.rte-body:empty:not(:focus)::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+/* Content styles */
+.rte-body p  { margin: 10px 0; }
+.rte-body h1 { font-size: 1.5em; font-weight: 700; margin: 0.4em 0 0.2em; }
+.rte-body h2 { font-size: 1.25em; font-weight: 700; margin: 0.4em 0 0.2em; }
+.rte-body h3 { font-size: 1.1em; font-weight: 600; margin: 0.4em 0 0.2em; }
+.rte-body h4 { font-size: 1em; font-weight: 600; margin: 0.4em 0 0.2em; }
+.rte-body ul,
+.rte-body ol  { padding-left: 1.5em; margin: 0.25em 0; }
+.rte-body a   { color: #4f46e5; text-decoration: underline; }
+.rte-body code {
+  background: #f3f4f6;
+  color: #374151;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 0.82em;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  border: 1px solid #e5e7eb;
+}
+.rte-body pre {
+  background: #f3f4f6;
+  color: #374151;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 0.82em;
+  padding: 0.5rem 0.75rem;
+  border-radius: 3px;
+  border: 1px solid #e5e7eb;
+  overflow-x: auto;
+  margin: 0.25em 0;
+  white-space: pre;
+}
+.rte-body pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+/* Images: always centered, constrained to container width */
+.rte-body img {
+  display: block;
+  margin: 0.5em auto;
+  max-width: 100%;
+  height: auto;
+  cursor: context-menu;
+}
+
+/* Figure + caption */
+.rte-body figure {
+  margin: 0.5em 0;
+  text-align: center;
+}
+
+.rte-body figure img {
+  margin: 0 auto;
+}
+
+.rte-body figcaption {
+  font-size: 0.8em;
+  color: #6b7280;
+  font-style: italic;
+  margin-top: 0.3em;
+  text-align: center;
+}
+
+.rte-body figcaption:empty::before {
+  content: 'Add a caption…';
+  color: #d1d5db;
+  pointer-events: none;
+}
+
+/* Image resize context menu */
+.rte-img-menu {
+  position: fixed;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+  z-index: 10000;
+  min-width: 160px;
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+.rte-img-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: #374151;
+  gap: 12px;
+}
+
+.rte-img-menu-item:hover {
+  background: #f3f4f6;
+}
+
+.rte-img-menu-item--active {
+  background: rgba(99, 102, 241, 0.08);
+  color: #4338ca;
+}
+
+.rte-img-menu-item--active:hover {
+  background: rgba(99, 102, 241, 0.14);
+}
+
+.rte-img-menu-size {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.rte-img-menu-sep {
+  height: 1px;
+  background: #f3f4f6;
+  margin: 4px 0;
+}
+
+.rte-img-menu-item--danger {
+  color: #dc2626;
+}
+
+.rte-img-menu-item--danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* ── Tables ────────────────────────────────────────────── */
+.rte-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  font-size: 1em;
+}
+
+.rte-table th,
+.rte-table td {
+  border: 1px solid var(--border-color, #d1d5db);
+  padding: 0.4rem 0.6rem;
+  min-width: 60px;
+  vertical-align: top;
+  outline: none;
+}
+
+.rte-table tr:hover {
+  background-color: transparent;
+}
+
+.rte-table th {
+  /* --surface-secondary is not defined in the app theme; use the real
+     tokens so the header reads correctly in both light and dark mode. */
+  background: var(--tertiary-bg, #f3f4f6);
+  color: var(--primary-color, #3b82f6);
+  font-weight: 600;
+  text-align: left;
+}
+
+/* Inside the WYSIWYG editor only (scoped to .rte-body) — saved HTML and report
+   rendering keep the themed .rte-table th colors above. */
+.rte-body .rte-table th {
+  background: #d1d5db;
+  color: #000;
+}
+
+.rte-table td:focus,
+.rte-table th:focus {
+  box-shadow: inset 0 0 0 2px var(--color-primary, #3b82f6);
+}
+
+/* ── Table context menu ────────────────────────────────── */
+.rte-table-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--secondary-bg, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  padding: 0.25rem 0;
+  min-width: 190px;
+  user-select: none;
+}
+
+.rte-table-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rte-table-menu-item:hover:not(:disabled) {
+  background: var(--hover-bg, rgba(0,0,0,0.05));
+}
+
+.rte-table-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rte-table-menu-item--danger:hover:not(:disabled) {
+  color: var(--color-danger, #dc2626);
+  background: var(--danger-bg-subtle, rgba(220,38,38,0.08));
+}
+
+.rte-table-menu-sep {
+  height: 1px;
+  background: var(--border-color, #e5e7eb);
+  margin: 0.25rem 0;
+}
+
+/* ── Table size picker ─────────────────────────────────── */
+.rte-table-picker-wrap {
+  position: relative;
+}
+
+.rte-table-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 300;
+  background: var(--secondary-bg, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  padding: 0.5rem;
+  user-select: none;
+}
+
+.rte-table-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 18px);
+  grid-template-rows: repeat(8, 18px);
+  gap: 2px;
+}
+
+.rte-table-picker-cell {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 2px;
+  background: var(--surface-secondary, #f9fafb);
+  cursor: pointer;
+}
+
+.rte-table-picker-cell--selected {
+  background: var(--primary-bg-subtle, rgba(59,130,246,0.12));
+  border-color: var(--color-primary, #3b82f6);
+}
+
+.rte-table-picker-label {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-top: 0.35rem;
+}
+
+/* ── @mention ───────────────────────────────────────────── */
+.mention {
+  background: color-mix(in srgb, var(--primary-color) 15%, transparent);
+  color: var(--primary-color);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-weight: 500;
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.rte-mention-dropdown {
+  position: fixed;
+  z-index: 9999;
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  min-width: 200px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.rte-mention-item {
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.rte-mention-item:hover,
+.rte-mention-item--active {
+  background: var(--tertiary-bg);
+}
+
+.rte-mention-username {
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+.rte-mention-display {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+/* ── AI actions (admin prompts + Ask AI) ── */
+
+.rte-panes {
+  position: relative;
+}
+
+.rte-ai-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.rte-btn--ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.rte-ai-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+  z-index: 10001;
+  padding: 4px 0;
+}
+
+.rte-ai-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: #374151;
+}
+
+.rte-ai-menu-item:hover {
+  background: #f3f4f6;
+}
+
+.rte-ai-menu-item svg {
+  flex-shrink: 0;
+  color: #7c3aed;
+}
+
+.rte-ai-menu-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.rte-ai-ask {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 300px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+  z-index: 10001;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rte-ai-ask-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+}
+
+.rte-ai-ask-input {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: #111827;
+  background: #ffffff;
+}
+
+.rte-ai-ask-input:focus {
+  outline: none;
+  border-color: #7c3aed;
+}
+
+.rte-ai-ask-hint {
+  font-size: 0.7rem;
+  color: #9ca3af;
+}
+
+.rte-ai-ask-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.rte-ai-ask-cancel,
+.rte-ai-ask-generate {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.rte-ai-ask-cancel {
+  background: none;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+}
+
+.rte-ai-ask-cancel:hover {
+  background: #f3f4f6;
+}
+
+.rte-ai-ask-generate {
+  background: #7c3aed;
+  border: 1px solid #7c3aed;
+  color: #ffffff;
+}
+
+.rte-ai-ask-generate:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
+.rte-ai-ask-generate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rte-ai-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.08);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.rte-ai-error button {
+  display: inline-flex;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px;
+}
+
+/* Another user holds this field's lock.
+   Deliberately much lighter than .rte-ai-overlay: that one hides content because the
+   AI is replacing it, whereas here the viewer is meant to watch the holder's edits
+   arrive. So this is a tint plus a corner label, and it lets pointer events through
+   so scrolling and selecting still work — editing is blocked by contentEditable and
+   the inert toolbar, not by this layer. */
+.rte-lock-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 22;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 4px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+
+.rte-lock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #b45309;
+  background: linear-gradient(rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.16)), #ffffff;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+[data-theme='dark'] .rte-lock-pill {
+  color: #fbbf24;
+  background: linear-gradient(rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.16)), #111827;
+}
+
+/* Keep the toolbar in place so the field does not change height as a lock comes and
+   goes — just make it plainly unusable. */
+.rte-toolbar--locked {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.rte-ai-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #4b5563;
+  font-size: 0.85rem;
+  font-weight: 500;
+  z-index: 20;
+}
+
+[data-theme='dark'] .rte-ai-overlay {
+  background: rgba(17, 24, 39, 0.7);
+  color: #d1d5db;
+}
+
+@keyframes rte-ai-spin {
+  to { transform: rotate(360deg); }
+}
+
+.rte-ai-spin {
+  animation: rte-ai-spin 0.8s linear infinite;
+}

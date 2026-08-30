@@ -1,0 +1,175 @@
+.survey-section-content {
+  padding: 1.5rem;
+}
+
+.survey-empty {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-top: 1rem;
+}
+
+/* Tabs */
+.survey-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 0;
+}
+
+.survey-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.875rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+  margin-bottom: -2px;
+}
+
+.survey-tab:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.05));
+  color: var(--text-primary);
+}
+
+.survey-tab--active {
+  background: var(--card-background);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+  border-bottom-color: var(--card-background);
+  font-weight: 500;
+}
+
+.survey-tab-status {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.survey-tab-status.complete {
+  color: var(--success-color, #48bb78);
+}
+
+[data-theme="light"] .survey-tab-status.complete {
+  color: #15803d;
+}
+
+.survey-tab-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0.1rem;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.survey-tab:hover .survey-tab-remove {
+  opacity: 1;
+}
+
+.survey-tab-remove:hover {
+  color: var(--danger-color, #e53e3e);
+}
+
+/* Tab content */
+.survey-tab-content {
+  padding-top: 1rem;
+}
+
+.survey-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  gap: 1rem;
+}
+
+.survey-status-badge {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  background: var(--badge-secondary-bg, rgba(0,0,0,0.07));
+  color: var(--text-secondary);
+}
+
+.survey-status-badge--complete {
+  background: var(--success-bg, rgba(72, 187, 120, 0.12));
+  color: var(--success-color, #48bb78);
+}
+
+[data-theme="light"] .survey-status-badge--complete {
+  background: rgba(72, 187, 120, 0.2);
+  color: #15803d;
+  font-weight: 700;
+}
+
+/* Questions list */
+.survey-questions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.survey-question-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.survey-question-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.survey-answer-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Yes/No buttons */
+.survey-yn-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.survey-yn-btn {
+  padding: 0.4rem 1.25rem;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.survey-yn-btn:hover:not(:disabled) {
+  background: var(--hover-bg, rgba(0,0,0,0.05));
+  color: var(--text-primary);
+}
+
+.survey-yn-btn.selected {
+  background: var(--primary-color, #4299e1);
+  border-color: var(--primary-color, #4299e1);
+  color: #fff;
+}
+
+.survey-yn-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

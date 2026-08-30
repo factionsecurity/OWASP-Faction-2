@@ -1,0 +1,77 @@
+[tools]
+java = "25"
+node = "20"
+
+[tasks.database-up]
+description = "Start TimescaleDB, MinIO and Presidio"
+run = "docker compose up -d"
+dir = "backend"
+
+[tasks.database-down]
+description = "Stop the containers"
+run = "docker compose down"
+dir = "backend"
+
+[tasks.backend-up]
+description = "Run the Spring Boot backend (starts the containers first)"
+run = "mise run database-up && mvn spring-boot:run"
+dir = "backend"
+
+[tasks.backend-test]
+description = "Run backend tests (requires Docker for TimescaleDB)"
+run = "mvn test"
+dir = "backend"
+
+[tasks.backend-build]
+description = "Build the backend"
+run = "mvn clean install -DskipTests"
+dir = "backend"
+
+[tasks.backend-lint]
+description = "Lint and type-check the backend"
+run = "mvn validate"
+dir = "backend"
+
+[tasks.frontend-install]
+description = "Install frontend dependencies (skipped if lockfile unchanged)"
+run = "npm ci"
+dir = "frontend"
+sources = ["package.json", "package-lock.json"]
+outputs = ["node_modules/.package-lock.json"]
+
+[tasks.frontend-up]
+description = "Run the frontend dev server"
+run = "npm run dev"
+dir = "frontend"
+depends = ["frontend-install"]
+
+[tasks.frontend-test]
+description = "Run Playwright E2E tests"
+run = "npm test"
+dir = "frontend"
+depends = ["frontend-install"]
+
+[tasks.frontend-build]
+description = "Build the frontend for production"
+run = "npm run build"
+dir = "frontend"
+depends = ["frontend-install"]
+
+[tasks.frontend-lint]
+description = "Lint the frontend"
+run = "npm run lint"
+dir = "frontend"
+depends = ["frontend-install"]
+
+[tasks.backend-test-quick]
+description = "Run backend tests without Docker (unit tests only)"
+run = "mvn test -Dtest='!@IntegrationTest'"
+dir = "backend"
+
+[tasks.test-all]
+description = "Run all backend and frontend tests"
+depends = ["backend-test", "frontend-test"]
+
+[tasks.up]
+description = "Run everything — containers, backend and frontend"
+run = "mise run backend-up & mise run frontend-up"

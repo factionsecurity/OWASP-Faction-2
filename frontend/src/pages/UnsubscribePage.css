@@ -1,0 +1,68 @@
+/* Standalone page: reached from an email, so it renders outside the dashboard shell and
+   must look complete on its own. */
+
+.unsub-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: var(--background-color);
+}
+
+.unsub-card {
+  max-width: 30rem;
+  width: 100%;
+  background: var(--card-background, var(--background-color));
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.unsub-icon {
+  color: var(--primary-color);
+  margin-bottom: 0.75rem;
+}
+
+.unsub-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0 0 0.75rem;
+}
+
+.unsub-text {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0 0 1.25rem;
+}
+
+.unsub-btn {
+  background: var(--primary-color);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.6rem 1.1rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.unsub-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.unsub-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.unsub-result--ok { color: var(--color-success, #16a34a); }
+.unsub-result--error { color: var(--color-danger, #dc2626); }

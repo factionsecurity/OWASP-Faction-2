@@ -1,0 +1,164 @@
+.profile-card {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.profile-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 1rem;
+}
+
+.profile-avatar-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+}
+
+.profile-avatar-img {
+  border: 1px solid var(--border-color);
+  background: var(--tertiary-bg);
+  flex-shrink: 0;
+}
+
+.profile-avatar-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-avatar-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.profile-avatar-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.profile-password-form {
+  max-width: 420px;
+}
+
+.profile-password-actions {
+  margin-top: 1rem;
+}
+
+.profile-sso-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* ── Notification preferences ─────────────────────────────────────────────── */
+
+.notif-pref-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.notif-pref-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.notif-pref-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.notif-pref-table td {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: top;
+}
+
+.notif-pref-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Narrow, centered columns so the two switches read as a pair per row. */
+.notif-pref-channel {
+  width: 5.5rem;
+  text-align: center;
+}
+
+/* Own switch styles rather than borrowing .email-toggle from EmailConfigPage.css,
+   which ProfilePage does not import — the control would render as a bare checkbox for
+   anyone who had not visited the email settings page first. */
+.notif-toggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.notif-toggle input {
+  display: none;
+}
+
+.notif-toggle-track {
+  width: 36px;
+  height: 20px;
+  background: var(--border-color);
+  border-radius: 5px;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.notif-toggle-track::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.notif-toggle input:checked ~ .notif-toggle-track {
+  background: var(--primary-color);
+}
+
+.notif-toggle input:checked ~ .notif-toggle-track::after {
+  transform: translateX(16px);
+}
+
+.notif-toggle input:disabled ~ .notif-toggle-track {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notif-pref-label {
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.notif-pref-description {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
+  max-width: 34rem;
+}

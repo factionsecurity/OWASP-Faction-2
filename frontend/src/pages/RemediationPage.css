@@ -1,0 +1,73 @@
+.remediation-vuln-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.remediation-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.remediation-badge--urgent {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+[data-theme="light"] .remediation-badge--urgent {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #b91c1c;
+}
+
+.remediation-badge--warning {
+  background-color: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+[data-theme="light"] .remediation-badge--warning {
+  background-color: rgba(249, 115, 22, 0.2);
+  color: #c2410c;
+}
+
+.remediation-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.remediation-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  padding: 0;
+}
+
+.remediation-action-btn:hover {
+  background: var(--tertiary-bg);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.remediation-action-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+

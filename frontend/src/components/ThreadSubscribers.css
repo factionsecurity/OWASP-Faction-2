@@ -1,0 +1,166 @@
+/* Thread membership, shown directly above a comment thread. Deliberately compact — it is
+   context for the discussion below it, not a section in its own right. */
+
+.thread-subs {
+  position: relative;
+  padding: 0.6rem 0 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 0.75rem;
+}
+
+.thread-subs-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.thread-subs-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.thread-subs-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.thread-subs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.45rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.thread-subs-btn:hover:not(:disabled) {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.thread-subs-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.thread-subs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.thread-subs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem 0.15rem 0.15rem;
+  font-size: 0.78rem;
+  color: var(--text-color);
+}
+
+.thread-subs-name {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-subs-remove {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.thread-subs-remove:hover:not(:disabled) {
+  color: var(--color-danger, #dc2626);
+}
+
+.thread-subs-empty {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  max-width: 38rem;
+}
+
+/* Floated over the comments below rather than pushing them down, so adding someone does
+   not shift the thread you are reading. */
+.thread-subs-picker {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  right: 0;
+  width: 18rem;
+  background: var(--card-background, var(--background-color));
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.thread-subs-search {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-color);
+  padding: 0.5rem 0.6rem;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.thread-subs-results {
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.thread-subs-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-color);
+  font-size: 0.8rem;
+}
+
+.thread-subs-result:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+
+.thread-subs-result-username {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.thread-subs-no-results {
+  padding: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.thread-subs-error {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--color-danger, #dc2626);
+}

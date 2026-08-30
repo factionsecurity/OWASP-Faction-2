@@ -1,0 +1,16 @@
+/* Severity badge COLORS — shape/size/typography come from Badge.css's .badge
+   classes. Palette mirrors the assessment page's .vuln-stat pills, including
+   the darker light-mode variants. The text glow matches Badge's customColor
+   neon pop on dark backgrounds. */
+
+.severity-badge--critical { color: #ef4444; background: rgba(239, 68, 68, 0.1); text-shadow: 0 0 9px rgba(239, 68, 68, 0.35); }
+.severity-badge--high { color: #f97316; background: rgba(249, 115, 22, 0.1); text-shadow: 0 0 9px rgba(249, 115, 22, 0.35); }
+.severity-badge--medium { color: #f59e0b; background: rgba(245, 158, 11, 0.1); text-shadow: 0 0 9px rgba(245, 158, 11, 0.35); }
+.severity-badge--low { color: #3b82f6; background: rgba(59, 130, 246, 0.1); text-shadow: 0 0 9px rgba(59, 130, 246, 0.35); }
+.severity-badge--info { color: #9ca3af; background: rgba(156, 163, 175, 0.1); text-shadow: 0 0 9px rgba(156, 163, 175, 0.35); }
+
+[data-theme="light"] .severity-badge--critical { color: #b91c1c; background: rgba(239, 68, 68, 0.16); text-shadow: none; }
+[data-theme="light"] .severity-badge--high { color: #c2410c; background: rgba(249, 115, 22, 0.16); text-shadow: none; }
+[data-theme="light"] .severity-badge--medium { color: #b45309; background: rgba(245, 158, 11, 0.16); text-shadow: none; }
+[data-theme="light"] .severity-badge--low { color: #1d4ed8; background: rgba(59, 130, 246, 0.16); text-shadow: none; }
+[data-theme="light"] .severity-badge--info { color: #334155; background: rgba(156, 163, 175, 0.16); text-shadow: none; }

@@ -1,0 +1,400 @@
+:root {
+  /* Masks for the native date/time picker icons, so they can be painted in the
+     field's own text colour. Theme-independent — only the alpha channel is used. */
+  --calendar-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M8 2v4M16 2v4M3 10h18'/%3E%3C/svg%3E");
+  --clock-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 6v6l4 2'/%3E%3C/svg%3E");
+
+  /* Faction Security Dark Theme Colors */
+  --primary-bg: #0a0e1a;
+  --secondary-bg: #111827;
+  --tertiary-bg: #1f2937;
+  --hover-bg: #374151;
+  --card-background: #111827;
+
+  --primary-color: #3b82f6;
+  --primary-hover: #2563eb;
+  --accent-color: #8b5cf6;
+  --accent-hover: #7c3aed;
+
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --danger-color: #ef4444;
+  --info-color: #06b6d4;
+
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+
+  --border-color: #374151;
+  --border-light: #4b5563;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 5px;
+
+  /* Page layout framework (see components/Page.tsx) */
+  --content-padding: 1rem;
+  --page-narrow-width: 880px;
+}
+
+[data-theme="light"] {
+  --primary-bg: #f8fafc;
+  --secondary-bg: #ffffff;
+  --tertiary-bg: #f1f5f9;
+  --hover-bg: #e2e8f0;
+  --card-background: #ffffff;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  --border-color: #e2e8f0;
+  --border-light: #cbd5e1;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.15), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--primary-bg);
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--secondary-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-light);
+}
+
+/* Button Styles */
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Input Styles */
+input, select, textarea {
+  font-family: inherit;
+  color: var(--text-primary);
+  background-color: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/*
+ * Date/time picker icon, painted in the input's own text colour.
+ *
+ * The browser's indicator is a fixed dark glyph, so on the dark theme it either
+ * disappeared or had to be forced white per page with `filter: invert(1)` — which is why
+ * three pages carried their own copy of that rule and every other date field across the
+ * app was left with a near-invisible icon. Masking an SVG with `background-color:
+ * currentColor` instead makes it exactly the font colour of the field it sits in, in
+ * both themes, with no per-page rule to keep in sync.
+ *
+ * The indicator element itself is kept (only restyled), so clicking it still opens the
+ * native picker. Firefox does not support this pseudo-element and keeps its own icon,
+ * which it already draws in the field's colour.
+ */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="week"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1em;
+  height: 1em;
+  margin-inline-start: 0.25rem;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.75;
+  background-color: currentColor;
+  -webkit-mask: var(--calendar-icon) center / contain no-repeat;
+  mask: var(--calendar-icon) center / contain no-repeat;
+  transition: opacity 0.15s ease;
+}
+
+input[type="time"]::-webkit-calendar-picker-indicator {
+  -webkit-mask-image: var(--clock-icon);
+  mask-image: var(--clock-icon);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+input[type="month"]::-webkit-calendar-picker-indicator:hover,
+input[type="week"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+input:disabled::-webkit-calendar-picker-indicator {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* Links */
+a {
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--primary-hover);
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+tr:hover {
+  background-color: var(--tertiary-bg);
+}
+
+/* Utility Classes */
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-1 { gap: 0.25rem; }
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+.gap-6 { gap: 1.5rem; }
+
+.text-sm { font-size: 0.875rem; }
+.text-base { font-size: 1rem; }
+.text-lg { font-size: 1.125rem; }
+.text-xl { font-size: 1.25rem; }
+.text-2xl { font-size: 1.5rem; }
+
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+.text-muted { color: var(--text-muted); }
+.text-secondary { color: var(--text-secondary); }
+
+.mt-1 { margin-top: 0.25rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-4 { margin-top: 1rem; }
+.mt-6 { margin-top: 1.5rem; }
+
+.mb-1 { margin-bottom: 0.25rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+
+.p-2 { padding: 0.5rem; }
+.p-4 { padding: 1rem; }
+.p-6 { padding: 1.5rem; }
+
+.rounded { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-xl { border-radius: var(--radius-xl); }
+
+/* ── Workflow Timeline Bar (shared) ────────────── */
+.workflow-timeline-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  height: 52px;
+  flex-shrink: 0;
+  background: var(--secondary-bg);
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.workflow-timeline-bar::-webkit-scrollbar { display: none; }
+
+.wt-step {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.wt-node {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wt-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-color);
+  border: 2px solid var(--border-color);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.wt-step.past .wt-dot {
+  background: var(--success-color);
+  border-color: var(--success-color);
+}
+
+.wt-step.active .wt-dot {
+  width: 14px;
+  height: 14px;
+  background: var(--success-color);
+  border-color: var(--success-color);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+}
+
+.wt-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 0 0.5rem;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.wt-step.past .wt-label {
+  color: var(--success-color);
+}
+
+.wt-step.active .wt-label {
+  color: var(--success-color);
+  font-weight: 600;
+}
+
+.wt-connector {
+  width: 2.5rem;
+  height: 2px;
+  background: var(--border-color);
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.wt-connector.filled {
+  background: var(--success-color);
+}
+
+.wt-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.wt-back-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+.wt-bar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-color);
+  flex-shrink: 0;
+  margin: 0 0.75rem;
+}
+
+.wt-page-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 0.75rem;
+  flex-shrink: 0;
+}

@@ -1,0 +1,151 @@
+/* Shared styling for every paid-feature affordance. One diamond, one colour,
+   one destination — a badge hand-rolled per page is how an upsell stops looking
+   like a product and starts looking like an error. */
+
+:root {
+  --paid-accent: #d9a94b;
+  --paid-accent-soft: rgba(217, 169, 75, 0.14);
+  --paid-accent-border: rgba(217, 169, 75, 0.4);
+}
+
+[data-theme='light'] {
+  --paid-accent: #96701a;
+  --paid-accent-soft: rgba(150, 112, 26, 0.12);
+  --paid-accent-border: rgba(150, 112, 26, 0.35);
+}
+
+.paid-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--paid-accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* The mark is an SVG sized in em, so these rules still scale it with the text it sits
+   beside — font-size is the lever, as it was for the glyph it replaced. */
+.paid-badge__diamond {
+  font-size: 0.95em;
+  flex-shrink: 0;
+}
+
+/* Nudged onto the text baseline: an inline SVG otherwise sits on the line box bottom and
+   rides a fraction high next to lowercase letters. */
+.paid-badge svg,
+.paid-lock__cta svg {
+  vertical-align: -0.13em;
+  flex-shrink: 0;
+}
+
+.paid-badge--pill {
+  background: var(--paid-accent-soft);
+  border: 1px solid var(--paid-accent-border);
+  border-radius: var(--radius-sm);
+  padding: 0.14rem 0.36rem;
+}
+
+/* Upgrade panel shown in place of a feature this build does not include. */
+.paid-lock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  text-align: center;
+  padding: 3rem 1.5rem;
+  background: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.paid-lock--bare {
+  border: none;
+  background: none;
+  padding: 0.5rem 0 1rem;
+}
+
+.paid-lock__diamond {
+  color: var(--paid-accent);
+  font-size: 2.1rem;
+}
+
+.paid-lock__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.paid-lock__body {
+  margin: 0;
+  max-width: 34rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.paid-lock__note {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  color: var(--paid-accent);
+}
+
+.paid-lock__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--paid-accent-border);
+  border-radius: var(--radius-md);
+  background: var(--paid-accent-soft);
+  color: var(--paid-accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.paid-lock__cta:hover {
+  background: var(--paid-accent-border);
+}
+
+.paid-lock__cta:focus-visible {
+  outline: 2px solid var(--paid-accent);
+  outline-offset: 2px;
+}
+
+/* Inline "3 of 4 users" counter, shown next to a capped create action. */
+.quota-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.quota-notice--at-limit {
+  color: var(--paid-accent);
+}
+
+.quota-notice__count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,0 +1,192 @@
+.resource-user-manager {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 6px);
+  padding: 1rem;
+}
+
+.rum-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.rum-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rum-empty {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.rum-user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border-color);
+  gap: 0.5rem;
+}
+
+.rum-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.rum-user-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rum-user-email {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rum-user-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.rum-level-select {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--tertiary-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.rum-remove-btn {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--danger-color, #ef4444);
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--danger-color, #ef4444);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rum-remove-btn:hover {
+  background: var(--danger-color, #ef4444);
+  color: #fff;
+}
+
+.rum-add-form {
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.75rem;
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rum-search-wrapper {
+  position: relative;
+}
+
+.rum-search-input {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--tertiary-bg);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.rum-search-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #3b82f6);
+}
+
+.rum-search-results {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm, 4px);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.rum-search-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  gap: 0.5rem;
+}
+
+.rum-search-result-item:hover {
+  background: var(--hover-bg);
+}
+
+.rum-result-name {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.rum-result-email {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.rum-add-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rum-error {
+  font-size: 0.8125rem;
+  color: var(--danger-color, #ef4444);
+  padding: 0.25rem 0;
+}
+
+.app-edit-layout {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.app-edit-main {
+  flex: 3;
+  min-width: 0;
+}
+
+.app-edit-sidebar {
+  flex: 1;
+  min-width: 260px;
+  position: sticky;
+  top: 1rem;
+}

@@ -1,0 +1,27 @@
+.peer-review-queue {
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.page-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.page-header-title h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.pr-assessment-id {
+  font-family: monospace;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}

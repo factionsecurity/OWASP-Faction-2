@@ -1,0 +1,133 @@
+/* ── Severity pill card ────────────────────────────────────────────────────── */
+/* A summary bucket rendered as a total over one horizontal stacked severity bar.
+   Self-contained: every rule below is scoped to the card, so it drops into any
+   container (the five-across vulnerabilities panel, the app-owner dashboard's
+   three-across stat row) without that container having to style it. */
+/* Total on top, one stacked bar, legend at the bottom — centred in whatever height
+   the tallest card in the row sets.
+   Both class names are required: this overrides .vdash-card-body's `flex-direction: row`,
+   and a lone .vpill-body would only tie with it on specificity — leaving the winner to
+   stylesheet order, which put the bar and legend back on the number's line. */
+.vdash-card-body.vpill-body {
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.9rem;
+}
+
+.vpill-total {
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+/* Positioning context for the hover tooltip, which sits above the bar. */
+.vpill-bar-wrap {
+  position: relative;
+}
+
+/* overflow:hidden is what rounds the segments: the ends follow the container's
+   radius while the internal joins stay square, reading as one continuous pill. */
+.vpill-bar {
+  display: flex;
+  height: 16px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--tertiary-bg, rgba(148, 163, 184, 0.18));
+  /* Grows from the left on mount, and again on every refresh — the component remounts
+     this element when the counts change. Animating `width` rather than `scaleX` keeps
+     the rounded ends circular instead of squashing them through the transition. */
+  animation: vpill-grow 550ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes vpill-grow {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vpill-bar {
+    animation: none;
+  }
+}
+
+.vpill-seg {
+  min-width: 4px;
+  height: 100%;
+  cursor: default;
+  transition: opacity 0.12s ease;
+}
+
+/* Fade the rest rather than highlighting the hovered one — the segment colours are
+   already saturated, so dimming reads more clearly than brightening. */
+.vpill-seg.dimmed {
+  opacity: 0.35;
+}
+
+/* Anchored at the hovered segment's midpoint (an inline `left` percentage) and pulled
+   back by half its own width, so it centres over the segment whatever its size. */
+.vpill-tip {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--secondary-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.vpill-tip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Cards are narrow wherever they are used, so the legend wraps as a centred row under
+   the bar rather than stacking four full-width rows. */
+.vpill-body .vdash-legend {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.25rem 0.6rem;
+}
+
+.vpill-body .vdash-legend-row {
+  font-size: 0.72rem;
+}
+
+.vpill-body .vdash-legend-name {
+  flex: 0 0 auto;
+}
+
+.vpill-body .vdash-legend-count {
+  min-width: 0;
+}
+.vpill-empty-good {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  color: #22c55e;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+/* Sized to sit close to the bar block's own height, but never wider than a narrow column. */
+.vpill-empty-good svg {
+  width: 80px;
+  height: 80px;
+  max-width: 100%;
+}

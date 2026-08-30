@@ -1,0 +1,26 @@
+FROM mcr.microsoft.com/playwright:v1.58.0-jammy
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+
+# Install dependencies (legacy-peer-deps for @toast-ui/react-editor React 17 peer dep)
+RUN npm ci --legacy-peer-deps
+
+# Copy test files and source
+COPY playwright.config.ts ./
+COPY tests ./tests
+COPY src ./src
+COPY tsconfig.json ./
+COPY tsconfig.node.json ./
+COPY vite.config.ts ./
+
+# Set environment variables for tests
+ENV BASE_URL=http://frontend
+ENV API_URL=http://backend:8080/api/v1
+ENV TEST_SUPERADMIN_USERNAME=admin
+ENV TEST_SUPERADMIN_PASSWORD=admin123
+
+# Run tests
+CMD ["npx", "playwright", "test", "--reporter=html"]

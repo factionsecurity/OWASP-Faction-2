@@ -1,0 +1,32 @@
+# Maven build directories
+**/target/
+
+# IDE specific files
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+
+# Machine-local mise config (holds secrets like SSO_ENCRYPTION_KEY)
+mise.local.toml
+
+# Claude Code local settings (per-machine, not shared)
+.claude/settings.local.json
+__pycache__/
+
+# Node
+node_modules/
+dist/

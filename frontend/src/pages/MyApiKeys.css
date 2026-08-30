@@ -1,0 +1,114 @@
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.my-api-keys-page .page-header-text {
+  max-width: 720px;
+}
+
+.my-api-keys-page .page-subtitle {
+  margin: 0;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.apikey-docs-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--primary-color, #6366f1);
+  text-decoration: none;
+}
+
+.apikey-docs-link:hover {
+  text-decoration: underline;
+}
+
+.apikey-hint {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  color: var(--text-muted, #6b7280);
+}
+
+/* Scope radio options */
+.scope-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scope-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.scope-option:hover {
+  border-color: var(--primary-color, #6366f1);
+}
+
+.scope-option.selected {
+  border-color: var(--primary-color, #6366f1);
+  background-color: var(--primary-bg, rgba(99, 102, 241, 0.06));
+}
+
+.scope-option input {
+  margin-top: 0.2rem;
+}
+
+.scope-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.scope-option-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.scope-option-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted, #6b7280);
+}
+
+/* One-time secret reveal */
+.secret-warning {
+  background-color: var(--warning-bg, rgba(245, 158, 11, 0.1));
+  border: 1px solid var(--warning-color, #f59e0b);
+  color: var(--warning-text, #92400e);
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: 0.85rem;
+}
+
+.secret-reveal {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.secret-value {
+  flex: 1;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  background-color: var(--code-bg, #f3f4f6);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.6rem 0.7rem;
+  overflow-x: auto;
+  white-space: nowrap;
+}

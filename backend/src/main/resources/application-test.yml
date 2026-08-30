@@ -1,0 +1,44 @@
+# Test Profile Configuration
+# This configuration is used when running with SPRING_PROFILES_ACTIVE=test
+
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DATABASE_HOST:localhost}:${DATABASE_PORT:5432}/${DATABASE_NAME:testdb}
+    username: ${DATABASE_USERNAME:admin}
+    password: ${DATABASE_PASSWORD:admin123}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          time_zone: UTC
+
+jwt:
+  secret: ${JWT_SECRET:test-secret-key-for-testing-only}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+logging:
+  level:
+    root: INFO
+    com.faction.clientportal: DEBUG
+
+cors:
+  allowed-origins: http://localhost:3000,http://localhost:80,http://frontend
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+  health:
+    db:
+      enabled: true

@@ -1,0 +1,146 @@
+/* Three severity bars plus two figure cards. Fixed at five rather than auto-fit so the bars
+   stay in one row: Open Findings, the tracked subset of it, and the exceptions carved out of
+   it only read against each other side by side. */
+.aod-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: stretch;
+}
+
+@media (max-width: 1600px) {
+  .aod-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.aod-stat-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+}
+
+.aod-stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.aod-stat-icon--danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.aod-stat-icon--info {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.aod-stat-icon--primary {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+
+.aod-stat-info {
+  min-width: 0;
+}
+
+.aod-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.aod-stat-value {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.aod-stat-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.125rem;
+}
+
+.aod-link {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.aod-link:hover {
+  text-decoration: underline;
+}
+
+/* Due-soon card */
+.aod-card {
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.aod-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.aod-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.aod-count {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 999px;
+  padding: 0.0625rem 0.4375rem;
+}
+
+.aod-primary-text {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.aod-due {
+  font-weight: 600;
+}
+
+.aod-due--warning {
+  color: #f97316;
+}
+
+.aod-due--overdue {
+  color: #ef4444;
+}
+
+@media (max-width: 1024px) {
+  .aod-stats {
+    grid-template-columns: 1fr;
+  }
+}

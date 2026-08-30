@@ -1,0 +1,493 @@
+/* Vulnerability charts across the top, scoped to this application */
+.app-detail-trend {
+  margin-bottom: 1.5rem;
+}
+
+/* Two-column layout: static/editable application fields on the left,
+   persistent team/owner chat on the right. */
+.app-detail-layout {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.app-detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* Where the summary panel above renders its full five columns, borrow its exact tracks and
+   gap so Basic Information spans the first three — its right edge lands on the third donut's
+   rather than a few pixels off it. Below that width the panel collapses to three columns, so
+   "three wide" would mean full width; the proportional split above stays in effect instead. */
+@media (min-width: 1401px) {
+  .app-detail-layout {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .app-detail-main {
+    grid-column: span 3;
+  }
+
+  .app-detail-chat {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-detail-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Section header / edit toggle ─────────────────────────────────────────── */
+.app-detail-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.app-detail-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-detail-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.app-detail-edit-btn:hover,
+.app-detail-edit-btn.active {
+  background: var(--accent-color, #8b5cf6);
+  color: #fff;
+}
+
+/* ── Static value display ─────────────────────────────────────────────────── */
+.app-detail-view-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.app-detail-view-grid--3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+@media (max-width: 1200px) {
+  .app-detail-view-grid--3 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.app-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.app-detail-field--full {
+  grid-column: 1 / -1;
+}
+
+.app-detail-field--span2 {
+  grid-column: span 2;
+}
+
+.app-detail-field-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.app-detail-field-value {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.app-detail-field-value--strong {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.app-detail-appid-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.1rem 0.4rem;
+  letter-spacing: 0.02em;
+}
+
+.app-detail-field-value--rich {
+  display: block;
+  width: 100%;
+}
+
+.app-detail-empty {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+/* Vulnerabilities/Assessments tab nav inside the detail panel */
+.app-detail-tab-nav {
+  margin-bottom: 0;
+}
+
+/* "Show more details" toggle at the bottom of Basic Information view mode */
+.app-detail-show-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--primary-color);
+  cursor: pointer;
+}
+
+.app-detail-show-more:hover {
+  text-decoration: underline;
+}
+
+/* Compact one-line-per-entry lists (stakeholders, URLs) */
+.app-detail-simple-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.app-detail-simple-list-item {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.app-detail-list-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin-left: 0.3rem;
+  padding: 0.15rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.app-detail-list-remove:hover {
+  color: var(--danger-color, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Inline copy-to-clipboard button shown next to email addresses */
+.app-detail-copy-email {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin-left: 0.3rem;
+  padding: 0.15rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.app-detail-copy-email:hover {
+  color: var(--primary-color);
+  background: var(--tertiary-bg);
+}
+
+.app-detail-copy-email.copied {
+  color: #22c55e;
+}
+
+/* ── Chat panel ────────────────────────────────────────────────────────────── */
+.app-detail-chat {
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 8rem);
+}
+
+.app-detail-chat-header {
+  flex-shrink: 0;
+}
+
+.app-detail-chat-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.app-detail-chat-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.app-chat-empty {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 1.25rem 0;
+  margin: 0;
+}
+
+.app-chat-avatar {
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  display: block;
+}
+
+.app-chat-comment {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.app-chat-bubble {
+  flex: 1;
+  min-width: 0;
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  padding: 0.6rem 0.8rem;
+}
+
+.app-chat-comment--own .app-chat-bubble {
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--tertiary-bg));
+  border-color: color-mix(in srgb, var(--primary-color) 20%, var(--border-color));
+}
+
+.app-chat-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.app-chat-author {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.app-chat-dot {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.app-chat-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.app-chat-delete {
+  background: none;
+  border: none;
+  padding: 0.15rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.app-chat-delete:hover {
+  color: var(--danger-color, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.app-chat-body {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* System-generated lifecycle messages (assessment scheduled/completed, surveys) */
+.app-chat-comment--system .app-chat-bubble {
+  background: var(--tertiary-bg);
+  border-style: dashed;
+  border-color: var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+}
+
+/* Icon chip shown in the avatar slot of system lifecycle messages */
+.app-chat-event-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  background: var(--tertiary-bg);
+  color: var(--text-muted);
+}
+
+.app-chat-event-icon--scheduled {
+  color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 12%, var(--tertiary-bg));
+  border-color: color-mix(in srgb, #f59e0b 35%, var(--border-color));
+}
+
+.app-chat-event-icon--completed {
+  color: #22c55e;
+  background: color-mix(in srgb, #22c55e 12%, var(--tertiary-bg));
+  border-color: color-mix(in srgb, #22c55e 35%, var(--border-color));
+}
+
+.app-chat-event-icon--survey {
+  color: #3b82f6;
+  background: color-mix(in srgb, #3b82f6 12%, var(--tertiary-bg));
+  border-color: color-mix(in srgb, #3b82f6 35%, var(--border-color));
+}
+
+.app-chat-system-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-sm);
+}
+
+/* Compose sits above the message list (newest-first), Jira-style */
+.app-detail-chat-compose {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  flex-shrink: 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.app-detail-chat-compose-input {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Collapsed, Jira-style comment prompt — expands into the full editor on click */
+.app-chat-compose-collapsed {
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: text;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.app-chat-compose-collapsed:hover {
+  border-color: var(--primary-color);
+  background: var(--secondary-bg);
+}
+
+.app-chat-compose-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.app-chat-compose-cancel {
+  padding: 0.4rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.app-chat-compose-cancel:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--hover-bg, var(--tertiary-bg));
+}
+
+.app-chat-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: var(--primary-color);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.app-chat-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.app-chat-submit:not(:disabled):hover {
+  opacity: 0.88;
+}

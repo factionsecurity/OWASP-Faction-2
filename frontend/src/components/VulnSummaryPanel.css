@@ -1,0 +1,19 @@
+/* Five-across vulnerability summary. Its own grid (not the dashboard's auto-fit
+   .stats-grid) because the card count is fixed at five and must stay five on a
+   normal desktop width — auto-fit would break it into 4 + 1 and read as a mistake.
+   Grid's default stretch keeps every card the same height, so a bucket showing its
+   empty state lines up with the bars beside it. */
+.vsp-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+/* Two rows beat five illegible slivers once the row can't hold five. */
+@media (max-width: 1400px) {
+  .vsp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 820px) {
+  .vsp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

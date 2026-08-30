@@ -1,0 +1,241 @@
+/* Engagements Page */
+.engagements-page {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* Toolbar: stats (flex) + actions (fixed) */
+.eng-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.eng-toolbar-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  padding-top: 0.125rem;
+}
+
+
+/* Calendar Container - white background */
+.assessment-calendar {
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+}
+
+/* Keep calendar itself white */
+.assessment-calendar .fc,
+.assessment-calendar .fc-view-harness,
+.assessment-calendar .fc-scrollgrid,
+.assessment-calendar .fc-daygrid-body,
+.assessment-calendar .fc-scrollgrid-sync-table,
+.assessment-calendar .fc-daygrid {
+  background-color: #ffffff !important;
+}
+
+/* Prevent hover on parent containers */
+.assessment-calendar .fc-scrollgrid:hover,
+.assessment-calendar .fc-daygrid-body:hover,
+.assessment-calendar .fc-scrollgrid-sync-table:hover,
+.assessment-calendar .fc-daygrid:hover {
+  background-color: #ffffff !important;
+}
+
+/* Keep table structure white */
+.assessment-calendar .fc-scrollgrid tbody,
+.assessment-calendar .fc-scrollgrid td,
+.assessment-calendar .fc-scrollgrid th {
+  background-color: #ffffff !important;
+}
+
+/* Allow subtle hover effect on individual day cells only */
+.assessment-calendar .fc-daygrid-day:hover .fc-daygrid-day-frame {
+  background-color: #f8f9fa !important;
+  transition: background-color 0.15s ease;
+}
+
+/* Make calendar header/toolbar match container background */
+.assessment-calendar .fc-toolbar,
+.assessment-calendar .fc-toolbar-chunk,
+.assessment-calendar .fc-header-toolbar,
+.assessment-calendar .fc .fc-toolbar {
+  background-color: transparent !important;
+}
+
+/* Override any white backgrounds in header */
+.assessment-calendar .fc-col-header,
+.assessment-calendar .fc-col-header-cell {
+  background-color: transparent !important;
+}
+
+/* Calendar Legend */
+.calendar-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: var(--tertiary-bg, #f8f9fa);
+  border-radius: var(--radius-md, 0.375rem);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.calendar-legend .badge {
+  white-space: nowrap;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-md, 0.375rem);
+}
+
+/* Status Stats Bar */
+.eng-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  padding-top: 0.3rem;
+}
+
+.eng-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.eng-stat:hover {
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.eng-stat.active {
+  background: var(--secondary-bg);
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.eng-stat strong {
+  font-weight: 700;
+}
+
+.eng-stat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+
+/* User Selector */
+.user-selector {
+  margin-bottom: 1rem;
+}
+
+.user-selector .form-label {
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.user-selector .selected-users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.user-selector .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+}
+
+.user-selector .form-control {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.user-selector .form-control:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  outline: none;
+}
+
+.user-selector .dropdown-menu {
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-md);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.user-selector .dropdown-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+.user-selector .dropdown-item:hover {
+  background-color: var(--tertiary-bg);
+}
+
+.user-selector .dropdown-item.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.user-selector .dropdown-item .form-check-input {
+  margin-right: 0.5rem;
+}
+
+
+/* ── Vulnerability severity badges ─────────────────────── */
+.vuln-severity-counts {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.vuln-count {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.vuln-critical { background-color: #ef4444; }
+.vuln-high     { background-color: #f97316; }
+.vuln-medium   { background-color: #eab308; color: #1a1a1a; }
+.vuln-low      { background-color: #22c55e; }

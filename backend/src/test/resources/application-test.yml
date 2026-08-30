@@ -1,0 +1,30 @@
+spring:
+   main:
+     banner-mode: off
+   datasource:
+     url: jdbc:postgresql://${DATABASE_HOST:localhost}:${DATABASE_PORT:5432}/${DATABASE_NAME:testdb}
+     username: ${DATABASE_USERNAME:admin}
+     password: ${DATABASE_PASSWORD:admin123}
+     driver-class-name: org.postgresql.Driver
+   jpa:
+     properties:
+       hibernate:
+         ddl-auto: create-drop
+         jdbc:
+           time_zone: UTC
+
+jwt:
+  secret: test-secret-key-for-testing-purposes-only-must-be-at-least-256-bits-long
+  expiration: 3600000
+
+logging:
+  level:
+    root: ERROR
+    com.faction.clientportal: WARN
+    org.springframework: ERROR
+    org.springframework.boot: ERROR
+    org.springframework.test: ERROR
+    org.springframework.security: ERROR
+    org.testcontainers: ERROR
+    org.testcontainers.images: ERROR
+    testcontainers: ERROR

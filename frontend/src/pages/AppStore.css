@@ -1,0 +1,499 @@
+/* App Store — installed extension cards.
+   Width and horizontal padding come from Page / .content-area; nothing here
+   sets max-width or outer margin. */
+
+.appstore-file-input {
+  display: none;
+}
+
+.appstore-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--warning-border, #b7791f);
+  border-radius: 6px;
+  background: var(--warning-bg, rgba(183, 121, 31, 0.12));
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.appstore-notice svg {
+  flex-shrink: 0;
+}
+
+/* ── Grid of extension cards ─────────────────────────────────────────────── */
+
+.appstore-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.appstore-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--card-bg, var(--bg-secondary));
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* An enabled extension is doing something to live data — make that legible at a glance. */
+.appstore-card--on {
+  border-color: var(--success-border, #2f855a);
+}
+
+/* An expanded card carries a full config form, so it spans the grid rather than
+   stretching its row-mates to match. */
+.appstore-card:has(.appstore-detail) {
+  grid-column: 1 / -1;
+}
+
+.appstore-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.appstore-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.appstore-logo--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary, rgba(127, 127, 127, 0.15));
+  color: var(--text-secondary);
+}
+
+.appstore-identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.appstore-identity h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.appstore-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.appstore-meta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--link-color, #4299e1);
+  text-decoration: none;
+}
+
+/* ── Master enable switch ────────────────────────────────────────────────── */
+
+.appstore-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.appstore-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.appstore-switch span {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  border-radius: 20px;
+  background: var(--bg-tertiary, rgba(127, 127, 127, 0.35));
+  transition: background 0.15s ease;
+}
+
+.appstore-switch span::before {
+  content: '';
+  position: absolute;
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.appstore-switch input:checked + span {
+  background: var(--success-color, #38a169);
+}
+
+.appstore-switch input:checked + span::before {
+  transform: translateX(16px);
+}
+
+.appstore-switch input:disabled + span {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ── Hook badges ─────────────────────────────────────────────────────────── */
+
+.appstore-hooks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.appstore-hook {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.appstore-hook--on {
+  border-color: var(--success-border, #2f855a);
+  background: var(--success-bg, rgba(56, 161, 105, 0.14));
+  color: var(--success-color, #38a169);
+}
+
+.appstore-card-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ── Expanded detail ─────────────────────────────────────────────────────── */
+
+.appstore-detail {
+  border-top: 1px solid var(--border-color);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Prose, not chrome — this is the extension's documentation and gets read
+   start to finish, so it runs a size above the surrounding dense UI. */
+.appstore-description {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-primary);
+}
+
+.appstore-description :is(h1, h2) {
+  font-size: 17px;
+  margin: 14px 0 6px;
+  color: var(--text-primary);
+}
+
+.appstore-description :is(h3, h4, h5, h6) {
+  font-size: 15px;
+  margin: 12px 0 4px;
+  color: var(--text-primary);
+}
+
+.appstore-description :is(p, ul, ol) {
+  margin: 0 0 10px;
+}
+
+.appstore-description :is(ul, ol) {
+  padding-left: 22px;
+}
+
+.appstore-description li {
+  margin-bottom: 4px;
+}
+
+/* Descriptions embed a full-size base64 preview of what the extension renders —
+   the bar chart ships one ~1200px wide. Cap it at 400px so the preview stays an
+   illustration rather than dominating the card; click opens it full size.
+
+   min() rather than a bare 400px: a plain max-width would not constrain the
+   image inside a card narrower than 400px, and it would overflow. Authors also
+   set inline widths (the bar chart ships style="width:40%"), which this still
+   caps — inline width sets the target, max-width is the ceiling. */
+.appstore-description img {
+  max-width: min(400px, 100%);
+  height: auto;
+  display: block;
+  margin: 8px 0;
+  border-radius: 4px;
+  cursor: zoom-in;
+}
+
+.appstore-description img:focus-visible {
+  outline: 2px solid var(--link-color, #4299e1);
+  outline-offset: 2px;
+}
+
+/* Authors wrap previews in <center>. Left-align them anyway: a block-level image
+   ignores text-align, but the rule is spelled out so the intent survives someone
+   later changing the image to inline. */
+.appstore-description center {
+  display: block;
+  text-align: left;
+}
+
+/* ── Image lightbox ──────────────────────────────────────────────────────── */
+
+.appstore-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+}
+
+.appstore-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.appstore-lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+}
+
+.appstore-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.appstore-description code {
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 13px;
+  background: var(--bg-tertiary, rgba(127, 127, 127, 0.15));
+}
+
+.appstore-description table {
+  border-collapse: collapse;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.appstore-description :is(th, td) {
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.appstore-description pre,
+.appstore-description code {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+
+.appstore-description pre {
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--bg-tertiary, rgba(127, 127, 127, 0.12));
+  overflow-x: auto;
+}
+
+.appstore-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.appstore-hook-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.appstore-hook-row .form-group {
+  margin: 0;
+}
+
+.appstore-hook-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Two columns. Extensions declare a lot of small settings — the bar chart alone
+   has eleven — and one per row pushed the Save button off-screen.
+   minmax(0, 1fr) rather than 1fr: a bare 1fr floors at the content's min width,
+   so a long config key would blow the column out instead of wrapping. */
+.appstore-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+  margin-bottom: 10px;
+  max-width: 900px;
+}
+
+/* Below two usable column widths, stack rather than squeeze inputs to nothing. */
+@media (max-width: 700px) {
+  .appstore-config-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.appstore-config-field {
+  min-width: 0;
+}
+
+.appstore-config-field .form-group {
+  margin-bottom: 0;
+}
+
+.appstore-config-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.appstore-config-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.appstore-saved {
+  font-size: 11px;
+  color: var(--success-color, #38a169);
+}
+
+/* ── Logs ────────────────────────────────────────────────────────────────── */
+
+.appstore-logs {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.appstore-log {
+  display: grid;
+  grid-template-columns: 150px 64px 120px 1fr;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-color);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.appstore-log:last-child {
+  border-bottom: none;
+}
+
+.appstore-log--error .appstore-log-level {
+  color: var(--danger-color, #e53e3e);
+  font-weight: 600;
+}
+
+.appstore-log--warning .appstore-log-level {
+  color: var(--warning-color, #dd6b20);
+  font-weight: 600;
+}
+
+.appstore-log-message {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+/* Narrow viewports cannot carry four columns; stack instead of scrolling the page. */
+@media (max-width: 900px) {
+  .appstore-log {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+/* ── Empty / loading ─────────────────────────────────────────────────────── */
+
+.appstore-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 48px 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.appstore-empty h3 {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.appstore-empty p {
+  margin: 0;
+  font-size: 12px;
+  max-width: 480px;
+}
+
+.appstore-empty code {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+
+.appstore-spin {
+  animation: appstore-spin 1s linear infinite;
+}
+
+@keyframes appstore-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

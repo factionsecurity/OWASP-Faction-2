@@ -1,0 +1,201 @@
+/* ── Report Documents panel (Finalize section) ── */
+.report-docs-card {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg, 0.5rem);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.report-docs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.report-docs-header .finalize-actions-title {
+  margin: 0;
+}
+
+.report-docs-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.report-docs-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.report-doc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.report-doc-row:last-child {
+  border-bottom: none;
+}
+
+.report-doc-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md, 0.375rem);
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.report-doc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.report-doc-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.report-doc-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.report-doc-state {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 0.25rem;
+}
+
+.report-doc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-doc-status--muted {
+  color: var(--text-muted);
+}
+
+.report-doc-status--generating {
+  color: var(--accent-color, #6366f1);
+}
+
+.report-doc-status--failed {
+  color: var(--danger-color, #ef4444);
+  max-width: 260px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.report-doc-status--failed svg {
+  flex-shrink: 0;
+}
+
+.report-doc-status--failed .report-doc-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-doc-status--failed:hover .report-doc-status-text {
+  text-decoration: underline;
+}
+
+/* Full error message shown in the details modal */
+.report-doc-error-detail {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.report-doc-spinner {
+  animation: report-doc-spin 1s linear infinite;
+}
+
+@keyframes report-doc-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Password row ── */
+.report-docs-password {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 0.375rem);
+}
+
+.report-docs-password-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.report-docs-password-value {
+  flex: 1;
+  font-size: 0.8125rem;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-docs-password-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm, 0.25rem);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.report-docs-password-btn:hover {
+  background: var(--secondary-bg);
+  color: var(--text-primary);
+}

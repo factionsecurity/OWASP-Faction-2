@@ -1,0 +1,296 @@
+.pr-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pr-diff-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pr-diff-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.pr-diff-bulk {
+  display: flex;
+  gap: 0.5rem;
+}
+
+
+.pr-diff-empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.pr-diff-field {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 0.75rem;
+  background: var(--surface-color);
+  transition: border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pr-diff-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pr-diff-field-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Side-by-side layout: TrackChangesResolver + notes */
+.pr-diff-rich-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.pr-diff-rich-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.pr-diff-notes-col {
+  flex: 0 0 33.333%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.pr-diff-notes-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Plain text field change display */
+.pr-diff-text-change {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  flex-wrap: wrap;
+}
+
+.pr-diff-original-text {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  text-decoration: line-through;
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+}
+
+.pr-diff-revised-text {
+  background: rgba(34, 197, 94, 0.1);
+  color: #166534;
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+}
+
+.pr-diff-arrow {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.pr-diff-note {
+  padding: 0.5rem 0.75rem;
+  background: rgba(234, 179, 8, 0.1);
+  border-left: 3px solid #eab308;
+  border-radius: 0 3px 3px 0;
+  font-size: 0.8rem;
+}
+
+.pr-diff-note-label {
+  font-weight: 600;
+  color: #854d0e;
+  margin-right: 0.4rem;
+}
+
+.pr-diff-note-body {
+  display: inline;
+  font-size: 0.8rem;
+}
+
+.pr-diff-note-body p { margin: 0; display: inline; }
+
+.pr-diff-vuln {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  background: var(--surface-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pr-diff-vuln-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.pr-diff-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+/* ── Reviewer Updates / Diff tabs ───────────────────────── */
+.pr-diff-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.pr-diff-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.pr-diff-tab:hover {
+  color: var(--text-primary);
+}
+
+.pr-diff-tab--active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+/* Each tab's content; .pr-diff itself is the flex column the panes inherit. */
+.pr-diff-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Side-by-side text diff ─────────────────────────────── */
+/* One scrollport around both columns, so the two sides can never drift out of step — the
+   alternative, a scroller per column, needs JS to keep them in sync. */
+.pr-td {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+/* Deliberately light in every theme: this is report prose, and it reads the way the delivered
+   document does rather than as another dark app panel. Colors are fixed, not tokens. */
+.pr-td-col {
+  min-width: 0;
+  border: 1px solid #d1d5db;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  /* No overflow:hidden — it would make each column its own scroll context, which both breaks
+     the shared scrollport and strands the sticky header. Corners are rounded per child. */
+}
+
+.pr-td-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #4b5563;
+  background: #f3f4f6;
+  border-bottom: 1px solid #d1d5db;
+  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
+}
+
+.pr-td-body {
+  padding: 0.6rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #1f2937;
+  background: #ffffff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 0 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px);
+}
+
+.pr-td-del {
+  background: #fde2e2;
+  color: #991b1b;
+  text-decoration: line-through;
+  text-decoration-color: rgba(153, 27, 27, 0.65);
+  border-radius: 2px;
+}
+
+.pr-td-ins {
+  background: #d8f3de;
+  color: #14532d;
+  border-radius: 2px;
+}
+
+.pr-td-same {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+@media (max-width: 900px) {
+  .pr-td {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Stands in for the track-changes body when a review's markup is gone, so it matches .tcr-body. */
+.pr-inline-diff {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.pr-inline-diff del,
+.pr-inline-diff ins {
+  text-decoration-thickness: from-font;
+}
+
+.pr-inline-diff ins {
+  text-decoration: none;
+}

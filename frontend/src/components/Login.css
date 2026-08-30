@@ -1,0 +1,240 @@
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0a0e1a 0%, #1a1f3a 100%);
+  padding: 1rem;
+}
+
+/* ── Custom sign-in background ──
+   The gradient in .login-container is itself a background-image, so the inline
+   background-image the component sets replaces it cleanly. */
+.login-container--image {
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* A scrim, because the background is arbitrary customer photography and the card has to
+   stay readable over a light or busy one. */
+.login-container--image::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 14, 26, 0.65);
+}
+
+.login-container--image .login-card {
+  position: relative;
+  z-index: 1;
+}
+
+.login-card {
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 420px;
+  padding: 2.5rem;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.login-logo {
+  /* Height is set inline from the branding config; this is the fallback for the moment
+     before it loads. max-width keeps a wide customer wordmark inside the card rather
+     than overflowing it. */
+  height: 120px;
+  max-width: 100%;
+  margin-bottom: 1.5rem;
+  object-fit: contain;
+}
+
+/* On the sign-in page the logo is the header's only child, so its own bottom margin
+   would stack with the header's and push the form too far down. The other pages keep it,
+   because there a title sits directly beneath. */
+.login-header .login-logo:last-child {
+  margin-bottom: 0;
+}
+
+/* Still used by the forgot-password and reset-password pages, which share this
+   stylesheet — the sign-in form itself is now just the logo. */
+.login-title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+/* Still used by the forgot-password and reset-password pages, which share this
+   stylesheet — the sign-in form itself no longer has a subtitle. */
+.login-subtitle {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.form-input {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  width: 100%;
+}
+
+.form-input::placeholder {
+  color: var(--text-muted);
+}
+
+.login-method-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.method-button {
+  padding: 0.625rem 1rem;
+  border-radius: var(--radius-md);
+  background-color: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.method-button:hover:not(:disabled) {
+  background-color: var(--hover-bg);
+  border-color: var(--border-light);
+}
+
+.method-button.active {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.method-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.submit-button {
+  padding: 0.875rem 1.5rem;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 1rem;
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+
+.submit-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.submit-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-message {
+  padding: 0.875rem 1rem;
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  color: #fca5a5;
+  font-size: 0.875rem;
+  animation: shake 0.3s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.login-footer {
+  margin-top: 1.5rem;
+  text-align: center;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+/* ── SSO Login ── */
+.sso-login-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  color: var(--text-muted, #9ca3af);
+  font-size: 0.8125rem;
+}
+.sso-login-divider::before,
+.sso-login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color, #e5e7eb);
+}
+
+.sso-login-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sso-login-btn {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: none;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.sso-login-btn:hover {
+  background: var(--tertiary-bg, #f3f4f6);
+  border-color: var(--primary-color, #6366f1);
+}
+
+.login-forgot-link {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.login-forgot-link:hover {
+  color: var(--primary-color, #6366f1);
+}
