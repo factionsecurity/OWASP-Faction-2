@@ -26,6 +26,9 @@ export default defineConfig({
     __FACTION_EDITION__: JSON.stringify(edition),
   },
   resolve: {
+    // One copy of each, however it was reached. Without this the overlay's imports can
+    // pull in a second React alongside the pre-bundled one.
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@enterprise': fileURLToPath(new URL(enterpriseDir, import.meta.url)),
       // The overlay lives outside this project, so it reaches core through an alias
@@ -33,14 +36,20 @@ export default defineConfig({
       '@core': fileURLToPath(new URL('./src', import.meta.url)),
 
       // The overlay's sources sit outside this project, so Node resolution from them
-      // never reaches our node_modules. Pointing them at the copy core already has does
-      // two jobs: it makes them resolvable, and it guarantees one React in the bundle
-      // rather than two, which is the difference between working hooks and broken ones.
+      // never reaches our node_modules. These point its bare imports at the copy core
+      // already has.
       //
-      // Adding an npm import to an overlay screen means adding it here; the build fails
-      // with "Rollup failed to resolve" until you do.
+      // React and react-dom are deliberately NOT in this list. Aliasing them to a raw
+      // directory bypasses the package's `exports` map, so the alias resolves to a
+      // different file than Vite's pre-bundled dependency — two React instances in one
+      // page. Hooks and event delegation then break in a way that looks like nothing
+      // more than "the dropdowns stopped working". `dedupe` below is the supported way
+      // to guarantee a single copy.
+      //
+      // Adding another npm import to an overlay screen means adding it here; the build
+      // fails with "Rollup failed to resolve" until you do.
       ...Object.fromEntries(
-        ['react', 'react-dom', 'lucide-react', 'recharts'].map((pkg) => [
+        ['lucide-react', 'recharts'].map((pkg) => [
           pkg,
           fileURLToPath(new URL(`./node_modules/${pkg}`, import.meta.url)),
         ]),
