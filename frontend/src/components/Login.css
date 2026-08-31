@@ -1,3 +1,10 @@
+/* Everything below is scoped to .login-container on purpose.
+   These rules used to be global, and several of their class names — form-input,
+   form-group, form-label, error-message, submit-button — are shared with the app-wide
+   components in FormControls.css. Whichever stylesheet the bundler happened to emit last
+   won, so a change in import order silently restyled every form in the product: the
+   login font-size and padding landed inside FormControls' 34px-tall inputs and pushed
+   the text of every <select> out of view. */
 .login-container {
   min-height: 100vh;
   display: flex;
@@ -85,26 +92,26 @@
   gap: 1.5rem;
 }
 
-.form-group {
+.login-container .form-group {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.form-label {
+.login-container .form-label {
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--text-secondary);
 }
 
-.form-input {
+.login-container .form-input {
   padding: 0.75rem 1rem;
   border-radius: var(--radius-md);
   font-size: 1rem;
   width: 100%;
 }
 
-.form-input::placeholder {
+.login-container .form-input::placeholder {
   color: var(--text-muted);
 }
 
@@ -141,7 +148,7 @@
   cursor: not-allowed;
 }
 
-.submit-button {
+.login-container .submit-button {
   padding: 0.875rem 1.5rem;
   background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
   color: white;
@@ -151,21 +158,21 @@
   transition: all 0.2s ease;
 }
 
-.submit-button:hover:not(:disabled) {
+.login-container .submit-button:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
 }
 
-.submit-button:active:not(:disabled) {
+.login-container .submit-button:active:not(:disabled) {
   transform: translateY(0);
 }
 
-.submit-button:disabled {
+.login-container .submit-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.error-message {
+.login-container .error-message {
   padding: 0.875rem 1rem;
   background-color: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
