@@ -409,11 +409,13 @@ public class ReportTemplateService {
         if (name != null && !name.isEmpty()) {
             templates = reportTemplateRepository.searchByName(name, pageable);
         } else if (assessmentTypeId != null && (active == null || active)) {
-            templates = reportTemplateRepository.findByAssessmentTypeIdAndActiveTrue(assessmentTypeId, pageable);
+            templates = reportTemplateRepository.findByAssessmentTypeIdAndActiveTrueAndDeletedAtIsNull(assessmentTypeId, pageable);
         } else if (active != null && active) {
-            templates = reportTemplateRepository.findByActiveTrue(pageable);
+            templates = reportTemplateRepository.findByActiveTrueAndDeletedAtIsNull(pageable);
         } else {
-            templates = reportTemplateRepository.findAll(pageable);
+            // Not findAll: the unfiltered listing is what let a soft-deleted template
+            // reach a caller and be handed back to POST /assessments.
+            templates = reportTemplateRepository.findByDeletedAtIsNull(pageable);
         }
 
         return templates.map(ReportTemplateSummaryDto::fromEntity);
@@ -424,7 +426,7 @@ public class ReportTemplateService {
      * Deduplicates by variableName, keeping the first occurrence encountered.
      */
     public List<UserDefinedFieldDto> getVulnerabilityFields() {
-        List<ReportTemplate> templates = reportTemplateRepository.findByActiveTrue(Pageable.unpaged()).getContent();
+        List<ReportTemplate> templates = reportTemplateRepository.findByActiveTrueAndDeletedAtIsNull(Pageable.unpaged()).getContent();
         Map<String, UserDefinedFieldDto> byVariableName = new LinkedHashMap<>();
         for (ReportTemplate template : templates) {
             if (template.getUserDefinedFields() == null) continue;
@@ -445,7 +447,7 @@ public class ReportTemplateService {
         assessmentTypeRepository.findById(assessmentTypeId)
             .orElseThrow(() -> new ResourceNotFoundException("Assessment type not found with id: " + assessmentTypeId));
 
-        return reportTemplateRepository.findByAssessmentTypeIdAndActiveTrue(assessmentTypeId, Pageable.unpaged())
+        return reportTemplateRepository.findByAssessmentTypeIdAndActiveTrueAndDeletedAtIsNull(assessmentTypeId, Pageable.unpaged())
             .stream()
             .map(ReportTemplateSummaryDto::fromEntity)
             .collect(Collectors.toList());

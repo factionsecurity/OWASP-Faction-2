@@ -95,9 +95,15 @@ public class AssessmentService {
         assessmentTypeRepository.findById(request.getAssessmentTypeId())
             .orElseThrow(() -> new ResourceNotFoundException("Assessment type not found with id: " + request.getAssessmentTypeId()));
 
-        // Get report template and verify it's active
-        ReportTemplate template = reportTemplateRepository.findById(request.getReportTemplateId())
-            .orElseThrow(() -> new ResourceNotFoundException("Report template not found with id: " + request.getReportTemplateId()));
+        // Get report template and verify it can still be used. Deleted is looked up
+        // separately from inactive so the message names the real problem: "not active" on a
+        // template that has actually been deleted sends people to a toggle that isn't there.
+        ReportTemplate template = reportTemplateRepository.findByIdAndDeletedAtIsNull(request.getReportTemplateId())
+            .orElseThrow(() -> reportTemplateRepository.existsById(request.getReportTemplateId())
+                ? new IllegalArgumentException(
+                    "Report template has been deleted and cannot be used for new assessments")
+                : new ResourceNotFoundException(
+                    "Report template not found with id: " + request.getReportTemplateId()));
 
         if (!template.getActive()) {
             throw new IllegalArgumentException("Report template is not active: " + template.getName());

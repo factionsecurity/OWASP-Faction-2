@@ -216,7 +216,7 @@ class AssessmentServiceTest {
                 .thenReturn(Optional.of(testApplication));
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(testTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
                 .thenReturn(Optional.of(testTemplate));
         when(assessmentRepository.save(any(Assessment.class)))
                 .thenReturn(testAssessment);
@@ -250,7 +250,7 @@ class AssessmentServiceTest {
                 .thenReturn(Optional.of(testApplication));
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(testTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
                 .thenReturn(Optional.of(testTemplate));
         when(assessmentRepository.save(any(Assessment.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -280,7 +280,7 @@ class AssessmentServiceTest {
                 .thenReturn(Optional.of(testApplication));
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(testTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
                 .thenReturn(Optional.of(testTemplate));
         when(assessmentRepository.save(any(Assessment.class)))
                 .thenReturn(testAssessment);
@@ -331,7 +331,7 @@ class AssessmentServiceTest {
                 .thenReturn(Optional.of(testApplication));
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(testTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
                 .thenReturn(Optional.of(testTemplate));
 
         Assessment savedAssessment = Assessment.builder()
@@ -383,7 +383,7 @@ class AssessmentServiceTest {
                 .thenReturn(Optional.of(testApplication));
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(testTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
                 .thenReturn(Optional.of(testTemplate));
         when(assessmentRepository.save(any(Assessment.class)))
                 .thenReturn(testAssessment);
@@ -421,7 +421,7 @@ class AssessmentServiceTest {
                 });
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(testTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
                 .thenReturn(Optional.of(testTemplate));
         when(assessmentRepository.save(any(Assessment.class)))
                 .thenReturn(testAssessment);
@@ -458,7 +458,7 @@ class AssessmentServiceTest {
                 });
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(testTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
                 .thenReturn(Optional.of(testTemplate));
         when(assessmentRepository.save(any(Assessment.class)))
                 .thenReturn(testAssessment);
@@ -492,7 +492,7 @@ class AssessmentServiceTest {
                 });
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(testTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
                 .thenReturn(Optional.of(testTemplate));
         when(assessmentRepository.save(any(Assessment.class)))
                 .thenReturn(testAssessment);
@@ -1199,7 +1199,7 @@ class AssessmentServiceTest {
                 .thenReturn(Optional.of(testApplication));
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(mixedTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(mixedTemplate.getId()))
                 .thenReturn(Optional.of(mixedTemplate));
 
         ArgumentCaptor<Assessment> savedCaptor = ArgumentCaptor.forClass(Assessment.class);
@@ -1249,7 +1249,7 @@ class AssessmentServiceTest {
                 .thenReturn(Optional.of(testApplication));
         when(assessmentTypeRepository.findById(testAssessmentType.getId()))
                 .thenReturn(Optional.of(testAssessmentType));
-        when(reportTemplateRepository.findById(vulnOnlyTemplate.getId()))
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(vulnOnlyTemplate.getId()))
                 .thenReturn(Optional.of(vulnOnlyTemplate));
 
         ArgumentCaptor<Assessment> savedCaptor = ArgumentCaptor.forClass(Assessment.class);
