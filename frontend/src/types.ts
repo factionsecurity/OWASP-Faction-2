@@ -1684,6 +1684,30 @@ export interface SaveAiPromptTemplateRequest {
   enabled?: boolean;
 }
 
+export type ContentTemplateScope = 'ASSESSMENT' | 'VULNERABILITY';
+
+/** How a selected template combines with whatever the editor already holds. */
+export type ContentTemplateInsertMode = 'OVERWRITE' | 'PREPEND' | 'APPEND';
+
+export interface ContentTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  scope: ContentTemplateScope;
+  /** HTML body — the same shape RichTextEditor stores */
+  content: string;
+  enabled: boolean;
+  createdBy?: string;
+}
+
+export interface SaveContentTemplateRequest {
+  name?: string;
+  description?: string;
+  scope?: ContentTemplateScope;
+  content?: string;
+  enabled?: boolean;
+}
+
 export type WebSearchProviderType = 'BRAVE' | 'TAVILY' | 'SERPER';
 
 export interface WebSearchConfig {

@@ -100,7 +100,7 @@ class BootstrapServiceTest extends TestContainersConfig {
         assertThat(pentester).isPresent();
         // Same canonical permission set as the paid edition — the gate is on minting new
         // roles, never on what the two built-in ones can do.
-        assertThat(pentester.get().getPermissions()).hasSize(24);
+        assertThat(pentester.get().getPermissions()).hasSize(27);
         assertThat(pentester.get().getPermissions())
                 .contains("assessments:read:assigned", "assessments:edit:assigned",
                           "report_templates:read:all", "organizations:read:all");
@@ -128,7 +128,7 @@ class BootstrapServiceTest extends TestContainersConfig {
 
         Optional<Role> pentesterRole = roleRepository.findByName("Pentester");
         assertThat(pentesterRole).isPresent();
-        assertThat(pentesterRole.get().getPermissions()).hasSize(24);
+        assertThat(pentesterRole.get().getPermissions()).hasSize(27);
         // The Report Designer is reachable on assessments:create:team, so the role needs the
         // template permissions every call on that page is gated on.
         assertThat(pentesterRole.get().getPermissions()).contains(
@@ -198,8 +198,11 @@ class BootstrapServiceTest extends TestContainersConfig {
                 // …but the superseded team-wide assessment grant is revoked, so an existing
                 // install tightens to the assigned-only default instead of keeping it forever.
                 .doesNotContain("assessments:read:team")
-                // 24 seeded + 1 extra, no duplicates
-                .hasSize(25);
+                // content template authoring reaches installs that predate it
+                .contains("content-templates:create", "content-templates:edit",
+                        "content-templates:delete")
+                // 27 seeded + 1 extra, no duplicates
+                .hasSize(28);
     }
 
     @Test

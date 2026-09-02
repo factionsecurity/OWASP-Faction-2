@@ -65,13 +65,13 @@ class PermissionControllerTest extends TestContainersConfig {
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data", hasSize(17))) // 17 resource categories
+                .andExpect(jsonPath("$.data", hasSize(18))) // 18 resource categories
                 .andExpect(jsonPath("$.data[*].resource", containsInAnyOrder(
                         "APPLICATIONS", "ASSESSMENTS", "USERS", "ORGANIZATIONS",
                         "VULNERABILITIES", "REPORTING", "ROLES", "REPORT_TEMPLATES",
                         "VULNERABILITY_CATEGORIES", "DEFAULT_VULNERABILITIES", "CHECKLIST_TEMPLATES",
-                        "SURVEY_TEMPLATES", "SYSTEM_CONFIG", "PEER_REVIEW", "API_KEYS",
-                        "CAMPAIGNS", "MANAGER_DASHBOARD"
+                        "SURVEY_TEMPLATES", "CONTENT_TEMPLATES", "SYSTEM_CONFIG", "PEER_REVIEW",
+                        "API_KEYS", "CAMPAIGNS", "MANAGER_DASHBOARD"
                 )));
     }
 

@@ -132,6 +132,12 @@ public class BootstrapService implements ApplicationRunner {
             Permission.REPORT_TEMPLATES_CREATE_ALL.getPermission(),
             Permission.REPORT_TEMPLATES_EDIT_ALL.getPermission(),
             Permission.REPORT_TEMPLATES_DELETE_ALL.getPermission(),
+            // Content templates — the reusable boilerplate pentesters insert into assessment and
+            // vulnerability editors. Authoring is theirs: the people writing reports are the ones
+            // who know what the boilerplate should say.
+            Permission.CONTENT_TEMPLATES_CREATE.getPermission(),
+            Permission.CONTENT_TEMPLATES_EDIT.getPermission(),
+            Permission.CONTENT_TEMPLATES_DELETE.getPermission(),
             Permission.APIKEYS_CREATE_SELF.getPermission(),
             Permission.APIKEYS_READ_SELF.getPermission(),
             Permission.APIKEYS_DELETE_SELF.getPermission()

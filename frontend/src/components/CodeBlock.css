@@ -1,0 +1,64 @@
+/* ── Code block panel ──────────────────────────────────────────────────────
+   ```start=200 (and a plain ```) render as a two-column table: a gutter of line
+   numbers beside the code, or the code alone. Dracula Official — #282a36 panel,
+   #f8f8f2 code, #6272a4 numbers, #44475a divider.
+
+   Shared by every surface that shows content HTML: the rich text editor, the
+   peer-review editors and the review resolver. It lived in each of their
+   stylesheets and promptly drifted — a code block in the resolver rendered as a
+   plain bordered table, because that was the copy nobody remembered to update.
+
+   Selectors lead with `table.` so they outrank a surface's own `.x-body td`
+   rules whatever order the stylesheets happen to load in. The report ships its
+   own copy of these rules (DocxUtils.buildStyleBlock) — the DOCX has no access
+   to this file — so keep the two in step. */
+
+table.code-block {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6rem 0;
+  background: #282a36;
+  border-radius: 4px;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+table.code-block td {
+  border: none;
+  padding: 0 12px;
+  vertical-align: top;
+  background: #282a36;
+  color: #f8f8f2;
+}
+
+table.code-block td.code-block-gutter {
+  width: 1%;
+  padding-left: 14px;
+  white-space: nowrap;
+  text-align: right;
+  color: #6272a4;
+  border-right: 1px solid #44475a;
+  user-select: none;
+}
+
+table.code-block td.code-block-line {
+  width: 100%;
+  white-space: pre-wrap;
+  /* A URL or a base64 blob has nowhere to wrap on its own, and would otherwise run
+     past the panel — off the page entirely, in the report. */
+  word-break: break-all;
+}
+
+/* The panel's top and bottom margin: a short empty row rather than cell padding,
+   because cell padding becomes a cell margin in the DOCX and Word draws a hairline
+   of white wherever a cell margin meets a fill. Locked with contenteditable=false
+   in the editor; this keeps a click on it from showing a caret it will not honour. */
+table.code-block tr.code-block-pad td {
+  font-size: 5pt;
+  line-height: 5pt;
+  user-select: none;
+  caret-color: transparent;
+  cursor: default;
+}

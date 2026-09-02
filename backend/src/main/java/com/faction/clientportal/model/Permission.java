@@ -89,6 +89,12 @@ public enum Permission {
     CHECKLIST_TEMPLATES_EDIT("checklist:edit", "Edit checklist templates", PermissionResource.CHECKLIST_TEMPLATES),
     CHECKLIST_TEMPLATES_DELETE("checklist:delete", "Delete checklist templates", PermissionResource.CHECKLIST_TEMPLATES),
 
+    // Content Template Permissions (reads are open to every authenticated user — the
+    // editor's template picker offers them to whoever is writing the text)
+    CONTENT_TEMPLATES_CREATE("content-templates:create", "Create content templates", PermissionResource.CONTENT_TEMPLATES),
+    CONTENT_TEMPLATES_EDIT("content-templates:edit", "Edit content templates", PermissionResource.CONTENT_TEMPLATES),
+    CONTENT_TEMPLATES_DELETE("content-templates:delete", "Delete content templates", PermissionResource.CONTENT_TEMPLATES),
+
     // Survey Template Permissions
     SURVEY_TEMPLATES_CREATE("survey:create", "Create and manage survey templates", PermissionResource.SURVEY_TEMPLATES),
     SURVEY_TEMPLATES_EDIT("survey:edit", "Edit survey templates", PermissionResource.SURVEY_TEMPLATES),

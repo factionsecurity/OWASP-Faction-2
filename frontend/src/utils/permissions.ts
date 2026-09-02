@@ -232,6 +232,15 @@ export const permissions = {
   canManageChecklistTemplates: (authorities: string[]): boolean =>
     hasAnyPermission(authorities, ['checklist:create']) || isSuperAdmin(authorities),
 
+  // Content Templates (reusable rich text boilerplate). Reading them needs nothing
+  // beyond a login — every editor offers the picker; these gate authoring.
+  canManageContentTemplates: (authorities: string[]): boolean =>
+    hasAnyPermission(authorities, [
+      'content-templates:create',
+      'content-templates:edit',
+      'content-templates:delete',
+    ]) || isSuperAdmin(authorities),
+
   // Campaign management (org-wide lookup tags on assessments)
   canManageCampaigns: (authorities: string[]): boolean =>
     hasAnyPermission(authorities, [

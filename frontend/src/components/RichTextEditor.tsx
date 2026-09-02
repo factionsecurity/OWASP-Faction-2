@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlignCenter,
@@ -7,6 +7,7 @@ import {
   Bot,
   Check,
   ChevronDown,
+  ClipboardList,
   Code,
   ImagePlus,
   Italic,
@@ -27,23 +28,161 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
-import { EditorView, keymap, placeholder as cmPlaceholder, Decoration, ViewPlugin, WidgetType } from '@codemirror/view';
+import { EditorView, keymap, drawSelection, placeholder as cmPlaceholder, Decoration, ViewPlugin, WidgetType } from '@codemirror/view';
 import type { DecorationSet, ViewUpdate } from '@codemirror/view';
-import { Prec, RangeSetBuilder, StateField } from '@codemirror/state';
-import type { EditorState } from '@codemirror/state';
+import { Compartment, EditorState, Facet, Prec, RangeSetBuilder, StateField } from '@codemirror/state';
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
+import { vim, Vim } from '@replit/codemirror-vim';
 import { GFM as lezerGfm } from '@lezer/markdown';
 import { tags } from '@lezer/highlight';
 import { mentionsApi, aiApi } from '../api';
-import type { AiPromptScope, AiPromptSummary } from '../types';
+import type {
+  AiPromptScope,
+  AiPromptSummary,
+  ContentTemplate,
+  ContentTemplateInsertMode,
+  ContentTemplateScope,
+} from '../types';
+import ContentTemplateDialog from './ContentTemplateDialog';
+import {
+  cleanPastedHtml,
+  isImageOnlyHtml,
+  looksLikeTsvTable,
+  readableTextColor,
+  TEXT_ON_DARK_FILL,
+  TEXT_ON_LIGHT_FILL,
+  tsvToTableHtml,
+} from '../utils/pasteHtml';
 import './RichTextEditor.css';
+import './CodeBlock.css';
+import './ContentTables.css';
 
 // "> text" markdown is repurposed as CENTERED text, not blockquote. Reports are the
 // product here — blockquotes have no meaning in them, and the previous representation
 // (<div align="center">) didn't survive the markdown round-trip and broke the docx
 // converter. <center> round-trips cleanly and converts.
+// ── Line-numbered code blocks ─────────────────────────────────────────────────
+// A fence carrying `start=` renders as a two-column table — a gutter of line numbers
+// and the code — so a report can style it like a screenshot from an editor. Everything
+// the round trip needs is in the markup itself: the fence is rebuilt from the first
+// gutter number, so no data-* attribute is involved (the report sanitizer drops those).
+//
+//   ```start=200          ```python start=200
+//   some code             some code
+//   ```                   ```
+const CODE_BLOCK_CLASS = 'code-block';
+const CODE_GUTTER_CLASS = 'code-block-gutter';
+const CODE_LINE_CLASS = 'code-block-line';
+// The panel's top and bottom padding is a short shaded row of its own, not cell padding.
+// Cell padding becomes a w:tcMar, and Word draws a hairline of unpainted white wherever a
+// cell margin meets a fill — a line across the panel. A spacer row has no margin to seam.
+const CODE_PAD_ROW_CLASS = 'code-block-pad';
+const CODE_START_RE = /(?:^|\s)start\s*=\s*(\d+)/i;
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Indentation as non-breaking spaces. HTML collapses runs of spaces, and the DOCX
+ * importer does not honour white-space: pre — without this every line in the report
+ * comes out flush left, which for code is the whole structure gone.
+ */
+function preserveIndent(line: string): string {
+  return line.replace(/^[ \t]+/, ws => ws.replace(/\t/g, '    ').replace(/ /g, '\u00a0'));
+}
+
+function restoreIndent(text: string): string {
+  const restored = text.replace(/\u00a0/g, ' ');
+  // A blank line is carried as a single non-breaking space (see lineNumberedCodeHtml);
+  // give the fence back an empty line rather than a line holding one space.
+  return restored.trim() === '' ? '' : restored;
+}
+
+/**
+ * Every fence becomes the same panel; only a `start=` adds the gutter of line numbers.
+ * Keeping one shape means one set of classes to theme, in the app and in the report.
+ */
+function codeBlockHtml(code: string, start: number | null, language: string): string {
+  const gutter = (content: string) =>
+    start === null ? '' : `<td class="${CODE_GUTTER_CLASS}">${content}</td>`;
+  const lines = code.replace(/\n+$/, '').split('\n');
+  const rows = lines.map((line, i) => {
+    // A blank line gets a non-breaking space, not a <br>: a <br> in an otherwise empty
+    // cell renders as two lines tall in the DOCX, so one blank line in the source opened
+    // a gap twice the height of the others.
+    const cell = escapeHtml(preserveIndent(line)) || '&nbsp;';
+    return `<tr>${gutter(String((start ?? 0) + i))}`
+      + `<td class="${CODE_LINE_CLASS}">${cell}</td></tr>`;
+  }).join('');
+  const pad = `<tr class="${CODE_PAD_ROW_CLASS}">`
+    + (start === null ? '' : `<td class="${CODE_GUTTER_CLASS}" contenteditable="false">&nbsp;</td>`)
+    + `<td class="${CODE_LINE_CLASS}" contenteditable="false">&nbsp;</td></tr>`;
+  const langClass = language ? ` language-${language.replace(/[^\w-]/g, '')}` : '';
+  return `<table class="${CODE_BLOCK_CLASS}${langClass}"><tbody>${pad}${rows}${pad}</tbody></table>`;
+}
+
+/** Whether a collapsed caret sits before everything in `node` — a <br> placeholder or
+ *  stray whitespace ahead of it does not count as content. */
+function atStartOfNode(node: Node, range: Range): boolean {
+  const before = range.cloneRange();
+  before.selectNodeContents(node);
+  before.setEnd(range.startContainer, range.startOffset);
+  const fragment = before.cloneContents();
+  // Zero-width spaces are caret anchors, not content — see the Enter handler.
+  return (fragment.textContent ?? '').replace(/\u200B/g, '').trim() === ''
+    && !fragment.querySelector?.('img');
+}
+
+/** The line cells of a code block, in order, skipping the padding rows. */
+function codeBlockRows(table: HTMLTableElement): HTMLTableRowElement[] {
+  return Array.from(table.rows).filter(row => !row.classList.contains(CODE_PAD_ROW_CLASS));
+}
+
+/**
+ * Rewrites the gutter after a line is added or removed, counting up from whatever the
+ * first line is numbered — the whole point of `start=` is that the numbers match the
+ * file the excerpt came from, so the first one is the anchor and never recalculated.
+ * A block with no gutter (a plain fence) has nothing to renumber.
+ */
+function renumberCodeBlock(table: HTMLTableElement): void {
+  const rows = codeBlockRows(table);
+  const first = rows[0]?.querySelector(`.${CODE_GUTTER_CLASS}`);
+  if (!first) return;
+  const start = parseInt(first.textContent?.trim() || '1', 10);
+  rows.forEach((row, i) => {
+    const gutter = row.querySelector(`.${CODE_GUTTER_CLASS}`);
+    if (gutter) gutter.textContent = String(start + i);
+  });
+}
+
+/**
+ * A line wrapped by hand with Shift+Enter: a <br> with content after it. A trailing one
+ * does not count — that is the placeholder that keeps an empty cell focusable, and it is
+ * what an empty line looks like.
+ */
+function hasSoftWrappedLine(table: HTMLTableElement): boolean {
+  return Array.from(table.querySelectorAll(`.${CODE_LINE_CLASS}`)).some(cell =>
+    Array.from(cell.querySelectorAll('br')).some(br => {
+      for (let node = br.nextSibling; node; node = node.nextSibling) {
+        if ((node.textContent ?? '').trim() !== '') return true;
+      }
+      return false;
+    }));
+}
+
+/** A code block travels as its own table shape, not as a GFM table or a <pre>. */
+function isCodeBlockTable(node: Node): boolean {
+  return node.nodeName === 'TABLE'
+    && (node as HTMLElement).classList.contains(CODE_BLOCK_CLASS);
+}
+
 marked.use({
   // Single newlines become <br> instead of collapsing into the previous line —
   // otherwise line breaks typed in the markdown view silently disappear.
@@ -51,6 +190,15 @@ marked.use({
   renderer: {
     blockquote(token) {
       return `<center>${this.parser.parse(token.tokens)}</center>\n`;
+    },
+    code({ text, lang }) {
+      const info = (lang ?? '').trim();
+      const match = info.match(CODE_START_RE);
+      return codeBlockHtml(
+        text,
+        match ? parseInt(match[1], 10) : null,
+        info.replace(CODE_START_RE, '').trim(),
+      );
     },
   },
 });
@@ -161,6 +309,58 @@ turndownService.keep(node =>
   ))
 );
 
+// A GFM pipe table can express structure and nothing else, so converting a table that
+// carries a cell fill, a merged cell, coloured text or block content inside a cell
+// silently throws that formatting away — most visibly when pasting a shaded table from
+// Word into the markdown view, or merely toggling to markdown and back with one in the
+// document. Those tables travel as raw HTML instead (the same escape hatch underline and
+// coloured text use, and what marked parses straight back); plain tables stay readable
+// pipe tables. Registered after the gfm plugin so it takes precedence over its table
+// rules — turndown checks the most recently added rule first.
+const NON_MARKDOWN_STYLE = /(?:^|;)\s*(?:background(?:-color)?|color)\s*:/i;
+const CELL_BLOCK_CONTENT = 'ul, ol, table, blockquote, pre, h1, h2, h3, h4, h5, h6';
+
+function tableNeedsRawHtml(table: HTMLElement): boolean {
+  if (NON_MARKDOWN_STYLE.test(table.getAttribute('style') ?? '')) return true;
+  const cells = Array.from(table.querySelectorAll('td, th')) as HTMLTableCellElement[];
+  if (cells.some(cell => cell.colSpan > 1 || cell.rowSpan > 1)) return true;
+  if (cells.some(cell => cell.querySelector(CELL_BLOCK_CONTENT))) return true;
+  return Array.from(table.querySelectorAll('[style]'))
+    .some(el => NON_MARKDOWN_STYLE.test(el.getAttribute('style') ?? ''));
+}
+
+turndownService.addRule('richTable', {
+  filter: node => node.nodeName === 'TABLE' && tableNeedsRawHtml(node as HTMLElement),
+  replacement: (_content, node) => '\n\n' + (node as HTMLElement).outerHTML + '\n\n',
+});
+
+// Back to a fence, line numbers included: the first gutter cell is the `start=`, and
+// the gutter itself is dropped — it is generated, not content. Registered after the
+// richTable rule so turndown reaches this one first (it checks newest rules first).
+turndownService.addRule('lineNumberedCode', {
+  filter: node => isCodeBlockTable(node),
+  replacement: (_content, node) => {
+    const table = node as HTMLTableElement;
+    // A line wrapped by hand has no equivalent in a fence — every newline there starts a
+    // new numbered line — so such a block travels as raw HTML rather than losing the
+    // wrap (or silently gaining a line number) on the way through the markdown view.
+    if (hasSoftWrappedLine(table)) return '\n\n' + table.outerHTML + '\n\n';
+    // Spacer rows are the panel's margin, not code.
+    const rows = Array.from(table.querySelectorAll('tr'))
+      .filter(row => !row.classList.contains(CODE_PAD_ROW_CLASS));
+    const firstNumber = rows[0]?.querySelector(`.${CODE_GUTTER_CLASS}`)?.textContent?.trim() ?? '';
+    const language = (Array.from(table.classList).find(c => c.startsWith('language-')) ?? '')
+      .replace('language-', '');
+    const code = rows
+      .map(row => restoreIndent(row.querySelector(`.${CODE_LINE_CLASS}`)?.textContent ?? ''))
+      .join('\n');
+    // No gutter means no `start=` — it goes back out as the plain fence it came from.
+    const info = [language, /^\d+$/.test(firstNumber) ? `start=${firstNumber}` : '']
+      .filter(Boolean).join(' ');
+    return `\n\n\`\`\`${info}\n${code}\n\`\`\`\n\n`;
+  },
+});
+
 // The reverse mapping: anything centered — a <center> tag, legacy align="center",
 // or an inline text-align:center (what execCommand('justifyCenter') produces in the
 // rich view) — becomes "> " prefixed lines. LI is excluded: list items are centered
@@ -209,6 +409,126 @@ turndownService.addRule('tableCellLineBreak', {
   replacement: () => '',
 });
 
+/**
+ * Pads a pasted chunk out to its own block when it carries raw block HTML — the form a
+ * table with fills or merged cells takes in the markdown source. A markdown HTML block
+ * runs until the next blank line, so a table pasted flush against the following line
+ * swallows it, and one pasted mid-line lands inside a paragraph. Plain markdown needs
+ * none of this and is inserted exactly where the cursor is.
+ */
+function asOwnBlock(view: EditorView, markdown: string): string {
+  if (!/^\s*<(?:table|div|ul|ol|blockquote|pre|h[1-6])\b/im.test(markdown)) return markdown;
+  const { from, to } = view.state.selection.main;
+  const before = view.state.sliceDoc(Math.max(0, from - 2), from);
+  const after = view.state.sliceDoc(to, Math.min(view.state.doc.length, to + 2));
+  const lead = from === 0 || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+  const trail = to === view.state.doc.length || after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n';
+  return lead + markdown.replace(/^\n+|\n+$/g, '') + trail;
+}
+
+/**
+ * The vim mark — the arrow-through-diamond over "vim" — supplied by the author. Fills
+ * are currentColor so it takes the toggle's colour in both states, and it renders a
+ * touch larger than the lucide icons around it because it carries lettering that goes
+ * to mush at 14px.
+ */
+function VimIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M14.931 21.5h-1.087a.501.501 0 0 1-.478-.646l1.189-3.892a.5.5 0 0 1 .188-.964h.477a.501.501 0 0 1 .478.646L14.52 20.5h.411a.5.5 0 0 1 0 1z" />
+      <path d="M18.087 21.5H17a.5.5 0 0 1-.472-.662l1.319-3.84h-.014l-.057.164a.501.501 0 0 1-.473.336h-2.155a.5.5 0 0 1 0-1h1.8l.057-.164a.501.501 0 0 1 .473-.336h1.083a.5.5 0 0 1 .469.674l-.186.5L17.7 20.5h.387a.5.5 0 0 1 0 1z" />
+      <path d="M21.312 21.5h-1.088a.5.5 0 0 1-.472-.662l1.319-3.84h-.014l-.057.164a.501.501 0 0 1-.473.336h-2.154a.5.5 0 0 1 0-1h1.799l.057-.164a.501.501 0 0 1 .473-.336h1.083a.5.5 0 0 1 .469.674l-.186.5-1.144 3.328h.388a.5.5 0 0 1 0 1zM5 22H3.28a.5.5 0 0 1-.248-.065l-.28-.16a.502.502 0 0 1-.252-.435V3.49h-.89a.5.5 0 0 1-.337-.131l-.11-.101A.5.5 0 0 1 1 2.89V1.66a.5.5 0 0 1 .136-.342l.15-.16A.5.5 0 0 1 1.65 1h7.63a.5.5 0 0 1 .346.139l.229.22a.497.497 0 0 1 .155.361v1.16a.501.501 0 0 1-.115.319l-.149.18a.507.507 0 0 1-.386.181H9v7.367l7.482-7.367h-.792a.498.498 0 0 1-.361-.154l-.19-.199A.505.505 0 0 1 15 2.86V1.65c0-.14.059-.272.16-.367l.13-.12a.504.504 0 0 1 .34-.133h7.73c.133 0 .26.053.354.146l.14.14A.504.504 0 0 1 24 1.67v1.12a.5.5 0 0 1-.145.352l-10.43 10.55a.5.5 0 0 1-.711-.703L23 2.585V2.03h-7v.53h1.7a.5.5 0 0 1 .352.856l-9.201 9.062A.502.502 0 0 1 8 12.12V3.06a.5.5 0 0 1 .5-.5h.51V2H2v.49h1a.5.5 0 0 1 .5.5V21h1.292l4.852-4.91a.5.5 0 0 1 .713.701l-5.002 5.062A.503.503 0 0 1 5 22z" />
+      <path d="M12 24a.502.502 0 0 1-.354-.146l-4.51-4.51a.5.5 0 0 1 .707-.707L12 22.793l.816-.816a.5.5 0 0 1 .707.707l-1.17 1.17A.498.498 0 0 1 12 24zm8-8a.5.5 0 0 1-.354-.853L22.793 12l-4.227-4.227a.5.5 0 0 1 .707-.707l4.58 4.58a.5.5 0 0 1 0 .707l-3.5 3.5A.495.495 0 0 1 20 16zM16.12 5.12a.502.502 0 0 1-.354-.146L12 1.207 8.854 4.354a.5.5 0 0 1-.707-.707l3.5-3.5a.5.5 0 0 1 .707 0l4.12 4.12a.5.5 0 0 1-.354.853zM3 15a.502.502 0 0 1-.354-.146l-2.5-2.5a.5.5 0 0 1 0-.707l2.5-2.5a.5.5 0 0 1 .707.707L1.207 12l2.146 2.146A.5.5 0 0 1 3 15z" />
+      <path d="M11.5 21.5h-1a.496.496 0 0 1-.405-.208.496.496 0 0 1-.069-.45l1.292-3.876A.5.5 0 0 1 11.5 16h.5c.161 0 .312.077.405.208.095.13.12.298.069.45L11.193 20.5h.307a.5.5 0 0 1 0 1zM10 16.94h-.021a.501.501 0 0 1-.479-.521 1.99 1.99 0 0 1 .541-1.287A2.002 2.002 0 0 1 12 12.72h.5c.279 0 .551.058.783.168a.499.499 0 1 1-.426.904.858.858 0 0 0-.357-.072H12a1 1 0 0 0-.928 1.379.5.5 0 0 1-.157.588 1.02 1.02 0 0 0-.415.774.5.5 0 0 1-.5.479z" />
+      <path d="M12.5 15.223H12a.5.5 0 0 1 0-1h.5a.5.5 0 0 1 0 1z" />
+    </svg>
+  );
+}
+
+// ── Vim mode ──────────────────────────────────────────────────────────────────
+// Vim keybindings apply to the markdown/split pane only — the rich-text side is a
+// contenteditable, where modal editing would mean writing the whole thing by hand.
+//
+// One preference shared by every editor on the page: localStorage carries it across
+// reloads and tabs, and the event carries it to the other editors mounted in THIS one,
+// which a storage event never fires for.
+// Cmd/Ctrl+B, I and U in the markdown pane. The rich view gets these free from the
+// browser's contenteditable handling of execCommand; CodeMirror has no such default, so
+// the toolbar's advertised "Bold (Ctrl+B)" did nothing there. Bound to the same markdown
+// commands the toolbar buttons run.
+const MARKDOWN_SHORTCUTS: Record<string, string> = { b: 'bold', i: 'italic', u: 'underline' };
+
+const VIM_MODE_KEY = 'rte-vim-mode';
+const VIM_MODE_EVENT = 'rte-vim-mode-change';
+
+function readVimMode(): boolean {
+  try { return localStorage.getItem(VIM_MODE_KEY) === 'true'; } catch { return false; }
+}
+
+function useVimMode(): [boolean, (on: boolean) => void] {
+  const [enabled, setEnabled] = useState(readVimMode);
+  useEffect(() => {
+    const sync = () => setEnabled(readVimMode());
+    window.addEventListener(VIM_MODE_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(VIM_MODE_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+  const set = (on: boolean) => {
+    try { localStorage.setItem(VIM_MODE_KEY, String(on)); } catch { /* private mode */ }
+    window.dispatchEvent(new Event(VIM_MODE_EVENT));
+  };
+  return [enabled, set];
+}
+
+// The markdown pane deliberately ships without CodeMirror's history() — Ctrl+Z runs the
+// editor's own stack instead, so undo crosses the rich/markdown boundary (see undo() and
+// redo()). Vim's `u` and Ctrl+R call CodeMirror's history commands, which would be dead
+// keys here, so they are re-pointed at that same stack: each view carries its editor's
+// undo/redo in a facet, and the vim actions below read it back out.
+type UndoBridge = { undo: () => void; redo: () => void };
+
+const vimUndoBridge = Facet.define<UndoBridge, UndoBridge | null>({
+  combine: values => values[0] ?? null,
+});
+
+Vim.defineAction('rteUndo', ((cm: { cm6: EditorView }) =>
+  cm.cm6.state.facet(vimUndoBridge)?.undo()) as never);
+Vim.defineAction('rteRedo', ((cm: { cm6: EditorView }) =>
+  cm.cm6.state.facet(vimUndoBridge)?.redo()) as never);
+Vim.mapCommand('u', 'action', 'rteUndo', {}, { context: 'normal' });
+Vim.mapCommand('<C-r>', 'action', 'rteRedo', {}, { context: 'normal' });
+
+/**
+ * drawSelection rides along with vim rather than being installed globally: visual mode
+ * moves the selection programmatically, and the browser's native selection does not
+ * follow it, so without this a `v` followed by movement highlights nothing at all. It
+ * replaces the native selection with CodeMirror's own layer (see .cm-selectionBackground
+ * in the stylesheet), so it stays out of the way entirely when vim is off.
+ */
+function vimExtensions(claimKeydown: (e: KeyboardEvent) => boolean) {
+  // Prec.highest, or vim only gets the keys no keymap claimed. CodeMirror runs every
+  // keymap through one handler at Prec.high — above a plugin's own keydown handler,
+  // whatever order the extensions are listed in — and defaultKeymap binds the emacs
+  // motions on macOS. That quietly ate Ctrl-V (page down, so visual block never
+  // started), and with it Ctrl-D/F/B/A/E/O/N/P/K. Vim mode is only vim mode if it owns
+  // the keyboard while it is on; when it is off this whole extension is absent.
+  return Prec.highest([
+    // The editor's own shortcuts, claimed above vim — in normal mode vim swallows every
+    // key it does not recognise (right for vim: a stray key must not type into the
+    // buffer), and that took Alt+W, Ctrl+Z and the formatting shortcuts with it.
+    EditorView.domEventHandlers({ keydown: claimKeydown }),
+    vim({ status: true }),
+    drawSelection(),
+    // Block insert (Ctrl-V, then I or A) edits every line at once through multiple
+    // cursors, which CodeMirror drops to a single range unless this is on — the prefix
+    // landed on the first line of the block only.
+    EditorState.allowMultipleSelections.of(true),
+  ]);
+}
+
 // ── Markdown source view: CodeMirror syntax highlighting (Toast UI-style) ──────
 
 const markdownHighlightStyle = HighlightStyle.define([
@@ -231,6 +551,18 @@ const markdownHighlightStyle = HighlightStyle.define([
   // actual content stands out, same convention Typora/Obsidian/Toast UI use.
   { tag: tags.processingInstruction, color: '#9ca3af' },
   { tag: tags.contentSeparator, color: '#9ca3af' },
+  // Raw HTML is first-class content in this pane, not an oddity: a table with cell fills
+  // or merged cells travels through markdown as HTML (see the richTable turndown rule),
+  // and one long unbroken string of tags and inline styles is unreadable. The markdown
+  // language nests the HTML parser already, so these tags are being produced and were
+  // simply falling through unstyled. Brackets take the same dim as markdown's own markup
+  // characters, so the element names and attributes are what the eye lands on.
+  { tag: tags.angleBracket, color: '#9ca3af' },
+  { tag: tags.tagName, color: '#0f766e' },
+  { tag: tags.attributeName, color: '#b45309' },
+  { tag: tags.attributeValue, color: '#15803d' },
+  { tag: tags.definitionOperator, color: '#9ca3af' },
+  { tag: tags.blockComment, color: '#9ca3af', fontStyle: 'italic' },
 ]);
 
 // GFM tables and fenced code blocks aren't tagged with a dedicated "block" tag by
@@ -481,6 +813,10 @@ function normalizeForMarkdown(html: string): string {
   // in the markdown output. Markdown tables always have a header, so promote the first
   // row when there isn't one already.
   container.querySelectorAll('table').forEach(table => {
+    // A table that travels as raw HTML keeps its own markup — promoting a row here would
+    // rebuild the cells as <th> and drop the very styles that kept it out of markdown.
+    // A code block is not a GFM table at all: its first row is line one of the code.
+    if (isCodeBlockTable(table) || tableNeedsRawHtml(table)) return;
     if (table.querySelector('thead')) return;
     const firstRow = table.rows[0];
     if (!firstRow || firstRow.cells.length === 0) return;
@@ -549,11 +885,35 @@ function htmlToMarkdown(html: string): string {
 // presentation: tables get the .rte-table class all table styling is scoped to,
 // images get the same centering + sizing inline styles uploadAndInsert puts on
 // them, and empty table cells get the <br> placeholder that keeps them focusable.
+/** The editor's own table class — styling only, never an author-authored one. */
+const EDITOR_TABLE_CLASS = 'rte-table';
+
+/**
+ * Classes the editor puts on a table itself. They are kept out of the context menu's
+ * class box and preserved through it: `code-block` is what makes a code block one, and
+ * `rte-table` on a code block would hand it the report's table borders.
+ */
+function isInternalTableClass(name: string): boolean {
+  return name === EDITOR_TABLE_CLASS
+    || name === CODE_BLOCK_CLASS
+    || name.startsWith('language-');
+}
+
 function applyEditorPresentation(html: string): string {
   if (!html.includes('<table') && !html.includes('<img')) return html;
   const container = document.createElement('div');
   container.innerHTML = html;
-  container.querySelectorAll('table').forEach(table => table.classList.add('rte-table'));
+  container.querySelectorAll('table').forEach(table => {
+    // A code block is chrome, not a content table: rte-table would give it the borders
+    // and cell padding the report applies to real tables.
+    if (!isCodeBlockTable(table)) table.classList.add(EDITOR_TABLE_CLASS);
+  });
+  // The padding rows are the panel's margin, not a place to write: at 5pt, text typed
+  // into one is barely legible and belongs to no line. Applied here rather than only at
+  // generation so blocks already saved without it are locked too.
+  container.querySelectorAll(`.${CODE_PAD_ROW_CLASS} td`).forEach(cell => {
+    cell.setAttribute('contenteditable', 'false');
+  });
   container.querySelectorAll('td, th').forEach(cell => {
     if (!cell.firstChild) cell.innerHTML = '<br>';
   });
@@ -596,6 +956,12 @@ export interface RichTextEditorProps {
    */
   lockedBy?: string;
   aiContext?: RichTextEditorAiContext;
+  /**
+   * Offers the saved content templates for this scope from a toolbar button. Independent of
+   * `aiContext` on purpose: templates are plain admin-written boilerplate and work whether or
+   * not an AI provider is configured.
+   */
+  templateScope?: ContentTemplateScope;
   /**
    * Enables the `@` user-autocomplete. Opt-in, because inserting a mention makes the
    * backend notify (and email) that user — which is only meaningful where the content is
@@ -654,6 +1020,61 @@ async function bakeImageBorder(file: File): Promise<File> {
   }
 }
 
+/** How many recently used colours each palette remembers. */
+const RECENT_COLOR_LIMIT = 10;
+
+/**
+ * A most-recently-used colour list, persisted per key so it survives a reload and is shared
+ * by every editor on the page.
+ *
+ * Colours already in the fixed palette are not recorded: they are one click away as it is,
+ * and repeating them here would push the custom colours — the only ones actually worth
+ * remembering — straight off the end of the list.
+ */
+function useRecentColors(storageKey: string, palette: string[]) {
+  const [recent, setRecent] = useState<string[]>(() => {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]');
+      return Array.isArray(stored)
+        ? stored.filter((c): c is string => typeof c === 'string').slice(0, RECENT_COLOR_LIMIT)
+        : [];
+    } catch {
+      // Unparseable entry, or storage blocked (private windows) — start empty
+      return [];
+    }
+  });
+
+  function record(color: string) {
+    const normalized = color.trim().toLowerCase();
+    if (!normalized || palette.some(c => c.toLowerCase() === normalized)) return;
+    setRecent(prev => {
+      const next = [normalized, ...prev.filter(c => c.toLowerCase() !== normalized)]
+        .slice(0, RECENT_COLOR_LIMIT);
+      try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  return [recent, record] as const;
+}
+
+/**
+ * Cell fills offered in the table context menu. Tints first — they are what a report table
+ * actually wants, since text stays legible on them in either theme — then the stronger
+ * shades of the same hues as FONT_COLORS, so the two palettes read as one set.
+ */
+const CELL_BACKGROUNDS = [
+  '#fee2e2', '#ffedd5', '#fef3c7', '#dcfce7', '#dbeafe', '#ede9fe', '#f3f4f6',
+  '#dc2626', '#ea580c', '#d97706', '#16a34a', '#2563eb', '#7c3aed', '#374151',
+];
+
+// Border colours: the greys a rule is usually drawn in, then the same accents the fill
+// palette offers, so a cell can be outlined to match what it is filled with.
+const CELL_BORDERS = [
+  '#111827', '#374151', '#6b7280', '#9ca3af', '#d1d5db', '#e5e7eb', '#ffffff',
+  '#dc2626', '#ea580c', '#d97706', '#16a34a', '#2563eb', '#7c3aed', '#db2777',
+];
+
 const FONT_COLORS = [
   '#000000', '#374151', '#6b7280',
   '#dc2626', '#ea580c', '#d97706',
@@ -662,7 +1083,7 @@ const FONT_COLORS = [
 ];
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
-  ({ value = '', onChange, onImageUpload, placeholder, disabled = false, lockedBy, aiContext, mentions = false, mentionContext }, ref) => {
+  ({ value = '', onChange, onImageUpload, placeholder, disabled = false, lockedBy, aiContext, templateScope, mentions = false, mentionContext }, ref) => {
     /** Content cannot be modified — either permanently (`disabled`) or while another user holds the lock. */
     const isReadOnly = disabled || !!lockedBy;
     // The CodeMirror extensions below are built once, so they read the flag through a ref.
@@ -686,10 +1107,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
     const isApplyingHistoryRef = useRef(false);
 
     const [showColorPalette, setShowColorPalette] = useState(false);
-    const [recentColors, setRecentColors] = useState<string[]>(() => {
-      try { return JSON.parse(localStorage.getItem('rte-recent-colors') ?? '[]'); }
-      catch { return []; }
-    });
+    const [recentColors, recordRecentColor] = useRecentColors('rte-recent-colors', FONT_COLORS);
+    const [recentCellColors, recordRecentCellColor] =
+      useRecentColors('rte-recent-cell-colors', CELL_BACKGROUNDS);
+    const [recentBorderColors, recordRecentBorderColor] =
+      useRecentColors('rte-recent-border-colors', CELL_BORDERS);
     const [customColor, setCustomColor] = useState('#000000');
     const [showLinkInput, setShowLinkInput] = useState(false);
     const [linkUrl, setLinkUrl] = useState('');
@@ -717,6 +1139,35 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
     // True while the FIRST CodeMirror mount is still pending and came from the saved
     // view preference rather than a user click — that mount must not steal page focus.
     const initialCmMountRef = useRef(viewMode !== 'rich');
+
+    const [vimMode, setVimMode] = useVimMode();
+    // Read at mount time rather than listed as an effect dependency: toggling vim
+    // reconfigures the live view (below) instead of tearing it down and rebuilding it,
+    // which would drop the cursor and scroll position mid-edit.
+    const vimModeRef = useRef(vimMode);
+    useEffect(() => { vimModeRef.current = vimMode; }, [vimMode]);
+    const vimCompartment = useMemo(() => new Compartment(), []);
+
+    /**
+     * Keys vim must not swallow while it is on. Alt+W and Cmd/Ctrl+Z only need to be
+     * marked handled — returning true stops vim, and the event still bubbles to
+     * handleMarkdownKeyDown, which runs them. The formatting shortcuts have no such
+     * handler behind them, so they run here.
+     *
+     * Ctrl+B / Ctrl+I / Ctrl+U are deliberately left to vim — they are its page-up,
+     * jump-forward and half-page-up. The Cmd forms stay with the editor.
+     */
+    function claimEditorShortcut(e: KeyboardEvent): boolean {
+      const key = e.key.toLowerCase();
+      if (e.altKey && !e.ctrlKey && !e.metaKey && key === 'w') return true;
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === 'z' || key === 'y')) return true;
+      if (e.metaKey && !e.ctrlKey && !e.altKey && MARKDOWN_SHORTCUTS[key]) {
+        e.preventDefault();
+        execMarkdownFormat(MARKDOWN_SHORTCUTS[key]);
+        return true;
+      }
+      return false;
+    }
 
     // Load initial value on mount. Declared BEFORE the CodeMirror mount effect —
     // effects run in declaration order, and when the preferred default view is
@@ -752,6 +1203,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
           syntaxHighlighting(markdownHighlightStyle),
           codeBlockBackgroundPlugin,
           markerHighlightPlugin,
+          // First in the list, so vim's keymap outranks everything below it — normal
+          // mode has to own the keyboard, not share it with the default bindings.
+          vimCompartment.of(vimModeRef.current ? vimExtensions(claimEditorShortcut) : []),
+          vimUndoBridge.of({ undo, redo }),
           imagePreviewField,
           mentionChipField,
           markdownEditorTheme,
@@ -771,6 +1226,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
             { key: 'Tab', run: () => cmMentionAccept() },
             { key: 'Escape', run: () => cmMentionDismiss() },
           ])),
+          keymap.of(Object.entries(MARKDOWN_SHORTCUTS).map(([key, cmd]) => ({
+            key: `Mod-${key}`,
+            run: () => { execMarkdownFormat(cmd); return true; },
+          }))),
           keymap.of([indentWithTab, ...defaultKeymap]),
           cmPlaceholder(placeholder ?? ''),
           EditorView.updateListener.of(update => {
@@ -779,19 +1238,36 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
             // existing "@word" should offer the picker exactly as typing it does.
             if (update.docChanged || update.selectionSet) detectCmMention(update.view);
           }),
-          // CodeMirror has no built-in image handling — without this, pasting an image
-          // while focused here silently does nothing (unlike the rich-text side's
-          // handlePaste). Reuses uploadAndInsert, which already inserts markdown image
-          // syntax (not an <img> tag) whenever viewMode is 'markdown'.
+          // CodeMirror pastes as plain text, so without this an image dropped here does
+          // nothing and rich content from Word or Excel arrives as its bare text with the
+          // structure gone. Images reuse uploadAndInsert (which already inserts markdown
+          // image syntax whenever viewMode is 'markdown'); everything else is converted
+          // to the markdown this pane holds.
           EditorView.domEventHandlers({
-            paste: event => {
-              if (isReadOnlyRef.current || !onImageUploadRef.current) return false;
+            paste: (event, view) => {
+              if (isReadOnlyRef.current) return false;
               const items = Array.from(event.clipboardData?.items ?? []);
-              const imageItem = items.find(item => item.type.startsWith('image/'));
-              if (!imageItem) return false;
+              const imageItem = onImageUploadRef.current
+                ? items.find(item => item.type.startsWith('image/'))
+                : undefined;
+
+              const rawHtml = event.clipboardData?.getData('text/html') ?? '';
+              const cleanedHtml = rawHtml ? cleanPastedHtml(rawHtml) : '';
+
+              if (imageItem && (!cleanedHtml || isImageOnlyHtml(cleanedHtml))) {
+                event.preventDefault();
+                const file = imageItem.getAsFile();
+                if (file) uploadAndInsert(file);
+                return true;
+              }
+
+              const text = event.clipboardData?.getData('text/plain') ?? '';
+              const html = cleanedHtml || (looksLikeTsvTable(text) ? tsvToTableHtml(text) : '');
+              if (!html) return false;
+
               event.preventDefault();
-              const file = imageItem.getAsFile();
-              if (file) uploadAndInsert(file);
+              const markdown = htmlToMarkdown(applyEditorPresentation(DOMPurify.sanitize(html)));
+              view.dispatch(view.state.replaceSelection(asOwnBlock(view, markdown)));
               return true;
             },
           }),
@@ -838,6 +1314,17 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
     const [askAiText, setAskAiText] = useState('');
     const [aiBusy, setAiBusy] = useState(false);
     const [aiError, setAiError] = useState<string | null>(null);
+
+    // ── Content templates (reusable boilerplate) ──
+    const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+
+    /** Custom fill staged in the table menu's colour picker, applied on its Apply button. */
+    const [cellBgColor, setCellBgColor] = useState('#dbeafe');
+    const [cellBorderColor, setCellBorderColor] = useState('#374151');
+    const [codeLineStart, setCodeLineStart] = useState('1');
+    // Custom classes on the right-clicked table, edited as the space-separated string
+    // the author typed. Seeded when the menu opens; see tableSetClasses.
+    const [tableClasses, setTableClasses] = useState('');
 
     // @mention state
     const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -1059,8 +1546,24 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
       sel?.addRange(range);
     }
 
+    /**
+     * A checkpoint can still be waiting out the typing-coalesce window when undo is
+     * asked for — vim's `u` straight after a `dd`, or Ctrl+Z mid-burst. Commit it first
+     * so undo steps back over that edit instead of discarding it and stepping through to
+     * the one before. commitHistory ignores a state identical to the current one, so
+     * this is a no-op when nothing is pending.
+     */
+    function flushPendingHistory() {
+      if (!typingDebounceRef.current) return;
+      clearTimeout(typingDebounceRef.current);
+      typingDebounceRef.current = null;
+      if (editorRef.current) {
+        commitHistory(normalizeBlocks(editorRef.current.innerHTML.replace(/\u200B/g, '')));
+      }
+    }
+
     function undo() {
-      if (typingDebounceRef.current) { clearTimeout(typingDebounceRef.current); typingDebounceRef.current = null; }
+      flushPendingHistory();
       const h = historyRef.current;
       if (h.index <= 0) return;
       h.index--;
@@ -1068,7 +1571,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
     }
 
     function redo() {
-      if (typingDebounceRef.current) { clearTimeout(typingDebounceRef.current); typingDebounceRef.current = null; }
+      flushPendingHistory();
       const h = historyRef.current;
       if (h.index >= h.stack.length - 1) return;
       h.index++;
@@ -1134,11 +1637,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
     }
 
     /**
-     * Replaces the editor content with sanitized AI output. In markdown/split view
-     * the change goes through CodeMirror so both panes stay in sync; either path
-     * commits to the undo history, so Ctrl+Z restores the previous text.
+     * Replaces the editor content with sanitized HTML — AI output or a content template.
+     * In markdown/split view the change goes through CodeMirror so both panes stay in
+     * sync; either path commits to the undo history, so Ctrl+Z restores the previous text.
      */
-    function applyAiResult(rawHtml: string) {
+    function replaceEditorContent(rawHtml: string) {
       const html = DOMPurify.sanitize(rawHtml);
       if (viewMode !== 'rich') {
         const view = cmViewRef.current;
@@ -1169,7 +1672,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
           currentText: editorRef.current?.innerHTML || '',
         });
         if (res.data?.success && res.data.content) {
-          applyAiResult(res.data.content);
+          replaceEditorContent(res.data.content);
         } else {
           setAiError(res.data?.message || 'AI generation failed.');
         }
@@ -1193,7 +1696,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
           currentText: editorRef.current?.innerHTML || '',
         });
         if (res.data?.success && res.data.content) {
-          applyAiResult(res.data.content);
+          replaceEditorContent(res.data.content);
           setAskAiText('');
         } else {
           setAiError(res.data?.message || 'AI generation failed.');
@@ -1203,6 +1706,33 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
       } finally {
         setAiBusy(false);
       }
+    }
+
+    // ── Content templates ─────────────────────────────────────────────────────
+
+    /** The live HTML, whichever pane is showing — markdown edits mirror into this element. */
+    function editorHtml(): string {
+      return editorRef.current?.innerHTML ?? '';
+    }
+
+    /** Whether there is anything worth preserving, so the picker knows to offer prepend/append. */
+    function editorHasContent(): boolean {
+      const el = editorRef.current;
+      if (!el) return false;
+      return (el.textContent ?? '').trim() !== '' || el.querySelector('img, table, hr') !== null;
+    }
+
+    function insertTemplate(template: ContentTemplate, mode: ContentTemplateInsertMode) {
+      setShowTemplateDialog(false);
+      const current = editorHtml();
+      // With an empty editor every mode is the same insert; the dialog only offers
+      // Overwrite there, but guard anyway so a stale click can't wrap blank markup.
+      const merged = mode === 'OVERWRITE' || !editorHasContent()
+        ? template.content
+        : mode === 'PREPEND'
+          ? `${template.content}${current}`
+          : `${current}${template.content}`;
+      replaceEditorContent(merged);
     }
 
     function switchToMarkdownView() {
@@ -2058,6 +2588,126 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
       setTableMenu(null);
     }
 
+    /** Compares two CSS colour spellings by the value the browser normalises each one to. */
+    function sameCssColor(a: string, b: string): boolean {
+      if (!a || !b) return false;
+      const probe = document.createElement('div');
+      probe.style.color = a;
+      const first = probe.style.color;
+      probe.style.color = '';
+      probe.style.color = b;
+      return first !== '' && first === probe.style.color;
+    }
+
+    /**
+     * Fills the right-clicked cell, or clears the fill when passed null.
+     *
+     * The text colour rides along, for the same reason it does on a paste from Word: the
+     * editor is themed and the fill is not, so a shade chosen while in one theme would
+     * leave unreadable text in the other. A colour the author picked for themselves is
+     * left alone — only the one this menu supplied is re-paired or removed.
+     */
+    function tableSetCellBackground(color: string | null) {
+      if (!tableMenu) return;
+      const { cell } = tableMenu;
+      const ownsTextColor = sameCssColor(cell.style.color, TEXT_ON_LIGHT_FILL)
+        || sameCssColor(cell.style.color, TEXT_ON_DARK_FILL);
+
+      if (color) {
+        recordRecentCellColor(color);
+        cell.style.backgroundColor = color;
+        if (!cell.style.color || ownsTextColor) cell.style.color = readableTextColor(color);
+      } else {
+        cell.style.removeProperty('background-color');
+        if (ownsTextColor) cell.style.removeProperty('color');
+        if (!cell.getAttribute('style')?.trim()) cell.removeAttribute('style');
+      }
+      emit();
+      setTableMenu(null);
+    }
+
+    /**
+     * Outlines the right-clicked cell, or clears the outline when passed null.
+     *
+     * <p>Written as the `border` shorthand rather than `border-color`: the cell's border
+     * comes from a stylesheet, so a colour on its own has no width or style to attach to
+     * and nothing would change. The shorthand also reaches the DOCX intact — the report
+     * sanitizer allows border properties on cells, and the importer maps them to the
+     * cell's own w:tcBorders, which outrank whatever the table style would draw.
+     */
+    function tableSetCellBorder(color: string | null) {
+      if (!tableMenu) return;
+      const { cell } = tableMenu;
+
+      if (color) {
+        recordRecentBorderColor(color);
+        cell.style.border = `1px solid ${color}`;
+      } else {
+        // "none", not removeProperty: the cell has a border from the stylesheet, and
+        // dropping the inline rule would hand it straight back.
+        cell.style.border = 'none';
+      }
+      emit();
+      setTableMenu(null);
+    }
+
+    /**
+     * Turns a code block's line numbers on (counting from `start`) or off. The gutter is
+     * a column of its own, so this adds or removes one cell per row — the padding rows
+     * included, or the panel's margin would sit narrower than the code above it.
+     */
+    function codeBlockSetLineNumbers(start: number | null) {
+      if (!tableMenu) return;
+      const { table } = tableMenu;
+      if (!isCodeBlockTable(table)) return;
+
+      Array.from(table.rows).forEach(row => {
+        const gutter = row.querySelector(`.${CODE_GUTTER_CLASS}`);
+        if (start === null) {
+          gutter?.remove();
+          return;
+        }
+        if (!gutter) {
+          const cell = document.createElement('td');
+          cell.className = CODE_GUTTER_CLASS;
+          if (row.classList.contains(CODE_PAD_ROW_CLASS)) {
+            cell.innerHTML = '&nbsp;';
+            cell.setAttribute('contenteditable', 'false');
+          }
+          row.insertBefore(cell, row.firstChild);
+        }
+      });
+
+      if (start !== null) {
+        // renumberCodeBlock counts up from the first line, so seed that one first
+        const first = codeBlockRows(table)[0]?.querySelector(`.${CODE_GUTTER_CLASS}`);
+        if (first) first.textContent = String(start);
+        renumberCodeBlock(table);
+      }
+      emit();
+      setTableMenu(null);
+    }
+
+    /**
+     * Classes the report template can style, e.g. a "findings-summary" table that the
+     * report CSS lays out differently. Stored on the table element itself so they ride
+     * along with the saved HTML into report generation, where the backend sanitizer
+     * allows class through.
+     *
+     * <p>The editor's own classes (`rte-table`, and a code block's `code-block` /
+     * `language-*`) are kept out of the box and carried through here, rather than left
+     * for the author to preserve by hand — see isInternalTableClass.
+     */
+    function tableSetClasses(value: string) {
+      if (!tableMenu) return;
+      const { table } = tableMenu;
+      const internal = Array.from(table.classList).filter(isInternalTableClass);
+      const custom = value.split(/\s+/).filter(c => c && !isInternalTableClass(c));
+      table.className = [...internal, ...custom].join(' ');
+      emit();
+      setTableMenu(null);
+    }
+
     // ── Image upload ──────────────────────────────────────────────────────────
 
     async function uploadAndInsert(file: File) {
@@ -2138,26 +2788,64 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
       }
     }
 
+    /**
+     * Inserts pasted markup at the caret. execCommand splits the block the caret sits in,
+     * so a pasted table or list lands as a sibling of the current paragraph instead of
+     * nested inside it; insertHtmlAtCursor is the fallback where it is unavailable.
+     */
+    function pasteHtmlAtCursor(html: string) {
+      const prepared = applyEditorPresentation(DOMPurify.sanitize(html));
+      editorRef.current?.focus();
+      if (!document.execCommand('insertHTML', false, prepared)) {
+        insertHtmlAtCursor(prepared);
+      }
+      emit();
+    }
+
     function handlePaste(e: React.ClipboardEvent) {
       if (isReadOnly) return;
 
       const items = Array.from(e.clipboardData.items);
       const imageItem = onImageUploadRef.current ? items.find(item => item.type.startsWith('image/')) : undefined;
-      if (imageItem) {
+
+      // Word, Excel and Google Docs all write their own layout engine's HTML — fonts,
+      // sizes and colours on every run, MSO metadata, Word's bullets as plain paragraphs.
+      // Reduce it to the editor's own markup rather than letting the browser paste it raw.
+      const rawHtml = e.clipboardData.getData('text/html');
+      const cleanedHtml = rawHtml ? cleanPastedHtml(rawHtml) : '';
+
+      // An image copied out of a document puts both a picture and a one-<img> HTML
+      // fragment on the clipboard, and that fragment points at the author's own disk —
+      // the file is the only copy that resolves, so upload it. A copied spreadsheet
+      // range can carry a picture of the cells too, which is why the HTML wins whenever
+      // it holds anything more than a bare image.
+      if (imageItem && (!cleanedHtml || isImageOnlyHtml(cleanedHtml))) {
         e.preventDefault();
         const file = imageItem.getAsFile();
         if (file) uploadAndInsert(file);
         return;
       }
 
-      // Real HTML on the clipboard (copied from another rich-text app/page) —
-      // let the browser's native paste insert it as-is.
-      if (e.clipboardData.types.includes('text/html')) return;
+      if (cleanedHtml) {
+        e.preventDefault();
+        pasteHtmlAtCursor(cleanedHtml);
+        return;
+      }
+
+      const text = e.clipboardData.getData('text/plain');
+      if (!text) return;
+
+      // A spreadsheet range with no HTML alongside it (a TSV file, terminal output,
+      // an app that only writes plain text) — rebuild the grid as a real table.
+      if (looksLikeTsvTable(text)) {
+        e.preventDefault();
+        pasteHtmlAtCursor(tsvToTableHtml(text));
+        return;
+      }
 
       // Plain text that reads as markdown source — render it to rich text instead
       // of dropping the raw "**bold**" / "# Heading" syntax into the document.
-      const text = e.clipboardData.getData('text/plain');
-      if (!text || !looksLikeMarkdown(text)) return;
+      if (!looksLikeMarkdown(text)) return;
 
       e.preventDefault();
       // markdownToHtml, not a bare marked.parse: it re-applies the editor's
@@ -2203,9 +2891,25 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
           const cellEl = node as HTMLTableCellElement;
           const tableEl = cellEl.closest('table') as HTMLTableElement | null;
           if (tableEl) {
+            // Menu height varies with the Recent fills, and a viewport shorter than the
+            // menu would otherwise place it off the top of the screen.
+            const recentRows = (colors: string[]) =>
+              colors.length > 0 ? 18 + Math.ceil(colors.length / 7) * 21 : 0;
+            const menuHeight = 594
+              + recentRows(recentCellColors)
+              + recentRows(recentBorderColors);
+            setTableClasses(
+              Array.from(tableEl.classList).filter(c => !isInternalTableClass(c)).join(' ')
+            );
+            // Seeded from the block's own first line, so re-applying keeps its numbering
+            // rather than silently resetting it to 1.
+            setCodeLineStart(
+              codeBlockRows(tableEl)[0]?.querySelector(`.${CODE_GUTTER_CLASS}`)?.textContent?.trim()
+              || '1'
+            );
             setTableMenu({
               x: Math.min(e.clientX, window.innerWidth - 210),
-              y: Math.min(e.clientY, window.innerHeight - 320),
+              y: Math.max(8, Math.min(e.clientY, window.innerHeight - menuHeight)),
               cell: cellEl,
               table: tableEl,
             });
@@ -2399,23 +3103,80 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
         return;
       }
       editorRef.current?.focus();
+      // A code block is the panel, not a <pre> — the same shape a fence renders as, so
+      // what the button makes and what the markdown makes are one thing.
+      if (tag === 'pre') {
+        insertCodeBlock();
+        return;
+      }
       document.execCommand('formatBlock', false, tag);
       emit();
     }
 
-    function recordRecentColor(color: string) {
-      setRecentColors(prev => {
-        const next = [color, ...prev.filter(c => c !== color)].slice(0, 4);
-        try { localStorage.setItem('rte-recent-colors', JSON.stringify(next)); } catch { /* ignore */ }
-        return next;
-      });
+    /**
+     * Drops a code panel at the caret, taking any selected text as its first lines. Line
+     * numbers are off to start with — the right-click menu turns them on — matching a
+     * plain fence, which is what most code in a finding is.
+     */
+    function insertCodeBlock() {
+      const editor = editorRef.current;
+      const selection = window.getSelection();
+      if (!editor || !selection || selection.rangeCount === 0) return;
+
+      const range = selection.getRangeAt(0);
+      const selected = selection.toString();
+      if (selected) range.deleteContents();
+
+      const template = document.createElement('template');
+      template.innerHTML = codeBlockHtml(selected, null, '');
+      const table = template.content.firstElementChild as HTMLTableElement | null;
+      if (!table) return;
+
+      // A table cannot live inside the <p> the caret is in, so it goes between the
+      // editor's own blocks — replacing the one the caret was in when that leaves it
+      // empty, which is the usual case of clicking the button on a blank line.
+      let block: Node | null = range.startContainer;
+      while (block && block.parentNode !== editor) block = block.parentNode;
+      if (block && block.nodeType === Node.ELEMENT_NODE
+          && !(block.textContent ?? '').trim() && !(block as Element).querySelector('img')) {
+        editor.replaceChild(table, block);
+      } else if (block) {
+        (block as ChildNode).after(table);
+      } else {
+        editor.appendChild(table);
+      }
+
+      const firstLine = table.querySelector(
+        `tr:not(.${CODE_PAD_ROW_CLASS}) .${CODE_LINE_CLASS}`) as HTMLElement | null;
+      if (firstLine) {
+        const caret = document.createRange();
+        if (selected) {
+          caret.selectNodeContents(firstLine);
+          caret.collapse(false);   // after the code that was just brought in
+        } else {
+          // An empty block is generated with an &nbsp; placeholder, which would sit at
+          // the end of the first thing typed. Swap it for the caret anchor, which emit()
+          // strips out. Same reason the Enter handler uses one.
+          firstLine.textContent = '';
+          const anchor = document.createTextNode('\u200B');
+          firstLine.appendChild(anchor);
+          caret.setStart(anchor, 1);
+          caret.collapse(true);
+        }
+        selection.removeAllRanges();
+        selection.addRange(caret);
+      }
+      emit();
     }
 
     function applyColor(e: React.MouseEvent, color: string) {
       e.preventDefault();
+      // Both view modes record, so re-picking a colour from the Recent row moves it back to
+      // the front either way; the rich-text path used to skip this entirely. Palette colours
+      // are ignored inside record().
+      recordRecentColor(color);
       if (viewMode !== 'rich') {
         mdWrapSelection(`<span style="color: ${color}">`, '</span>', 'colored text');
-        recordRecentColor(color);
         setShowColorPalette(false);
         return;
       }
@@ -2601,6 +3362,14 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
       return false;
     }
 
+    // Toggling vim swaps just that slice of the configuration on the live view, so the
+    // document, cursor and scroll position all survive the switch.
+    useEffect(() => {
+      cmViewRef.current?.dispatch({
+        effects: vimCompartment.reconfigure(vimMode ? vimExtensions(claimEditorShortcut) : []),
+      });
+    }, [vimMode, vimCompartment]);
+
     // Alt+W toggles between the WYSIWYG and Markdown source views. Not Ctrl+W — browsers
     // reserve that to close the current tab and never let a page override it.
     function tryHandleViewToggleKey(e: React.KeyboardEvent): boolean {
@@ -2779,8 +3548,60 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
       if (e.key === 'Enter') {
         const range = sel.getRangeAt(0);
 
-        // Table cell: insert <br> instead of new block
         const tableCell = findTableCell(sel.anchorNode);
+
+        // Code block: Enter starts the next line — a row of its own, with the next
+        // number — and Shift+Enter wraps within the current line, which keeps its
+        // number. Falls through to the plain-cell handling below for Shift+Enter,
+        // whose <br> is exactly the wrap wanted.
+        const codeTable = tableCell?.closest('table');
+        if (tableCell?.classList.contains(CODE_LINE_CLASS) && codeTable
+            && isCodeBlockTable(codeTable) && !e.shiftKey
+            && !tableCell.parentElement?.classList.contains(CODE_PAD_ROW_CLASS)) {
+          e.preventDefault();
+          const row = tableCell.parentElement as HTMLTableRowElement | null;
+          if (!row) return;
+
+          // Everything to the right of the caret moves down with it, as it would in
+          // any editor when you break a line in the middle.
+          const tail = range.cloneRange();
+          tail.selectNodeContents(tableCell);
+          tail.setStart(range.endContainer, range.endOffset);
+          const moved = tail.extractContents();
+
+          const newRow = document.createElement('tr');
+          if (row.querySelector(`.${CODE_GUTTER_CLASS}`)) {
+            const gutter = document.createElement('td');
+            gutter.className = CODE_GUTTER_CLASS;
+            newRow.appendChild(gutter);   // numbered by renumberCodeBlock below
+          }
+          const line = document.createElement('td');
+          line.className = CODE_LINE_CLASS;
+          line.appendChild(moved);
+          // The caret goes in a zero-width space rather than at offset 0 of the cell.
+          // An element offset is only a position between child nodes, and in a cell whose
+          // one child is a <br> the browser resolves it to the next text position it can
+          // find — the row below — so on a block with no gutter column the new line was
+          // created correctly and then typed straight past. A real text node has no such
+          // ambiguity. emit() strips these out of the saved HTML.
+          const caretAnchor = document.createTextNode('\u200B');
+          line.insertBefore(caretAnchor, line.firstChild);
+          newRow.appendChild(line);
+          row.after(newRow);
+          if (!tableCell.firstChild) tableCell.appendChild(document.createElement('br'));
+
+          renumberCodeBlock(codeTable as HTMLTableElement);
+
+          const caret = document.createRange();
+          caret.setStart(caretAnchor, 1);
+          caret.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(caret);
+          emit();
+          return;
+        }
+
+        // Table cell: insert <br> instead of new block
         if (tableCell) {
           e.preventDefault();
           const br = document.createElement('br');
@@ -2974,6 +3795,46 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
       // ── Backspace: prevent cell deletion in empty table cells ─────────────
       if (e.key === 'Backspace') {
         const tableCell = findTableCell(sel.anchorNode);
+
+        // Code block: at the start of a line, Backspace joins it to the line above and
+        // takes its number with it — the row is the line, so leaving the row behind would
+        // strand an empty numbered line no keystroke could remove.
+        const codeTable = tableCell?.closest('table');
+        const range = sel.getRangeAt(0);
+        if (tableCell?.classList.contains(CODE_LINE_CLASS) && codeTable
+            && isCodeBlockTable(codeTable) && range.collapsed
+            && !tableCell.parentElement?.classList.contains(CODE_PAD_ROW_CLASS)
+            && atStartOfNode(tableCell, range)) {
+          const row = tableCell.parentElement as HTMLTableRowElement | null;
+          const previous = row?.previousElementSibling as HTMLTableRowElement | null;
+          const previousLine = previous?.classList.contains(CODE_PAD_ROW_CLASS)
+            ? null
+            : previous?.querySelector(`.${CODE_LINE_CLASS}`) ?? null;
+          // The first line has nothing to join to; swallow the key rather than let the
+          // browser start dismantling the table.
+          e.preventDefault();
+          if (!row || !previousLine) return;
+
+          // An empty line above is just its placeholder <br> — drop it, or the joined
+          // text lands on a second visual line.
+          if (previousLine.childNodes.length === 1 && previousLine.firstChild?.nodeName === 'BR') {
+            previousLine.firstChild.remove();
+          }
+          const joinAt = previousLine.childNodes.length;
+          while (tableCell.firstChild) previousLine.appendChild(tableCell.firstChild);
+          if (!previousLine.firstChild) previousLine.appendChild(document.createElement('br'));
+          row.remove();
+          renumberCodeBlock(codeTable as HTMLTableElement);
+
+          const caret = document.createRange();
+          caret.setStart(previousLine, joinAt);
+          caret.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(caret);
+          emit();
+          return;
+        }
+
         if (tableCell) {
           const cellText = tableCell.textContent ?? '';
           if (cellText.trim() === '' || tableCell.innerHTML === '<br>') {
@@ -3105,8 +3966,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
           delRange.collapse(true);
           sel.removeAllRanges();
           sel.addRange(delRange);
-          document.execCommand('formatBlock', false, 'pre');
-          emit();
+          insertCodeBlock();
           return;
         }
 
@@ -3222,6 +4082,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
     }
 
     // ── Table menu state for disabling items ─────────────────────────────────
+
+    // A code block is a table only in how it is built. Its rows are lines and its columns
+    // are the gutter and the code, so the structural operations below would only break
+    // it — lines are added with Enter and removed with Backspace instead.
+    const menuOnCodeBlock = !!tableMenu && isCodeBlockTable(tableMenu.table);
 
     const tableMenuCanMergeRight = (() => {
       if (!tableMenu) return false;
@@ -3464,6 +4329,21 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
               <RemoveFormatting size={13} />
             </button>
 
+            {templateScope && (
+              <>
+                <div className="rte-sep" />
+                <button
+                  type="button"
+                  className="rte-btn"
+                  title="Insert a saved template"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => setShowTemplateDialog(true)}
+                >
+                  <ClipboardList size={13} />
+                </button>
+              </>
+            )}
+
             {aiContext && (
               <>
                 <div className="rte-sep" />
@@ -3570,6 +4450,16 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
           </div>
         )}
 
+        {templateScope && (
+          <ContentTemplateDialog
+            isOpen={showTemplateDialog}
+            scope={templateScope}
+            hasContent={editorHasContent()}
+            onClose={() => setShowTemplateDialog(false)}
+            onInsert={insertTemplate}
+          />
+        )}
+
         <input
           ref={fileInputRef}
           type="file"
@@ -3614,6 +4504,29 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
           onPaste={handlePaste}
           onDrop={handleDrop}
           onContextMenu={handleContextMenu}
+          onMouseDown={e => {
+            // Clicking a code block's margin: the row is locked, so the browser would
+            // drop the caret at the nearest editable spot it can find — often the
+            // paragraph after the block, where the next keystroke quietly lands. Send it
+            // to the code instead, the way clicking the padding of an editor does: the
+            // top margin to the start of the first line, the bottom to the end of the last.
+            const padRow = (e.target as HTMLElement).closest?.(`.${CODE_PAD_ROW_CLASS}`);
+            const table = padRow?.closest('table');
+            if (!padRow || !table || !isCodeBlockTable(table)) return;
+            const lines = codeBlockRows(table as HTMLTableElement)
+              .map(row => row.querySelector(`.${CODE_LINE_CLASS}`))
+              .filter((cell): cell is HTMLTableCellElement => !!cell);
+            if (lines.length === 0) return;
+            const first = table.querySelector(`.${CODE_PAD_ROW_CLASS}`) === padRow;
+            const target = first ? lines[0] : lines[lines.length - 1];
+            e.preventDefault();
+            const caret = document.createRange();
+            caret.selectNodeContents(target);
+            caret.collapse(first);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(caret);
+          }}
           onClick={e => {
             // Open anchor links by clicking
             let node: Node | null = e.target as Node;
@@ -3657,6 +4570,22 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
             >
               Split
             </button>
+            {/* Not a fourth view — a mode for the markdown pane, so it only appears
+                when that pane is on screen and sits apart from the view tabs. */}
+            {viewMode !== 'rich' && (
+              <button
+                type="button"
+                className={`rte-mode-tab rte-mode-tab--vim${vimMode ? ' rte-mode-tab--active' : ''}`}
+                onClick={() => setVimMode(!vimMode)}
+                aria-pressed={vimMode}
+                aria-label="Vim keybindings"
+                title={vimMode
+                  ? 'Turn off vim keybindings'
+                  : 'Vim keybindings in the markdown pane'}
+              >
+                <VimIcon />
+              </button>
+            )}
           </div>
         )}
         {/* Another user is editing. A wash rather than a curtain: the content stays
@@ -3723,6 +4652,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
             style={{ left: tableMenu.x, top: tableMenu.y }}
             onMouseDown={e => e.stopPropagation()}
           >
+            {!menuOnCodeBlock && (<>
             <button type="button" className="rte-table-menu-item" onMouseDown={e => { e.preventDefault(); tableAddRowAbove(); }}>
               Add Row Above
             </button>
@@ -3776,6 +4706,175 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
             >
               Split Vertically
             </button>
+            <div className="rte-table-menu-sep" />
+            </>)}
+            {menuOnCodeBlock && (
+              <>
+                <div className="rte-table-menu-label">Line Numbers</div>
+                <div className="rte-table-menu-classes">
+                  <input
+                    type="number"
+                    min={0}
+                    className="rte-table-class-input"
+                    title="First line number"
+                    value={codeLineStart}
+                    onMouseDown={e => e.stopPropagation()}
+                    onChange={e => setCodeLineStart(e.target.value)}
+                    onKeyDown={e => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        codeBlockSetLineNumbers(parseInt(codeLineStart, 10) || 1);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="rte-color-picker-apply"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => codeBlockSetLineNumbers(parseInt(codeLineStart, 10) || 1)}
+                  >
+                    Number
+                  </button>
+                  <button
+                    type="button"
+                    className="rte-table-menu-item rte-table-menu-item--inline"
+                    onMouseDown={e => { e.preventDefault(); codeBlockSetLineNumbers(null); }}
+                  >
+                    Off
+                  </button>
+                </div>
+                <div className="rte-table-menu-sep" />
+              </>
+            )}
+            <div className="rte-table-menu-label">Cell Background</div>
+            <div className="rte-table-menu-colors">
+              {CELL_BACKGROUNDS.map(color => (
+                <button
+                  type="button"
+                  key={color}
+                  className="rte-color-swatch"
+                  style={{ background: color }}
+                  title={color}
+                  onMouseDown={e => { e.preventDefault(); tableSetCellBackground(color); }}
+                />
+              ))}
+              {recentCellColors.length > 0 && (
+                <>
+                  <div className="rte-color-palette-label">Recent</div>
+                  {recentCellColors.map(color => (
+                    <button
+                      type="button"
+                      key={color}
+                      className="rte-color-swatch"
+                      style={{ background: color }}
+                      title={color}
+                      onMouseDown={e => { e.preventDefault(); tableSetCellBackground(color); }}
+                    />
+                  ))}
+                </>
+              )}
+              <div className="rte-color-picker-row">
+                <button
+                  type="button"
+                  className="rte-color-swatch rte-color-swatch--none"
+                  title="No fill"
+                  onMouseDown={e => { e.preventDefault(); tableSetCellBackground(null); }}
+                />
+                <input
+                  type="color"
+                  className="rte-color-picker"
+                  title="Custom cell background"
+                  value={cellBgColor}
+                  onChange={e => setCellBgColor(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="rte-color-picker-apply"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => tableSetCellBackground(cellBgColor)}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+            <div className="rte-table-menu-sep" />
+            <div className="rte-table-menu-label">Cell Border</div>
+            <div className="rte-table-menu-colors">
+              {CELL_BORDERS.map(color => (
+                <button
+                  type="button"
+                  key={color}
+                  className="rte-color-swatch"
+                  style={{ background: color }}
+                  title={color}
+                  onMouseDown={e => { e.preventDefault(); tableSetCellBorder(color); }}
+                />
+              ))}
+              {recentBorderColors.length > 0 && (
+                <>
+                  <div className="rte-color-palette-label">Recent</div>
+                  {recentBorderColors.map(color => (
+                    <button
+                      type="button"
+                      key={color}
+                      className="rte-color-swatch"
+                      style={{ background: color }}
+                      title={color}
+                      onMouseDown={e => { e.preventDefault(); tableSetCellBorder(color); }}
+                    />
+                  ))}
+                </>
+              )}
+              <div className="rte-color-picker-row">
+                <button
+                  type="button"
+                  className="rte-color-swatch rte-color-swatch--none"
+                  title="No border"
+                  onMouseDown={e => { e.preventDefault(); tableSetCellBorder(null); }}
+                />
+                <input
+                  type="color"
+                  className="rte-color-picker"
+                  title="Custom border colour"
+                  value={cellBorderColor}
+                  onChange={e => setCellBorderColor(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="rte-color-picker-apply"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => tableSetCellBorder(cellBorderColor)}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+            <div className="rte-table-menu-sep" />
+            <div className="rte-table-menu-label">Table CSS Classes</div>
+            <div className="rte-table-menu-classes">
+              <input
+                type="text"
+                className="rte-table-class-input"
+                placeholder="e.g. findings-summary"
+                title="Space-separated class names, applied to the table for report styling"
+                value={tableClasses}
+                onMouseDown={e => e.stopPropagation()}
+                onChange={e => setTableClasses(e.target.value)}
+                onKeyDown={e => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter') { e.preventDefault(); tableSetClasses(tableClasses); }
+                }}
+              />
+              <button
+                type="button"
+                className="rte-color-picker-apply"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => tableSetClasses(tableClasses)}
+              >
+                Apply
+              </button>
+            </div>
           </div>
         )}
       </div>

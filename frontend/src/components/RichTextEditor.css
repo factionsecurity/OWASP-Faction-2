@@ -98,7 +98,7 @@
   top: calc(100% + 4px);
   left: 0;
   display: grid;
-  grid-template-columns: repeat(4, 18px);
+  grid-template-columns: repeat(6, 18px);
   gap: 3px;
   padding: 6px;
   background: #ffffff;
@@ -423,41 +423,8 @@
 }
 
 /* ── Tables ────────────────────────────────────────────── */
-.rte-table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 0.75rem 0;
-  font-size: 1em;
-}
-
-.rte-table th,
-.rte-table td {
-  border: 1px solid var(--border-color, #d1d5db);
-  padding: 0.4rem 0.6rem;
-  min-width: 60px;
-  vertical-align: top;
-  outline: none;
-}
-
-.rte-table tr:hover {
-  background-color: transparent;
-}
-
-.rte-table th {
-  /* --surface-secondary is not defined in the app theme; use the real
-     tokens so the header reads correctly in both light and dark mode. */
-  background: var(--tertiary-bg, #f3f4f6);
-  color: var(--primary-color, #3b82f6);
-  font-weight: 600;
-  text-align: left;
-}
-
-/* Inside the WYSIWYG editor only (scoped to .rte-body) — saved HTML and report
-   rendering keep the themed .rte-table th colors above. */
-.rte-body .rte-table th {
-  background: #d1d5db;
-  color: #000;
-}
+/* Presentation lives in ContentTables.css, shared with the peer-review surfaces —
+   only the editing affordances stay here. */
 
 .rte-table td:focus,
 .rte-table th:focus {
@@ -851,4 +818,134 @@
 
 .rte-ai-spin {
   animation: rte-ai-spin 0.8s linear infinite;
+}
+
+/* ── Table context menu: cell background ───────────────── */
+.rte-table-menu-label {
+  padding: 0.1rem 0.9rem 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted, #9ca3af);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rte-table-menu-colors {
+  display: grid;
+  grid-template-columns: repeat(7, 18px);
+  gap: 3px;
+  padding: 0 0.9rem 0.5rem;
+}
+
+/* The "no fill" swatch reads as an empty cell, not as a white one. Its border comes from
+   the theme rather than the shared swatch rule's black, which is invisible on a dark menu. */
+.rte-color-swatch--none {
+  flex: 0 0 auto;
+  border-color: var(--border-color, #e5e7eb);
+  background:
+    linear-gradient(to top right,
+      transparent calc(50% - 1px), var(--color-danger, #dc2626) 50%,
+      transparent calc(50% + 1px)),
+    var(--tertiary-bg, #fff);
+}
+
+.rte-table-menu-colors .rte-color-picker-row {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+
+/* ── Table context menu: report CSS classes ────────────── */
+.rte-table-menu-classes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 0.9rem 0.6rem;
+}
+
+.rte-table-class-input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 3px;
+  background: var(--tertiary-bg, #fff);
+  color: var(--text-primary, #111827);
+  font-size: 0.72rem;
+}
+
+.rte-table-class-input:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+/* ── Vim mode ──────────────────────────────────────────── */
+/* Pushed to the right so it reads as a mode for the markdown pane rather than a
+   fourth view alongside Rich Text / Markdown / Split. */
+.rte-mode-tab--vim {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+}
+
+/* An icon-only toggle needs more than the tabs' box outline to read as "on", since
+   there is no label to sit next to it. */
+.rte-mode-tab--vim.rte-mode-tab--active {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+/* The vim status line: mode indicator on the left, ":" command line and search
+   prompt in the same strip. Monospace and quiet, so it reads as chrome. */
+.rte-markdown-body .cm-vim-panel {
+  padding: 2px 8px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  background: #f9fafb;
+  color: #374151;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+}
+
+.rte-markdown-body .cm-vim-panel input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+}
+
+/* Vim's block cursor sits behind the character it covers, so it needs to be a wash
+   rather than a solid fill or the character under it disappears. */
+.rte-markdown-body .cm-fat-cursor {
+  background: rgba(99, 102, 241, 0.45);
+  outline: none;
+}
+
+.rte-markdown-body:not(.cm-focused) .cm-fat-cursor {
+  background: none;
+  outline: 1px solid rgba(99, 102, 241, 0.6);
+}
+
+/* Visual-mode selection. drawSelection paints this layer instead of the browser's
+   native highlight, which does not follow vim's programmatic selection. Kept lighter
+   when the pane is unfocused, the way a native selection dims. */
+.rte-markdown-body .cm-selectionBackground {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+.rte-markdown-body .cm-editor.cm-focused .cm-selectionBackground {
+  background: rgba(99, 102, 241, 0.32);
+}
+
+/* An inline "Off" alongside the line-number input, rather than a full-width menu row. */
+.rte-table-menu-item--inline {
+  width: auto;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
 }

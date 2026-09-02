@@ -1,0 +1,39 @@
+/* ── Content tables ────────────────────────────────────────────────────────
+   A table written into a finding looks the same wherever that content is shown:
+   the assessment editor, the peer-review editors, the review resolver. Each of
+   those surfaces used to style td/th itself, so the same table rendered three
+   ways — the reviewer's copy took the app's dark theme tokens for its header
+   while the author's stayed light.
+
+   The header is deliberately a fixed light grey rather than a theme token: this
+   is document content, headed for a white page in the report, not app chrome
+   that should follow the surrounding UI.
+
+   Selectors lead with `table.` so they outrank a surface's own `.x-body td`
+   rules whatever order the stylesheets load in. */
+
+table.rte-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  font-size: 1em;
+}
+
+table.rte-table th,
+table.rte-table td {
+  border: 1px solid #d1d5db;
+  padding: 0.4rem 0.6rem;
+  min-width: 60px;
+  vertical-align: top;
+  text-align: left;
+}
+
+table.rte-table th {
+  background: #d1d5db;
+  color: #000;
+  font-weight: 600;
+}
+
+table.rte-table tr:hover {
+  background-color: transparent;
+}

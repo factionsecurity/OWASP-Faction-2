@@ -672,15 +672,24 @@
 /* Queue-count badge on nav items */
 .nav-badge {
   margin-left: auto;
+  /* Centred as a flex box rather than as inline text: an inline span sits its glyphs on
+     the baseline, which left the digits a pixel high in the pill. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--primary-color);
   color: #fff;
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1;
+  /* Optically centred, not just box-centred: digits carry no descender, so flex centring
+     of the line box leaves the ink sitting a pixel high in the pill. The correction is in
+     em so it holds at the smaller size the collapsed sidebar uses. */
   padding: 0.2rem 0.4rem;
+  padding-top: calc(0.2rem + 0.09em);
+  padding-bottom: calc(0.35rem - 0.09em);
   border-radius: 999px;
   min-width: 18px;
-  text-align: center;
   flex-shrink: 0;
 }
 
@@ -699,6 +708,8 @@
   margin-left: 0;
   font-size: 0.5625rem;
   padding: 0.15rem 0.3rem;
+  padding-top: calc(0.15rem + 0.09em);
+  padding-bottom: calc(0.3rem - 0.09em);
   min-width: 14px;
 }
 

@@ -13,6 +13,7 @@ public enum PermissionResource {
     DEFAULT_VULNERABILITIES("Default Vulnerabilities", "Default vulnerability template management permissions"),
     CHECKLIST_TEMPLATES("Checklist Templates", "Checklist template management permissions"),
     SURVEY_TEMPLATES("Survey Templates", "Survey template management permissions"),
+    CONTENT_TEMPLATES("Content Templates", "Rich text content template management permissions"),
     PEER_REVIEW("Peer Review", "Peer review management permissions"),
     API_KEYS("API Keys", "API key management permissions"),
     SYSTEM_CONFIG("System Config", "System configuration permissions"),

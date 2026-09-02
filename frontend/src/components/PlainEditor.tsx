@@ -1,6 +1,8 @@
 import { useRef, useEffect } from 'react';
 import { Bold, Italic } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import { LockOverlay } from './TrackChangesEditor';
+import { cleanPastedHtml, looksLikeTsvTable, tsvToTableHtml } from '../utils/pasteHtml';
 import './TrackChangesEditor.css';
 
 interface Props {
@@ -39,6 +41,27 @@ export default function PlainEditor({ defaultValue, onChange, disabled = false, 
     document.execCommand(cmd, false);
     if (editorRef.current) onChangeRef.current(editorRef.current.innerHTML);
   };
+
+  /**
+   * Word and Excel put their own layout engine's HTML on the clipboard; pasted natively it
+   * lands here verbatim, fonts and MSO metadata and all, and gets stored that way. Reduce it
+   * to the same markup subset the main editor keeps. TrackChangesEditor deliberately does
+   * not do this — every insertion there has to be wrapped in a tracked <ins>, so it pastes
+   * as plain text.
+   */
+  function handlePaste(e: React.ClipboardEvent) {
+    if (isReadOnly) return;
+    const rawHtml = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    const html = (rawHtml ? cleanPastedHtml(rawHtml) : '')
+      || (looksLikeTsvTable(text) ? tsvToTableHtml(text) : '');
+    if (!html) return;
+
+    e.preventDefault();
+    editorRef.current?.focus();
+    document.execCommand('insertHTML', false, DOMPurify.sanitize(html));
+    if (editorRef.current) onChangeRef.current(editorRef.current.innerHTML);
+  }
 
   function handleClick(e: React.MouseEvent) {
     let node: Node | null = e.target as Node;
@@ -86,6 +109,7 @@ export default function PlainEditor({ defaultValue, onChange, disabled = false, 
         contentEditable={!isReadOnly}
         suppressContentEditableWarning
         onClick={handleClick}
+        onPaste={handlePaste}
         onInput={() => {
           if (editorRef.current) onChangeRef.current(editorRef.current.innerHTML);
         }}
