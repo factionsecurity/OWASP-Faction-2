@@ -194,3 +194,31 @@ del[data-author-id] {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* Content pasted from Word or a spreadsheet can bring tables and lists with it. The
+   peer-review editors have no table tooling of their own, but the markup still has to be
+   readable — without these a pasted table renders as run-together borderless text. */
+.tce-body table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  max-width: 100%;
+}
+.tce-body th,
+.tce-body td {
+  border: 1px solid var(--border-color);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.tce-body th {
+  background: var(--tertiary-bg);
+  font-weight: 600;
+}
+.tce-body ul,
+.tce-body ol {
+  margin: 0.35rem 0;
+  padding-left: 1.5rem;
+}
+.tce-body img {
+  max-width: 100%;
+}

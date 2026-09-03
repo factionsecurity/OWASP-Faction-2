@@ -107,13 +107,11 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Assessment not found: " + assessmentId));
 
-        // Backfill the snapshot from the live template — assessments created
-        // before a DOCX was uploaded to the template snapshotted a null file id.
-        if (assessment.getTemplateFileId() == null && assessment.getReportTemplateId() != null) {
-            reportTemplateRepository.findById(assessment.getReportTemplateId())
-                    .map(ReportTemplate::getTemplateFileId)
-                    .ifPresent(assessment::setTemplateFileId);
-        }
+        // The snapshot on the assessment can be older than the template it came from, so
+        // re-read the live styling before anything reads it — see applyLiveTemplateStyling.
+        applyLiveTemplateStyling(assessment, assessment.getReportTemplateId() != null
+                ? reportTemplateRepository.findById(assessment.getReportTemplateId()).orElse(null)
+                : null);
 
         if (assessment.getTemplateFileId() == null) {
             throw new IllegalStateException(
@@ -257,7 +255,30 @@ public class DocxReportGenerationService implements ReportGenerationService {
         }
     }
 
+    /**
+     * Points the assessment at its template's current styling — CSS, font, and the DOCX file.
+     *
+     * <p>An assessment snapshots those when it is created, and the snapshot was otherwise only
+     * refreshed when the assessment happened to be loaded through {@code AssessmentService}.
+     * Editing the CSS in the report designer and generating straight afterwards therefore
+     * produced a report in whichever CSS the assessment was still carrying, while the same edit
+     * appeared to take effect as soon as anything reloaded that assessment — which is what made
+     * it look like the designer had not saved.
+     *
+     * <p>Styling always tracks the live template (only field definitions are version-gated, so
+     * that existing field values keep their keys), so it is re-read here: the point that decides
+     * what the report actually looks like. A null on the template means "not set", and leaves
+     * the snapshot alone rather than clearing it.
+     */
+    static void applyLiveTemplateStyling(Assessment assessment, ReportTemplate template) {
+        if (template == null) return;
+        if (template.getTemplateFileId() != null) assessment.setTemplateFileId(template.getTemplateFileId());
+        if (template.getCss() != null) assessment.setTemplateCss(template.getCss());
+        if (template.getFont() != null) assessment.setTemplateFont(template.getFont());
+    }
+
     // ── ReportGenerationService — uploaded report ────────────────────────────
+
 
     /**
      * Processes a manually uploaded DOCX or PDF report, replacing the

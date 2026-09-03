@@ -226,40 +226,74 @@ export default function AssessmentDetail() {
     setShowToast(true);
   };
 
+  /**
+   * Watch a generation run to completion. Every artifact (DOCX, PDF, encrypted PDF)
+   * reports its own status, so the run is only done once none of them is GENERATING —
+   * the presence of generatedReportFileId can't be the signal, since a regeneration
+   * starts with last run's id still on the assessment and would look finished
+   * immediately. Mirrors ReportDocumentsPanel's poll loop.
+   */
+  const pollReportGeneration = useCallback(() => {
+    if (!id) return;
+    setGenerating(true);
+    let attempts = 0;
+    const MAX_ATTEMPTS = 60; // 3 minutes
+    if (pollTimer.current) clearInterval(pollTimer.current);
+    pollTimer.current = setInterval(async () => {
+      attempts++;
+      try {
+        const docs = await reportsApi.getDocuments(id);
+        const stillGenerating = (docs.data?.documents ?? []).some(d => d.status === 'GENERATING');
+        if (!stillGenerating) {
+          clearInterval(pollTimer.current!);
+          pollTimer.current = null;
+          setGenerating(false);
+          const res = await assessmentsApi.getById(id).catch(() => null);
+          if (res?.success && res.data) {
+            setAssessment(prev => prev ? {
+              ...prev,
+              generatedReportFileId: res.data!.generatedReportFileId,
+              reportGeneratedAt: res.data!.reportGeneratedAt,
+            } : prev);
+          }
+          const failed = (docs.data?.documents ?? []).some(d => d.status === 'FAILED');
+          showToastMessage(
+            failed ? 'Report generation failed — see the Finalize tab for details' : 'Report ready for download',
+            failed ? 'danger' : 'success'
+          );
+          return;
+        }
+      } catch { /* ignore poll errors */ }
+      if (attempts >= MAX_ATTEMPTS) {
+        clearInterval(pollTimer.current!);
+        pollTimer.current = null;
+        setGenerating(false);
+        showToastMessage('Report generation timed out', 'warning');
+      }
+    }, 3000);
+  }, [id]);
+
+  // A run started elsewhere (the Finalize panel) or before a reload is still in flight;
+  // pick the spinner back up so the header button matches reality.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    reportsApi.getDocuments(id)
+      .then(res => {
+        if (cancelled) return;
+        if ((res.data?.documents ?? []).some(d => d.status === 'GENERATING')) pollReportGeneration();
+      })
+      .catch(() => { /* the Finalize tab surfaces document errors */ });
+    return () => { cancelled = true; };
+  }, [id, pollReportGeneration]);
+
   const handleGenerateReport = async () => {
     if (!id) return;
     setGenerating(true);
     try {
       await reportsApi.generate(id);
       showToastMessage('Report generation started');
-
-      // Poll for completion
-      let attempts = 0;
-      const MAX_ATTEMPTS = 60; // 3 minutes
-      if (pollTimer.current) clearInterval(pollTimer.current);
-      pollTimer.current = setInterval(async () => {
-        attempts++;
-        try {
-          const res = await assessmentsApi.getById(id);
-          if (res.success && res.data?.generatedReportFileId) {
-            clearInterval(pollTimer.current!);
-            pollTimer.current = null;
-            setAssessment(prev => prev ? {
-              ...prev,
-              generatedReportFileId: res.data!.generatedReportFileId,
-              reportGeneratedAt: res.data!.reportGeneratedAt,
-            } : prev);
-            setGenerating(false);
-            showToastMessage('Report ready for download');
-          }
-        } catch { /* ignore poll errors */ }
-        if (attempts >= MAX_ATTEMPTS) {
-          clearInterval(pollTimer.current!);
-          pollTimer.current = null;
-          setGenerating(false);
-          showToastMessage('Report generation timed out', 'warning');
-        }
-      }, 3000);
+      pollReportGeneration();
     } catch {
       setGenerating(false);
       showToastMessage('Failed to start report generation', 'danger');
@@ -1301,6 +1335,7 @@ export default function AssessmentDetail() {
                     disabled={isDisabled}
                     lockedBy={lockedByOther ? holder : undefined}
                     aiContext={{ assessmentId: id!, scope: 'ASSESSMENT' }}
+                    templateScope="ASSESSMENT"
                   />
                 </div>
               </section>

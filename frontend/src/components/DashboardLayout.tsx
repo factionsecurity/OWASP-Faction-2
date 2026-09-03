@@ -24,6 +24,7 @@ import {
   BookOpen,
   DatabaseZap,
   ClipboardCheck,
+  ClipboardList,
   RefreshCw,
   Mail,
   KeyRound,
@@ -90,6 +91,7 @@ const menuItems: MenuItem[] = [
       { name: 'Roles', path: '/roles', icon: Shield },
       { name: 'Assessment Config', path: '/assessment-config', icon: Sliders },
       { name: 'Default Vulnerabilities', path: '/default-vulnerabilities', icon: BookOpen },
+      { name: 'Content Templates', path: '/content-templates', icon: ClipboardList },
       { name: 'Report Designer', path: '/report-designer', icon: FileText },
       { name: 'Organization Config', path: '/org-config', icon: DatabaseZap },
       { name: 'SSO Config', path: '/sso-config', icon: Shield, feature: 'sso' },
@@ -414,6 +416,10 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
 
       case 'default vulnerabilities':
         return true; // all authenticated internal users can view
+
+      case 'content templates':
+        return authorities.includes('super_admin') ||
+          authorities.some((auth: string) => auth.match(/^content-templates:/));
 
       case 'report designer':
         return authorities.some((auth: string) =>

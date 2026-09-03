@@ -49,9 +49,15 @@ import org.docx4j.wml.RPr;
 import org.docx4j.wml.RStyle;
 import org.docx4j.wml.STTabTlc;
 import org.docx4j.wml.Tbl;
+import org.docx4j.wml.TblGridCol;
+import org.docx4j.wml.TblPr;
+import org.docx4j.wml.TblWidth;
 import org.docx4j.wml.Tc;
+import org.docx4j.wml.TcPr;
 import org.docx4j.wml.Text;
 import org.docx4j.wml.Tr;
+import org.docx4j.wml.TrPr;
+import org.docx4j.wml.CTHeight;
 import org.docx4j.wml.CTTxbxContent;
 
 import java.util.Objects;
@@ -115,6 +121,156 @@ public class DocxUtils {
     private String CData(String text) {
         if (text == null) return "";
         return "<![CDATA[" + text + "]]>";
+    }
+
+    // ── imported-table normalisation ────────────────────────────────────────
+
+    /**
+     * Strips the browser-derived table geometry the XHTML importer emits, which only
+     * ever causes trouble in Word.
+     *
+     * <p>The importer lays the HTML out with a CSS engine and then writes what it
+     * measured into the DOCX. The damaging part is
+     * {@code <w:trHeight w:val="390" w:hRule="atLeast"/>} on every row: a height
+     * measured with the CSS engine's font metrics, which are not Word's. Word lays the
+     * row out from its own metrics but honours the stored minimum, so the row rectangle
+     * and the content rectangle disagree by a fraction of a pixel and Word's renderer
+     * leaves a hairline of unpainted white along the bottom of the cell — invisible on a
+     * white cell, obvious on a solid fill. Dragging the table re-measures the row and the
+     * line goes away, which is the giveaway that the stored height, not the shading, is
+     * wrong. Rows should size to their content; that is what the HTML meant. Neither
+     * LibreOffice nor the PDF export shows the artifact, because both lay the table out
+     * themselves rather than trusting the stored height.
+     *
+     * <p>A {@code <w:tblCellSpacing>} of zero (or of the {@code auto} type, where Word
+     * picks the spacing itself) goes too. The HTML asked for {@code border-collapse:
+     * collapse}; carrying the element anyway puts Word in the separated-cell model, where
+     * each cell's fill is painted inside its own rectangle and the gaps between them are
+     * page background. Spacing a table actually asked for is left alone.
+     */
+    private void normaliseImportedTables(List<Object> converted) {
+        if (converted == null) return;
+        for (Object o : converted) normaliseImportedTables(o);
+    }
+
+    /** Recurses itself rather than using getAllElementFromObject, which stops at the
+     *  first match and so never reaches a table nested inside a cell. */
+    private void normaliseImportedTables(Object node) {
+        if (node instanceof JAXBElement) node = ((JAXBElement<?>) node).getValue();
+        if (node == null) return;
+
+        if (node instanceof Tbl) {
+            TblPr tblPr = ((Tbl) node).getTblPr();
+            if (tblPr != null && isMeaninglessCellSpacing(tblPr.getTblCellSpacing())) {
+                tblPr.setTblCellSpacing(null);
+            }
+            clampToPageWidth((Tbl) node);
+        }
+        if (node instanceof Tc) {
+            // A vertical cell margin under a fill is where Word paints its hairline of
+            // unpainted white: it lays the content rectangle to one edge and the shading
+            // to another and leaves a pixel between them. Invisible on a white cell, a
+            // line down every row of a shaded table — the artifact reported on a pasted
+            // table and again on every line of a code block, and gone from real reports
+            // once this landed. Horizontal margins stay: the seam is only ever horizontal.
+            TcPr tcPr = ((Tc) node).getTcPr();
+            if (tcPr != null && tcPr.getShd() != null && tcPr.getTcMar() != null) {
+                tcPr.getTcMar().setTop(null);
+                tcPr.getTcMar().setBottom(null);
+            }
+        }
+        if (node instanceof Tr) {
+            TrPr trPr = ((Tr) node).getTrPr();
+            if (trPr != null) {
+                trPr.getCnfStyleOrDivIdOrGridBefore().removeIf(e ->
+                        e instanceof JAXBElement
+                        && ((JAXBElement<?>) e).getValue() instanceof CTHeight);
+                if (trPr.getCnfStyleOrDivIdOrGridBefore().isEmpty()) ((Tr) node).setTrPr(null);
+            }
+        }
+        if (node instanceof ContentAccessor) {
+            for (Object child : ((ContentAccessor) node).getContent()) {
+                normaliseImportedTables(child);
+            }
+        }
+    }
+
+    /** A hair of breathing room between an over-wide table and the right margin. */
+    private static final int TABLE_RIGHT_GUTTER_TWIPS = 120;   // 8px
+
+    /** How narrow a column may be squeezed while a table is being fitted to the page. */
+    private static final int MIN_COLUMN_TWIPS = 600;           // 0.4 inch
+
+    /**
+     * Scales a table down when the importer measured it wider than the page can print.
+     *
+     * <p>The column widths are measured against the CSS engine's own viewport, which has
+     * nothing to do with the page: a full-width table came out 13954 twips against a
+     * printable width of 9027, so a third of it — and any long line inside it — sat off
+     * the edge of the paper, visible nowhere. Columns are scaled in proportion, so the
+     * table keeps its shape and only loses the overhang. A table that already fits is
+     * left exactly as it is.
+     */
+    private void clampToPageWidth(Tbl tbl) {
+        if (tbl.getTblGrid() == null || tbl.getTblGrid().getGridCol().isEmpty()) return;
+
+        int available;
+        try {
+            available = mlp.getDocumentModel().getSections().get(0)
+                    .getPageDimensions().getWritableWidthTwips() - TABLE_RIGHT_GUTTER_TWIPS;
+        } catch (Exception e) {
+            return;   // no section to measure against — leave the table alone
+        }
+        if (available <= 0) return;
+
+        List<TblGridCol> cols = tbl.getTblGrid().getGridCol();
+        int total = cols.stream().mapToInt(c -> c.getW().intValue()).sum();
+        if (total <= available) return;
+
+        // Taken out of the widest columns first, down to a floor, rather than scaled off
+        // every column in proportion: a narrow column is narrow because its content is
+        // (a gutter of line numbers, say), and shaving it just makes "200" wrap to
+        // "20" / "0". The widest column is the one carrying the slack.
+        int excess = total - available;
+        int[] widths = cols.stream().mapToInt(c -> c.getW().intValue()).toArray();
+        while (excess > 0) {
+            int widest = 0;
+            for (int i = 1; i < widths.length; i++) if (widths[i] > widths[widest]) widest = i;
+            int reducible = widths[widest] - MIN_COLUMN_TWIPS;
+            if (reducible <= 0) break;
+            int cut = Math.min(excess, reducible);
+            widths[widest] -= cut;
+            excess -= cut;
+        }
+        // Every column already at the floor and it still does not fit — a table of many
+        // narrow columns. Nothing left but to scale the lot.
+        if (excess > 0) {
+            double scale = (double) available / total;
+            for (int i = 0; i < widths.length; i++) {
+                widths[i] = Math.max(1, (int) Math.round(widths[i] * scale));
+            }
+        }
+        for (int i = 0; i < cols.size(); i++) cols.get(i).setW(BigInteger.valueOf(widths[i]));
+        // the cells carry the same widths again in their own tcW
+        for (Object r : getAllElementFromObject(tbl, Tr.class)) {
+            int col = 0;
+            for (Object cellObj : ((Tr) r).getContent()) {
+                Object cell = cellObj instanceof JAXBElement
+                        ? ((JAXBElement<?>) cellObj).getValue() : cellObj;
+                if (!(cell instanceof Tc)) continue;
+                TcPr pr = ((Tc) cell).getTcPr();
+                if (pr != null && pr.getTcW() != null && col < cols.size()) {
+                    pr.getTcW().setW(cols.get(col).getW());
+                }
+                col++;
+            }
+        }
+    }
+
+    private boolean isMeaninglessCellSpacing(TblWidth spacing) {
+        if (spacing == null) return false;
+        if (spacing.getType() == null || "auto".equalsIgnoreCase(spacing.getType())) return true;
+        return spacing.getW() == null || spacing.getW().signum() == 0;
     }
 
     // ── table-width helpers ─────────────────────────────────────────────────
@@ -1043,6 +1199,15 @@ public class DocxUtils {
                                  "table", "tr", "th", "td")
             // ── Inline CSS (style attribute) — limited safe properties only ──
             // Allows font/color/text/spacing properties; blocks position, z-index, etc.
+            //
+            // Values are parenthesis-free apart from the colour functions named below.
+            // That exception is load-bearing: a colour set through the browser's CSSOM
+            // (the table editor's cell-background menu, execCommand) serialises as
+            // `rgb(37, 99, 235)`, and because this pattern has to match the attribute in
+            // full, one such value used to drop the entire style attribute — the fill
+            // vanished from the report while a pasted hex one survived. Only the four
+            // colour functions are admitted, and no parenthesis may appear inside them,
+            // so `url(...)` and `expression(...)` stay out.
             .allowAttributes("style").matching(
                 java.util.regex.Pattern.compile(
                     "(?:(?:font-(?:size|family|weight|style)|color|background-color|"
@@ -1051,7 +1216,7 @@ public class DocxUtils {
                     + "padding(?:-(?:top|right|bottom|left))?|"
                     + "border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?|"
                     + "width|height|vertical-align|list-style(?:-type)?)"
-                    + "\\s*:\\s*[^;\"'<>()]+;?\\s*)*",
+                    + "\\s*:\\s*(?:[^;\"'<>()]|(?:rgba?|hsla?)\\([\\w%.,\\s/+-]*\\))+;?\\s*)*",
                     java.util.regex.Pattern.CASE_INSENSITIVE))
             .onElements("span", "p", "div", "td", "th", "h1", "h2", "h3",
                         "h4", "h5", "h6", "pre", "li", "img")
@@ -1237,12 +1402,14 @@ public class DocxUtils {
         content = replacement(content);
         content = sanitizeForXhtml(content);
 
-        return xhtml.convert(
+        List<Object> converted = xhtml.convert(
                 "<!DOCTYPE html><html><head>"
                 + buildStyleBlock(customCSS)
                 + "</head><body><div class='" + className + "'>"
                 + content + "</div></body></html>",
                 null);
+        normaliseImportedTables(converted);
+        return converted;
     }
 
     /**
@@ -1262,6 +1429,37 @@ public class DocxUtils {
                 + "li p,td p,th p{margin:0;}\r\n"
                 + ".rte-table{border-collapse:collapse;}\r\n"
                 + ".rte-table td,.rte-table th{border:1px solid #999999;padding:4px;}\r\n"
+                // Code blocks arrive from the editor as a table — a gutter of line
+                // numbers beside the code, or the code alone for a plain fence. Dracula
+                // Official (#282a36 panel, #f8f8f2 code, #6272a4 numbers, #44475a
+                // divider), so it reads as a code panel with no template CSS at all; a
+                // template overrides any of these classes, its own CSS coming after.
+                // max-width:none — a template's "table{max-width:480px}" would otherwise
+                // squeeze the panel and wrap the code.
+                + ".code-block{border-collapse:collapse;width:100%;max-width:none;margin:10px 0;}\r\n"
+                // The font has to be named on the cells, not just on the table: the stock
+                // template CSS carries "td,th{font-family:Arial}", and a rule aimed at the
+                // cell beats a font merely inherited from the table — which is why the
+                // code printed proportional.
+                + ".code-block,.code-block td{"
+                + "font-family:Consolas,'Courier New',monospace;font-size:9pt;}\r\n"
+                // Shading stays on the cells: the importer does not map a table's own
+                // background-color to w:tblPr/w:shd at all, so a table-level fill lands
+                // as no fill.
+                + ".code-block td{border:none;padding:1px 8px;vertical-align:top;"
+                + "background-color:#282a36;color:#f8f8f2;}\r\n"
+                // Breathing room at the top and bottom of the panel. Word ignores a
+                // table's own margin — the only space it honours around a table comes
+                // from the neighbouring paragraphs, which a template can zero out — so
+                // the padding is a short shaded row inside the panel. Not cell padding:
+                // that becomes a cell margin, and a cell margin under a fill is exactly
+                // where Word paints its hairline of white.
+                + ".code-block tr.code-block-pad td{font-size:5pt;}\r\n"
+                // td-qualified: ".code-block td" above would otherwise outrank a bare
+                // ".code-block-gutter" and paint the numbers in the code colour.
+                + ".code-block td.code-block-gutter{text-align:right;color:#6272a4;"
+                + "border-right:1px solid #44475a;width:1%;white-space:nowrap;}\r\n"
+                + ".code-block td.code-block-line{width:99%;word-break:break-all;}\r\n"
                 + customCSS + "</style>";
     }
 
@@ -1285,6 +1483,7 @@ public class DocxUtils {
                     + "</head><body><div class='" + className + "'>"
                     + value + "</div></body></html>",
                     null);
+            normaliseImportedTables(converted);
 
             for (Object o : converted) {
                 if (o instanceof P) {

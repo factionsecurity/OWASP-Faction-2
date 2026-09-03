@@ -46,6 +46,7 @@ import EmailNotificationsPage from './pages/EmailNotificationsPage';
 import AppStore from './pages/AppStore';
 import UnsubscribePage from './pages/UnsubscribePage';
 import AiConfigPage from './pages/AiConfigPage';
+import ContentTemplates from './pages/ContentTemplates';
 import Logs from './pages/Logs';
 import ApplicationIdConfig from './pages/ApplicationIdConfig';
 
@@ -718,6 +719,21 @@ function App() {
               <DashboardLayout>
                 <ProtectedRoute requiredPermission="canViewAiConfig">
                   <AiConfigPage />
+                </ProtectedRoute>
+              </DashboardLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        <Route
+          path="/content-templates"
+          element={
+            isAuthenticated ? (
+              <DashboardLayout>
+                <ProtectedRoute requiredPermission="canManageContentTemplates">
+                  <ContentTemplates />
                 </ProtectedRoute>
               </DashboardLayout>
             ) : (

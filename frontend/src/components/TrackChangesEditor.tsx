@@ -1,6 +1,23 @@
 import { useRef, useEffect } from 'react';
 import { Bold, Italic, Lock } from 'lucide-react';
 import './TrackChangesEditor.css';
+import './CodeBlock.css';
+import './ContentTables.css';
+
+/** Where the caret sat, as child indices from the editor root down to the node. */
+interface CaretPosition {
+  path: number[];
+  offset: number;
+}
+
+interface Snapshot {
+  html: string;
+  caret: CaretPosition | null;
+}
+
+/** A pause this long ends an undo step, so a burst of typing undoes as one. */
+const TYPING_COALESCE_MS = 400;
+const MAX_HISTORY = 100;
 
 interface Props {
   defaultValue: string;
@@ -39,6 +56,9 @@ export default function TrackChangesEditor({
   const editorRef = useRef<HTMLDivElement>(null);
   const isReadOnly = disabled || !!lockedBy;
 
+  const historyRef = useRef<{ stack: Snapshot[]; index: number }>({ stack: [], index: -1 });
+  const checkpointTimer = useRef<ReturnType<typeof setTimeout>>();
+
   // Keep props fresh in the event handler closure without re-registering
   const propsRef = useRef({ onChange, userId, userName, disabled: isReadOnly });
   useEffect(() => {
@@ -70,7 +90,118 @@ export default function TrackChangesEditor({
     const el = editorRef.current;
     if (!el) return;
 
-    const emit = () => propsRef.current.onChange(el.innerHTML);
+    // An <ins> emptied by deleting everything typed into it, or a <del> whose content was
+    // taken back, is a marker for nothing. It is dropped on the way out rather than out of
+    // the live DOM, where it may hold the caret the author is still typing at.
+    const serialize = (): string => {
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('ins:empty, del:empty').forEach(marker => marker.remove());
+      return clone.innerHTML;
+    };
+
+    const emit = () => {
+      propsRef.current.onChange(serialize());
+      scheduleCheckpoint();
+    };
+
+    // ── Undo / redo ───────────────────────────────────────────────────────────
+    // Every tracked edit is made by hand on the DOM behind preventDefault, which leaves
+    // the browser's own undo stack with nothing in it — Ctrl+Z did nothing at all. This
+    // is that stack, kept here: the raw markup plus where the caret was, so an undo puts
+    // the author back where they were rather than at the end of the document.
+    const caretSnapshot = (): CaretPosition | null => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return null;
+      const range = selection.getRangeAt(0);
+      if (!el.contains(range.startContainer)) return null;
+      const path: number[] = [];
+      let node: Node = range.startContainer;
+      while (node !== el && node.parentNode) {
+        path.unshift(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
+        node = node.parentNode;
+      }
+      return { path, offset: range.startOffset };
+    };
+
+    const restoreCaret = (caret: CaretPosition | null) => {
+      if (!caret) return;
+      let node: Node = el;
+      for (const index of caret.path) {
+        const child = node.childNodes[index];
+        if (!child) break;
+        node = child;
+      }
+      const limit = node.nodeType === Node.TEXT_NODE
+        ? (node.textContent ?? '').length
+        : node.childNodes.length;
+      const range = document.createRange();
+      range.setStart(node, Math.min(caret.offset, limit));
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
+
+    const checkpoint = () => {
+      if (checkpointTimer.current) {
+        clearTimeout(checkpointTimer.current);
+        checkpointTimer.current = undefined;
+      }
+      const history = historyRef.current;
+      const html = el.innerHTML;
+      if (history.stack[history.index]?.html === html) return;
+      history.stack = history.stack.slice(0, history.index + 1);
+      history.stack.push({ html, caret: caretSnapshot() });
+      if (history.stack.length > MAX_HISTORY) history.stack.shift();
+      history.index = history.stack.length - 1;
+    };
+
+    // A burst of typing is one undo step, not one per keystroke.
+    const scheduleCheckpoint = () => {
+      if (checkpointTimer.current) clearTimeout(checkpointTimer.current);
+      checkpointTimer.current = setTimeout(checkpoint, TYPING_COALESCE_MS);
+    };
+
+    const applyHistory = (entry: Snapshot) => {
+      el.innerHTML = entry.html;
+      restoreCaret(entry.caret);
+      propsRef.current.onChange(serialize());
+    };
+
+    const undo = () => {
+      // The edit in flight may still be inside the coalescing window; without this it
+      // would be skipped over and the undo would land a step too far back.
+      checkpoint();
+      const history = historyRef.current;
+      if (history.index <= 0) return;
+      history.index--;
+      applyHistory(history.stack[history.index]);
+    };
+
+    const redo = () => {
+      checkpoint();
+      const history = historyRef.current;
+      if (history.index >= history.stack.length - 1) return;
+      history.index++;
+      applyHistory(history.stack[history.index]);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (propsRef.current.disabled) return;
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    // The state the author started from is the bottom of the stack.
+    checkpoint();
 
     // Walk up to find nearest INS authored by current user
     const nearestOwnIns = (node: Node | null): HTMLElement | null => {
@@ -169,6 +300,25 @@ export default function TrackChangesEditor({
 
       // Wrap selected content in <del>
       const fragment = range.extractContents();
+
+      // Your own insertions inside the range go away outright rather than being buried
+      // in a <del>. A selection often spans both: double-clicking a word you just typed
+      // takes the original text it abuts along with it, and wrapping the lot left the
+      // insertion struck through inside a deletion, which no further keystroke could
+      // clear. Another reviewer's insertion is left to be marked deleted as normal.
+      fragment.querySelectorAll(`ins[data-author-id="${CSS.escape(userId)}"]`)
+        .forEach(own => own.remove());
+
+      // Nothing but your own insertions were selected — the deletion is already done.
+      if (!(fragment.textContent ?? '').trim() && !fragment.querySelector('img')) {
+        const cleared = document.createRange();
+        cleared.setStart(range.startContainer, range.startOffset);
+        cleared.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(cleared);
+        return;
+      }
+
       const del = document.createElement('del');
       del.dataset.authorId = userId;
       del.dataset.author = userName;
@@ -224,6 +374,17 @@ export default function TrackChangesEditor({
         const textNode = document.createTextNode(text);
         range.insertNode(textNode);
         setCursor(textNode, textNode.length);
+        return;
+      }
+
+      // Already inside one of our own insertions: the text simply joins it. Without this
+      // a caret sitting at an element position within the <ins> — which is what restoring
+      // an undo gives you — opened a second <ins> nested inside the first.
+      const enclosingIns = nearestOwnIns(range.startContainer);
+      if (enclosingIns) {
+        const inserted = document.createTextNode(text);
+        range.insertNode(inserted);
+        setCursor(inserted, inserted.length);
         return;
       }
 
@@ -405,7 +566,12 @@ export default function TrackChangesEditor({
     };
 
     el.addEventListener('beforeinput', onBeforeInput as EventListener);
-    return () => el.removeEventListener('beforeinput', onBeforeInput as EventListener);
+    el.addEventListener('keydown', onKeyDown);
+    return () => {
+      el.removeEventListener('beforeinput', onBeforeInput as EventListener);
+      el.removeEventListener('keydown', onKeyDown);
+      if (checkpointTimer.current) clearTimeout(checkpointTimer.current);
+    };
   }, []);
 
   const execFormat = (cmd: string) => {

@@ -2,6 +2,8 @@ import { useRef, useEffect, useState } from 'react';
 import { Check, X, CheckCheck, Bold, Italic, List, ListOrdered, RotateCcw, Link, Unlink, Code } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 import './TrackChangesResolver.css';
+import './CodeBlock.css';
+import './ContentTables.css';
 
 interface Props {
   initialValue: string;
