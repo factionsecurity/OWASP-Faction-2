@@ -83,6 +83,9 @@ public class MentionableUserService {
     private List<MentionableUserDto> internalCandidates(String search, Authentication authentication) {
         return userService.searchUsersPaginated(search, PageRequest.of(0, MAX_RESULTS), authentication)
                 .getContent().stream()
+                // The user list deliberately shows deleted accounts, badged, so an admin can see
+                // them; a mention picker must not offer them. Disabled ones stay.
+                .filter(u -> u.getDeletedAt() == null)
                 .map(u -> new MentionableUserDto(u.getUsername(), displayName(u.getFirstName(), u.getLastName(), u.getUsername())))
                 .toList();
     }
@@ -109,6 +112,9 @@ public class MentionableUserService {
         for (User candidate : candidates.values()) {
             if (candidate.getUsername().equals(caller.getUsername())) {
                 continue; // mentioning yourself notifies you; not useful
+            }
+            if (candidate.getDeletedAt() != null) {
+                continue; // they have left; a disabled account is still offered
             }
             if (isAnotherOrganisation(candidate, caller)) {
                 continue; // the hard rule: never another client's users, by any route
@@ -185,12 +191,18 @@ public class MentionableUserService {
         }
     }
 
-    /** The caller's own organization's portal users; none when they have no organization. */
+    /**
+     * The caller's own organization's portal users; none when they have no organization.
+     *
+     * <p>Disabled accounts are included — a lockout or an unactivated import is a temporary state,
+     * and the notification reaches them once an admin re-enables them. Deleted accounts are not:
+     * that person has left.
+     */
     private List<User> orgPeers(User caller) {
         if (caller.getOrganizationId() == null) {
             return List.of();
         }
-        return userRepository.findByOrganizationIdAndIsInternalFalseAndDeletedAtIsNullAndDisabledAtIsNull(
+        return userRepository.findByOrganizationIdAndIsInternalFalseAndDeletedAtIsNull(
                 caller.getOrganizationId());
     }
 

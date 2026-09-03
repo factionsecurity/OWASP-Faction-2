@@ -49,6 +49,12 @@ interface IconButtonProps {
   title?: string;
   disabled?: boolean;
   type?: 'button' | 'submit' | 'reset';
+  /**
+   * Extra class for the rare button that must carry colour at rest. The `variant` styles are
+   * hover-only on purpose — a row of action icons stays quiet until you reach for one — so a
+   * button that has to advertise a row's state needs its own rule.
+   */
+  className?: string;
 }
 
 export function IconButton({
@@ -58,6 +64,7 @@ export function IconButton({
   title,
   disabled = false,
   type = 'button',
+  className = '',
 }: IconButtonProps) {
   return (
     <button
@@ -65,7 +72,7 @@ export function IconButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`btn-icon btn-icon-${variant}`}
+      className={`btn-icon btn-icon-${variant}${className ? ` ${className}` : ''}`}
     >
       <Icon size={16} />
     </button>

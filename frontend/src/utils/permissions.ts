@@ -342,6 +342,12 @@ export const usePermissions = () => {
     isSuperAdmin: isSuperAdmin(authorities),
     /** Staff, not a customer-side account. Gates internal-only controls; the API re-checks. */
     isInternal: user?.isInternal === true,
+    /**
+     * Known to be a customer-side account. Deliberately not `!isInternal`: the flag is a
+     * tri-state, and an old session that hasn't been backfilled yet is "unknown", not external —
+     * hiding staff controls on that guess would break them for real staff. The API re-checks.
+     */
+    isExternal: user?.isInternal === false,
     hasPermission: (permission: string) =>
       authorities.includes(permission) || isSuperAdmin(authorities),
     hasAnyPermission: (requiredPermissions: string[]) =>

@@ -60,10 +60,10 @@ const STATUS_COLORS: Record<string, string> = {
 export default function RetestDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { permissions: userPerms } = usePermissions();
+  const { permissions: userPerms, isExternal } = usePermissions();
   // Internal schedulers only — app owners can request but not schedule
   // canScheduleRetests is staff-only, so the request-only correction it used to carry is gone.
-  const permsCanSchedule = userPerms.canScheduleRetests;
+  const permsCanSchedule = userPerms.canScheduleRetests && !isExternal;
 
   const { setBreadcrumbs } = usePageTitle();
   const [retest, setRetest] = useState<Retest | null>(null);
@@ -473,16 +473,20 @@ export default function RetestDetailPage() {
               </div>
             )}
 
-            {retest.assignedAssessorNames && retest.assignedAssessorNames.length > 0 && (
-              <div className="retest-detail-field">
-                <div className="retest-detail-field-label">Assessors</div>
+            {/* Always rendered: several assessors can share a retest, so "who else is on this"
+                is part of reading it — and an empty list is itself worth seeing. */}
+            <div className="retest-detail-field">
+              <div className="retest-detail-field-label">Assessors</div>
+              {retest.assignedAssessorNames && retest.assignedAssessorNames.length > 0 ? (
                 <div className="retest-assessors-list">
                   {retest.assignedAssessorNames.map((name, i) => (
                     <span key={i} className="retest-assessor-item">{name}</span>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="retest-detail-field-value">Unassigned</div>
+              )}
+            </div>
 
             {retest.scope && (
               <div className="retest-detail-field">

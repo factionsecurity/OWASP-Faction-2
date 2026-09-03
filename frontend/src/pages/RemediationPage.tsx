@@ -46,13 +46,15 @@ export default function RemediationPage() {
   // The queue is reachable on a retest permission alone, which external users hold. Editing
   // a finding needs vulnerabilities:edit:* — without it the API rejects the write, so the
   // panel opens read-only rather than offering controls that silently do nothing.
-  const { permissions: userPerms } = usePermissions();
-  const canEditVulns = userPerms.canEditVulnerabilities;
+  const { permissions: userPerms, isExternal } = usePermissions();
+  // External accounts never edit a finding, whatever their role was granted — the API refuses
+  // it on the account flag, so the panel must open read-only for them too.
+  const canEditVulns = userPerms.canEditVulnerabilities && !isExternal;
   // App owners and org users reach this queue to watch their own findings and manage their own
   // retest requests. Scheduling and editing are staff actions, and the retest detail page is
   // behind a permission they do not have — so for them a retest row opens the finding it is
   // against. Cancelling stays: whoever may ask for a retest may call it off.
-  const requestOnly = userPerms.canRequestRetestOnly;
+  const requestOnly = userPerms.canRequestRetestOnly || isExternal;
 
   const [rows, setRows] = useState<RemediationQueueRow[]>([]);
   const [loading, setLoading] = useState(false);

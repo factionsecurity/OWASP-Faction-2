@@ -69,6 +69,12 @@ sso:
   encryption-key: ${SSO_ENCRYPTION_KEY:}
 
 faction:
+  security:
+    # Failed password attempts before the account is disabled. A disabled user cannot log in and
+    # their API keys go inert; an admin re-enables them from the Users page, which also clears the
+    # counter. Set to 0 to switch the lockout off entirely.
+    max-failed-login-attempts: ${MAX_FAILED_LOGIN_ATTEMPTS:5}
+
   default-vulnerabilities:
     import-url: ${DEFAULT_VULNERABILITIES_IMPORT_URL:https://codeload.github.com/factionsecurity/default-vulnerabilities/zip/refs/heads/main}
 
