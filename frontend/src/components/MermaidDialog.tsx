@@ -226,8 +226,8 @@ function lastContentLine(lines: string[]): number {
   return lines.length - 1;
 }
 
-/** How mermaid prefixes a rendered node, by diagram family. All three accept `style`. */
-const NODE_PREFIXES = ['flowchart-', 'state-', 'classId-'];
+/** How mermaid prefixes a rendered node, by diagram family. All of these accept `style`. */
+const NODE_PREFIXES = ['flowchart-', 'state-', 'classId-', 'entity-'];
 
 /**
  * The author's node id, recovered from the id mermaid puts on the rendered group
@@ -360,7 +360,9 @@ export default function MermaidDialog({ isOpen, initialSource, onClose, onInsert
       return;
     }
     const id = nodeIdFromElementId(group.id, previewId.current);
-    if (id) setSelected({ id, label: group.textContent?.trim() || id });
+    // The first text element, not the whole group: an ER entity's group also contains
+    // every attribute row, which would run together into one unreadable chip.
+    if (id) setSelected({ id, label: group.querySelector('text')?.textContent?.trim() || id });
   }, []);
 
   const restyle = useCallback((patch: NodeStyle | null) => {
