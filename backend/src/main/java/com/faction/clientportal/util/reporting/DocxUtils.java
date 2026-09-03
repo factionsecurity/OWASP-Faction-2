@@ -123,6 +123,22 @@ public class DocxUtils {
         return "<![CDATA[" + text + "]]>";
     }
 
+    /**
+     * The vulnerability's asset location, ready to drop into the document XML.
+     *
+     * <p>Wrapped in CDATA because an asset location is usually a URL and a bare "&" in
+     * a query string is not valid XML, and quoted for the replacement because a dollar
+     * sign and a backslash both carry meaning to Matcher.replaceAll — and both turn up
+     * in real URLs and UNC paths.
+     */
+    private String assetLocation(ReportData.ReportVulnerability v) {
+        String location = v.getAssetLocation();
+        // Nothing at all for a vulnerability with no location, rather than an empty
+        // CDATA section standing in for it.
+        if (location == null || location.isBlank()) return "";
+        return Matcher.quoteReplacement(CData(location));
+    }
+
     // ── imported-table normalisation ────────────────────────────────────────
 
     /**
@@ -398,6 +414,7 @@ public class DocxUtils {
                     nxml = nxml.replaceAll("\\$\\{cvssScore\\}",  CData(v.getCvssScoreStr()));
                     nxml = nxml.replaceAll("\\$\\{cvssString\\}", CData(v.getCvssString() == null ? "" : v.getCvssString()));
                     nxml = nxml.replaceAll("\\$\\{tracking\\}",   CData(v.getTrackingId() == null ? "" : v.getTrackingId()));
+                    nxml = nxml.replaceAll("\\$\\{assetLocation\\}", assetLocation(v));
 
                     Date opened = toDate(v.getOpenedAt());
                     nxml = nxml.replaceAll("\\$\\{openedAt\\}",
@@ -775,6 +792,7 @@ public class DocxUtils {
                 nxml = nxml.replaceAll("\\$\\{cvssScore\\}",  v.getCvssScoreStr());
                 nxml = nxml.replaceAll("\\$\\{tracking\\}",
                         v.getTrackingId() == null ? "" : v.getTrackingId());
+                nxml = nxml.replaceAll("\\$\\{assetLocation\\}", assetLocation(v));
 
                 Date opened = toDate(v.getOpenedAt());
                 nxml = nxml.replaceAll("\\$\\{openedAt\\}",
