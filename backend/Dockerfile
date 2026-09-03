@@ -29,8 +29,12 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends wget libreoffice-writer && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy the built jar from build stage
-COPY --from=build /app/target/*.jar app.jar
+# Copy the built jar from build stage.
+#
+# Specifically the -boot jar. target/ holds two: the plain library jar that the enterprise
+# overlay compiles against, and this repackaged runnable one. A bare *.jar glob picks the
+# library jar and the container dies with "no main manifest attribute, in app.jar".
+COPY --from=build /app/target/*-boot.jar app.jar
 
 # Entrypoint script starts LibreOffice headless server, then the Spring app
 COPY entrypoint.sh entrypoint.sh
