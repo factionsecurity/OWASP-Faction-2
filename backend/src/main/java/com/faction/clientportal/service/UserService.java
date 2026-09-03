@@ -270,6 +270,7 @@ public class UserService {
                 .organizationId(request.getOrganizationId())
                 .createdAt(LocalDateTime.now())
                 .failedLoginAttempts(0)
+                .disabledAt(Boolean.TRUE.equals(request.getDisabled()) ? LocalDateTime.now() : null)
                 .build();
 
         User savedUser = userRepository.save(user);
@@ -338,6 +339,20 @@ public class UserService {
         user.setTeamIds(request.getTeamIds() != null ? request.getTeamIds() : new ArrayList<>());
         user.setIsInternal(request.getIsInternal());
         user.setOrganizationId(request.getOrganizationId());
+
+        // Null means "leave as is" so an ordinary edit can't re-enable an account by omission.
+        // Re-enabling also clears the failed-attempt count, which would otherwise keep a
+        // lockout in force against someone who was just let back in.
+        if (request.getDisabled() != null) {
+            if (request.getDisabled()) {
+                if (user.getDisabledAt() == null) {
+                    user.setDisabledAt(LocalDateTime.now());
+                }
+            } else {
+                user.setDisabledAt(null);
+                user.setFailedLoginAttempts(0);
+            }
+        }
 
         User updatedUser = userRepository.save(user);
         return toDto(updatedUser);

@@ -45,4 +45,11 @@ public class CreateUserRequest {
     private Boolean isInternal;
 
     private String organizationId;
+
+    /**
+     * Create the account already disabled. A disabled user cannot log in and their API keys
+     * are inert, but they stay linkable — which is what an import needs when it has to stand
+     * up an owner or assessor that no live person is behind yet.
+     */
+    private Boolean disabled;
 }
