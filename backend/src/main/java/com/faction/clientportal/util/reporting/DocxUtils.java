@@ -633,6 +633,11 @@ public class DocxUtils {
 
         replaceAssessment(customCSS);
 
+        // After findings and tables have expanded: a ${pageBreak} inside a repeated
+        // findings block is duplicated with it, and each copy becomes its own break.
+        // Before extensions, so the tag is resolved by Faction rather than offered out.
+        insertPageBreaks();
+
         // Last, so extensions are only offered placeholders Faction itself did not claim.
         replaceExtensionTokens(customCSS, tokenResolver);
 
@@ -2014,6 +2019,37 @@ public class DocxUtils {
             return ((CTTxbxContent) paragraph.getParent()).getContent();
         } else {
             return mlp.getMainDocumentPart().getContent();
+        }
+    }
+
+    /**
+     * Replaces every {@code ${pageBreak}} paragraph with a real page break.
+     *
+     * <p>The tag is expected to be the only thing in its paragraph: the paragraph is
+     * removed outright and a break put in its place, so anything sharing it would be lost.
+     *
+     * <p>Walks the top-level content once rather than re-scanning the document after each
+     * insertion — a report with a break per finding would otherwise be quadratic in the
+     * number of findings. Removing at {@code i} and inserting at {@code i} leaves the list
+     * the same length, so the index stays valid as the loop advances.
+     */
+    private void insertPageBreaks() {
+        List<Object> content = mlp.getMainDocumentPart().getContent();
+        for (int i = 0; i < content.size(); i++) {
+            Object element = XmlUtils.unwrap(content.get(i));
+            if (!(element instanceof P)) {
+                continue;
+            }
+            StringWriter paragraphText = new StringWriter();
+            try {
+                TextUtils.extractText(element, paragraphText);
+            } catch (Exception ex) {
+                continue;
+            }
+            if (paragraphText.toString().contains("${pageBreak}")) {
+                content.remove(i);
+                addPageBreak(mlp, i);
+            }
         }
     }
 
