@@ -89,6 +89,35 @@ async function svgToPngFile(svg: string, name: string): Promise<File> {
   }
 }
 
+/**
+ * The diagram source, encoded for storage in an attribute.
+ *
+ * <p>Base64 rather than the raw text because DOMPurify — which the editor runs on every
+ * inbound path — drops any attribute whose value contains `-->`. That is the arrow in
+ * essentially every flowchart, so storing the source verbatim loses it on the first paste
+ * or markdown round trip and leaves a diagram nobody can edit again.
+ *
+ * <p>Via TextEncoder so a diagram containing non-ASCII survives; btoa alone throws on it.
+ */
+export function encodeMermaidSource(source: string): string {
+  const bytes = new TextEncoder().encode(source);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/** Tolerates a raw source too, so diagrams stored before the encoding still open. */
+export function decodeMermaidSource(stored: string): string {
+  if (!stored) return '';
+  try {
+    const binary = atob(stored);
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return stored;
+  }
+}
+
 interface MermaidDialogProps {
   isOpen: boolean;
   /** Existing source when re-editing a diagram; empty for a new one. */

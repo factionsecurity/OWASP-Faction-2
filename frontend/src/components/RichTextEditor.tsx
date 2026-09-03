@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
-import MermaidDialog from './MermaidDialog';
+import MermaidDialog, { decodeMermaidSource, encodeMermaidSource } from './MermaidDialog';
 import { createPortal } from 'react-dom';
 import {
   AlignCenter,
@@ -303,12 +303,8 @@ function mentionSpanHtml(username: string): string {
 // style: without this, turndown unwrapped them to bare "@alice" text, so merely
 // opening the markdown view stripped every mention's data-username and the backend
 // silently stopped notifying anyone who had been mentioned.
-// A diagram travels as raw HTML for the same reason mentions do: the source that
-// produced it lives in data-mermaid, and `![alt](src)` has nowhere to put it. Losing the
-// attribute on a trip through the markdown view would leave an image nobody can edit again.
 turndownService.keep(node =>
   node.nodeName === 'U' ||
-  (node.nodeName === 'IMG' && node.hasAttribute('data-mermaid')) ||
   (node.nodeName === 'SPAN' && (
     node.hasAttribute('data-username') ||
     /(?:^|;)\s*(?:color|background-color|text-decoration)\s*:/i.test(node.getAttribute('style') ?? '')
@@ -334,6 +330,18 @@ function tableNeedsRawHtml(table: HTMLElement): boolean {
   return Array.from(table.querySelectorAll('[style]'))
     .some(el => NON_MARKDOWN_STYLE.test(el.getAttribute('style') ?? ''));
 }
+
+// A diagram travels as raw HTML for the same reason mentions do: the source that produced
+// it lives in data-mermaid, and `![alt](src)` has nowhere to put it. Losing the attribute
+// on a trip through the markdown view would leave an image nobody can edit again.
+//
+// addRule, not keep(): turndown checks its rule array — which holds the built-in image
+// rule — before the keep filter, so a kept <img> is converted to `![alt](src)` anyway.
+// Custom rules go to the front, which is the same reason richTable below is a rule.
+turndownService.addRule('mermaidImage', {
+  filter: node => node.nodeName === 'IMG' && (node as HTMLElement).hasAttribute('data-mermaid'),
+  replacement: (_content, node) => (node as HTMLElement).outerHTML,
+});
 
 turndownService.addRule('richTable', {
   filter: node => node.nodeName === 'TABLE' && tableNeedsRawHtml(node as HTMLElement),
@@ -2736,7 +2744,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
 
       if (target) {
         target.src = url;
-        target.setAttribute('data-mermaid', source);
+        target.setAttribute('data-mermaid', encodeMermaidSource(source));
         emit();
         return;
       }
@@ -2749,7 +2757,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
       const img = document.createElement('img');
       img.src = url;
       img.alt = 'Diagram';
-      img.setAttribute('data-mermaid', source);
+      img.title = 'Double-click to edit this diagram';
+      img.setAttribute('data-mermaid', encodeMermaidSource(source));
       img.style.maxWidth = '100%';
       img.style.display = 'block';
       img.style.marginLeft = 'auto';
@@ -4578,7 +4587,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
             if (!(img instanceof HTMLImageElement)) return;
             e.preventDefault();
             mermaidTargetRef.current = img;
-            setMermaidSource(img.getAttribute('data-mermaid') ?? '');
+            setMermaidSource(decodeMermaidSource(img.getAttribute('data-mermaid') ?? ''));
             setMermaidOpen(true);
           }}
           onMouseDown={e => {
@@ -4713,6 +4722,21 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
             >
               {imgMenu.img.closest('figure')?.querySelector('figcaption') ? 'Edit caption' : 'Add caption'}
             </button>
+            {imgMenu.img.hasAttribute('data-mermaid') && (
+              <button
+                type="button"
+                className="rte-img-menu-item"
+                onMouseDown={e => {
+                  e.preventDefault();
+                  mermaidTargetRef.current = imgMenu.img;
+                  setMermaidSource(decodeMermaidSource(imgMenu.img.getAttribute('data-mermaid') ?? ''));
+                  setImgMenu(null);
+                  setMermaidOpen(true);
+                }}
+              >
+                Edit diagram
+              </button>
+            )}
             <button
               type="button"
               className="rte-img-menu-item"
