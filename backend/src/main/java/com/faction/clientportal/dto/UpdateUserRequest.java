@@ -45,4 +45,11 @@ public class UpdateUserRequest {
     private Boolean isInternal;
 
     private String organizationId;
+
+    /**
+     * Disable or re-enable the account. A disabled user cannot log in and their API keys are
+     * inert, but they stay linkable and keep their history. Null leaves the current state
+     * alone, so a caller that only means to edit a name cannot silently re-enable someone.
+     */
+    private Boolean disabled;
 }
