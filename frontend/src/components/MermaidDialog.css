@@ -76,3 +76,109 @@
   font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
   white-space: pre-wrap;
 }
+
+/* Nodes are the handle for colouring, so they have to look touchable. */
+.mermaid-dialog__preview g.node { cursor: pointer; }
+
+/* A fixed blue, not a theme token: the preview keeps a white ground in either theme, and
+   a dark-theme accent would disappear against it. */
+.mermaid-dialog__preview g.node.is-selected {
+  filter: drop-shadow(0 0 2px #1565c0) drop-shadow(0 0 5px rgba(21, 101, 192, 0.6));
+}
+
+.mermaid-dialog__styler {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.85rem;
+  min-height: 34px;
+  padding: 0.45rem 0.6rem;
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.mermaid-dialog__hint--styler { margin: 0; }
+
+/* The clicked node's own label, so it is obvious what a swatch is about to recolour. */
+.mermaid-dialog__chip {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 0.15rem 0.5rem;
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.mermaid-dialog__swatches { display: flex; gap: 0.3rem; }
+
+.mermaid-dialog__swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  cursor: pointer;
+  border: 2px solid;
+  border-radius: 50%;
+  transition: transform 0.1s ease;
+}
+
+.mermaid-dialog__swatch:hover { transform: scale(1.15); }
+
+.mermaid-dialog__swatch:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.mermaid-dialog__pickers { display: flex; gap: 0.75rem; }
+
+.mermaid-dialog__picker {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.mermaid-dialog__picker input[type='color'] {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.mermaid-dialog__clear {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.mermaid-dialog__clear:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+/* Announced by a screen reader, not shown: the Tab behaviour is discoverable by trying it,
+   but the Escape-then-Tab way out of the field is not. */
+.mermaid-dialog__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip-path: inset(50%);
+}
