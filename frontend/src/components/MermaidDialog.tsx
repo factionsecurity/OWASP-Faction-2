@@ -22,6 +22,17 @@ async function renderToSvg(source: string, id: string): Promise<string> {
     // a diagram drawn in dark mode is unreadable in a report on white paper.
     theme: 'default',
     securityLevel: 'strict',
+    // Labels as SVG <text>, not HTML in a <foreignObject>.
+    //
+    // This is the difference between a diagram that rasterises and one that cannot:
+    // drawing an SVG containing a foreignObject taints the canvas, and the export then
+    // fails with "Tainted canvases may not be exported". Mermaid embeds HTML labels by
+    // default, so every flowchart hit it.
+    htmlLabels: false,
+    // Pinned to fonts the browser already has. A webfont would be an external fetch
+    // inside the SVG — the other way this canvas gets tainted — and it also keeps the
+    // raster identical between machines.
+    fontFamily: 'trebuchet ms, verdana, arial, sans-serif',
   });
   const { svg } = await mermaid.render(id, source);
   return svg;
@@ -60,7 +71,17 @@ async function svgToPngFile(svg: string, name: string): Promise<File> {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-    const png = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+    let png: Blob | null;
+    try {
+      png = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+    } catch {
+      // Only reachable if something in the SVG made the canvas cross-origin — an
+      // embedded image or webfont the diagram pulled in. Say so, rather than passing
+      // the browser's "Tainted canvases may not be exported" through to the author.
+      throw new Error(
+        'This diagram references something outside the page and cannot be turned into an '
+        + 'image. Remove any external image or font reference and try again.');
+    }
     if (!png) throw new Error('Could not rasterise the diagram');
     return new File([png], name, { type: 'image/png' });
   } finally {
