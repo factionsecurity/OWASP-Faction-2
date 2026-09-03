@@ -1937,10 +1937,14 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
     }
 
     function insertMarkdownImage(url: string, alt: string) {
+      insertMarkdownText(`![${alt}](${url})`);
+    }
+
+    /** Drops literal text at the caret in the markdown view. */
+    function insertMarkdownText(insertion: string) {
       const view = cmViewRef.current;
       if (!view) return;
       const pos = view.state.selection.main.from;
-      const insertion = `![${alt}](${url})`;
       view.dispatch({ changes: { from: pos, to: pos, insert: insertion }, selection: { anchor: pos + insertion.length } });
       view.focus();
     }
@@ -2727,6 +2731,20 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
 
     // ── Image upload ──────────────────────────────────────────────────────────
 
+    /** The <img> a diagram becomes, identical whichever view inserted it. */
+    function buildMermaidImage(url: string, source: string): HTMLImageElement {
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = 'Diagram';
+      img.title = 'Double-click to edit this diagram';
+      img.setAttribute('data-mermaid', encodeMermaidSource(source));
+      img.style.maxWidth = '100%';
+      img.style.display = 'block';
+      img.style.marginLeft = 'auto';
+      img.style.marginRight = 'auto';
+      return img;
+    }
+
     /**
      * Inserts a rendered diagram, or replaces the one being edited.
      *
@@ -2749,20 +2767,17 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
         return;
       }
 
+      const img = buildMermaidImage(url, source);
+
       if (viewMode !== 'rich') {
-        insertMarkdownImage(url, 'diagram');
+        // As an <img>, not `![](…)`: markdown image syntax has nowhere to carry the source,
+        // so inserting one here used to produce a diagram that could never be edited again.
+        // The same tag is what a diagram round-tripped from the rich view looks like in
+        // markdown, so both views agree on the form.
+        insertMarkdownText(img.outerHTML);
         return;
       }
       editorRef.current?.focus();
-      const img = document.createElement('img');
-      img.src = url;
-      img.alt = 'Diagram';
-      img.title = 'Double-click to edit this diagram';
-      img.setAttribute('data-mermaid', encodeMermaidSource(source));
-      img.style.maxWidth = '100%';
-      img.style.display = 'block';
-      img.style.marginLeft = 'auto';
-      img.style.marginRight = 'auto';
       const sel = window.getSelection();
       if (sel && sel.rangeCount > 0) {
         const range = sel.getRangeAt(0);
