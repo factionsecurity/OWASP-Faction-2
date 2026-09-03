@@ -249,6 +249,47 @@ export function nodeIdFromElementId(elementId: string, renderId: string): string
   return rest || null;
 }
 
+/**
+ * The diagram keyword, skipping a YAML frontmatter block and any `%%` comment or init
+ * directive above it — used only to explain where a chart's colours actually come from.
+ */
+export function detectDiagramKind(source: string): string {
+  const lines = source.split('\n');
+  let i = 0;
+  if (lines[0]?.trim() === '---') {
+    i = 1;
+    while (i < lines.length && lines[i].trim() !== '---') i++;
+    i++;
+  }
+  for (; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.startsWith('%%')) continue;
+    return (/^([A-Za-z-]+)/.exec(line)?.[1] ?? '').toLowerCase();
+  }
+  return '';
+}
+
+/**
+ * Where colour lives for the diagram types that have no styleable nodes.
+ *
+ * <p>These charts colour a whole series from a palette in a config header rather than a
+ * shape at a time, so there is nothing to click. Saying so — and naming the key — beats
+ * an invitation to click that does nothing, which reads as broken.
+ */
+const PALETTE_HINTS: Record<string, string> = {
+  xychart: 'Plot colours come from plotColorPalette in the config header, in plot order.',
+  'xychart-beta': 'Plot colours come from plotColorPalette in the config header, in plot order.',
+  pie: 'Slice colours come from the pie1, pie2 … theme variables in the config header.',
+  timeline: 'Section colours come from the cScale0, cScale1 … theme variables in the config header.',
+  gantt: 'Section colours come from the cScale0, cScale1 … theme variables in the config header.',
+  quadrantchart: 'Point colours are set on the point itself, such as A: [0.3, 0.6] color: #ff0000.',
+};
+
+function paletteHint(kind: string): string {
+  return PALETTE_HINTS[kind]
+    ?? 'This diagram type has no individually coloured shapes.';
+}
+
 /** `<input type="color">` only accepts 6-digit hex; anything else shows as the default. */
 function asHexInput(value: string | undefined, fallback: string): string {
   return value && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
@@ -301,6 +342,8 @@ export default function MermaidDialog({ isOpen, initialSource, onClose, onInsert
   const [error, setError] = useState('');
   const [inserting, setInserting] = useState(false);
   const [selected, setSelected] = useState<{ id: string; label: string } | null>(null);
+  // Whether the last render produced shapes this dialog can address at all.
+  const [styleable, setStyleable] = useState(true);
   const previewRef = useRef<HTMLDivElement>(null);
   const renderSeq = useRef(0);
   // The id of the render currently in the preview, needed to read a node id back off a
@@ -346,9 +389,11 @@ export default function MermaidDialog({ isOpen, initialSource, onClose, onInsert
     const root = previewRef.current;
     if (!root || !rendered) return;
     root.querySelectorAll('g.node.is-selected').forEach(el => el.classList.remove('is-selected'));
+    const nodes = [...root.querySelectorAll<SVGGElement>('g.node')]
+      .filter(el => nodeIdFromElementId(el.id, previewId.current));
+    setStyleable(nodes.length > 0);
     if (!selected) return;
-    const match = [...root.querySelectorAll<SVGGElement>('g.node')]
-      .find(el => nodeIdFromElementId(el.id, previewId.current) === selected.id);
+    const match = nodes.find(el => nodeIdFromElementId(el.id, previewId.current) === selected.id);
     if (match) match.classList.add('is-selected');
     else setSelected(null);
   }, [selected, rendered]);
@@ -508,7 +553,11 @@ export default function MermaidDialog({ isOpen, initialSource, onClose, onInsert
         <div className="mermaid-dialog__styler">
           {!selected
             ? <p className="mermaid-dialog__hint mermaid-dialog__hint--styler">
-                Click a shape in the preview to colour it.
+                {/* While a diagram is broken it has no nodes either, and the error already
+                    says so — do not also claim the type cannot be coloured. */}
+                {styleable || error
+                  ? 'Click a shape in the preview to colour it.'
+                  : paletteHint(detectDiagramKind(source))}
               </p>
             : <>
                 <span className="mermaid-dialog__chip" title={`Node ${selected.id}`}>
