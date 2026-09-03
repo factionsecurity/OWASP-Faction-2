@@ -43,6 +43,7 @@
     "dompurify": "^3.4.11",
     "lucide-react": "^0.323.0",
     "marked": "^17.0.3",
+    "mermaid": "^11.17.2",
     "react": "^18.2.0",
     "react-datepicker": "^6.9.0",
     "react-dom": "^18.2.0",

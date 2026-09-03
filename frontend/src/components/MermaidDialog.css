@@ -1,0 +1,78 @@
+.mermaid-dialog {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  min-height: 340px;
+}
+
+@media (max-width: 720px) {
+  .mermaid-dialog { grid-template-columns: minmax(0, 1fr); }
+}
+
+.mermaid-dialog__pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mermaid-dialog__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.mermaid-dialog__source {
+  flex: 1;
+  min-height: 280px;
+  resize: vertical;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  tab-size: 2;
+  padding: 0.6rem 0.7rem;
+  color: var(--text-primary);
+  background: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.mermaid-dialog__source:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+/* The preview keeps a white ground whatever the app theme: the diagram is rasterised
+   exactly as shown and ends up on a white page in a report. Previewing it on the dark
+   editor background would misrepresent what gets inserted. */
+.mermaid-dialog__preview {
+  flex: 1;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 0.75rem;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.mermaid-dialog__preview svg { max-width: 100%; height: auto; }
+
+.mermaid-dialog__hint,
+.mermaid-dialog__error {
+  margin: 0.45rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.mermaid-dialog__hint { color: var(--text-muted); }
+
+.mermaid-dialog__error {
+  color: var(--danger-color);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  white-space: pre-wrap;
+}

@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
+import MermaidDialog from './MermaidDialog';
 import { createPortal } from 'react-dom';
 import {
   AlignCenter,
@@ -10,6 +11,7 @@ import {
   ClipboardList,
   Code,
   ImagePlus,
+  Workflow,
   Italic,
   Link,
   List,
@@ -301,8 +303,12 @@ function mentionSpanHtml(username: string): string {
 // style: without this, turndown unwrapped them to bare "@alice" text, so merely
 // opening the markdown view stripped every mention's data-username and the backend
 // silently stopped notifying anyone who had been mentioned.
+// A diagram travels as raw HTML for the same reason mentions do: the source that
+// produced it lives in data-mermaid, and `![alt](src)` has nowhere to put it. Losing the
+// attribute on a trip through the markdown view would leave an image nobody can edit again.
 turndownService.keep(node =>
   node.nodeName === 'U' ||
+  (node.nodeName === 'IMG' && node.hasAttribute('data-mermaid')) ||
   (node.nodeName === 'SPAN' && (
     node.hasAttribute('data-username') ||
     /(?:^|;)\s*(?:color|background-color|text-decoration)\s*:/i.test(node.getAttribute('style') ?? '')
@@ -1097,6 +1103,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
     const colorWrapRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const replaceTargetRef = useRef<HTMLImageElement | null>(null);
+    const mermaidTargetRef = useRef<HTMLImageElement | null>(null);
+    const [mermaidOpen, setMermaidOpen] = useState(false);
+    const [mermaidSource, setMermaidSource] = useState('');
     const tablePickerWrapRef = useRef<HTMLDivElement>(null);
 
     // Undo/redo history — a custom stack, since structural edits (table row/col
@@ -2710,6 +2719,56 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
 
     // ── Image upload ──────────────────────────────────────────────────────────
 
+    /**
+     * Inserts a rendered diagram, or replaces the one being edited.
+     *
+     * <p>Deliberately an ordinary <img>: from here on the diagram is exactly as portable
+     * as a pasted screenshot, which is what makes it appear in DOCX and PDF reports
+     * without the report pipeline knowing mermaid exists. The source rides along in
+     * data-mermaid so the diagram stays editable.
+     */
+    async function insertMermaid(file: File, source: string) {
+      const upload = onImageUploadRef.current;
+      if (!upload) return;
+      const url = await upload(file);
+      const target = mermaidTargetRef.current;
+      mermaidTargetRef.current = null;
+
+      if (target) {
+        target.src = url;
+        target.setAttribute('data-mermaid', source);
+        emit();
+        return;
+      }
+
+      if (viewMode !== 'rich') {
+        insertMarkdownImage(url, 'diagram');
+        return;
+      }
+      editorRef.current?.focus();
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = 'Diagram';
+      img.setAttribute('data-mermaid', source);
+      img.style.maxWidth = '100%';
+      img.style.display = 'block';
+      img.style.marginLeft = 'auto';
+      img.style.marginRight = 'auto';
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(img);
+        range.setStartAfter(img);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        editorRef.current?.appendChild(img);
+      }
+      emit();
+    }
+
     async function uploadAndInsert(file: File) {
       const upload = onImageUploadRef.current;
       if (!upload) return;
@@ -4320,6 +4379,15 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
                 >
                   <ImagePlus size={13} />
                 </button>
+                <button
+                  type="button"
+                  className="rte-btn"
+                  title="Insert diagram"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => { mermaidTargetRef.current = null; setMermaidSource(''); setMermaidOpen(true); }}
+                >
+                  <Workflow size={13} />
+                </button>
               </>
             )}
 
@@ -4504,6 +4572,15 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
           onPaste={handlePaste}
           onDrop={handleDrop}
           onContextMenu={handleContextMenu}
+          onDoubleClick={e => {
+            if (isReadOnly) return;
+            const img = (e.target as HTMLElement)?.closest?.('img[data-mermaid]');
+            if (!(img instanceof HTMLImageElement)) return;
+            e.preventDefault();
+            mermaidTargetRef.current = img;
+            setMermaidSource(img.getAttribute('data-mermaid') ?? '');
+            setMermaidOpen(true);
+          }}
           onMouseDown={e => {
             // Clicking a code block's margin: the row is locked, so the browser would
             // drop the caret at the nearest editable spot it can find — often the
@@ -4600,6 +4677,13 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
             </span>
           </div>
         )}
+        <MermaidDialog
+          isOpen={mermaidOpen}
+          initialSource={mermaidSource}
+          onClose={() => { setMermaidOpen(false); mermaidTargetRef.current = null; }}
+          onInsert={insertMermaid}
+        />
+
         {imgMenu && (
           <div
             className="rte-img-menu"
