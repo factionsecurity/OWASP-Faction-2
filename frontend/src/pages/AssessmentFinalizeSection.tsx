@@ -10,9 +10,10 @@ import {
   Mail,
   GitMerge,
   ChevronRight,
+  FileJson,
 } from 'lucide-react';
 import type { Assessment, AssessmentChecklist, PeerReview } from '../types';
-import { assessmentsApi, peerReviewsApi, assessmentChecklistsApi } from '../api';
+import { assessmentsApi, peerReviewsApi, assessmentChecklistsApi, vulnerabilitiesApi } from '../api';
 import { Button } from '../components';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
@@ -150,6 +151,9 @@ export default function AssessmentFinalizeSection({
   const [showReopenConfirm, setShowReopenConfirm] = useState(false);
   const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
   const [actionError, setActionError] = useState('');
+  /** Which format is in flight, so both buttons disable but only one shows progress. */
+  const [exporting, setExporting] = useState<'sarif' | 'cyclonedx' | null>(null);
+  const [exportError, setExportError] = useState('');
   const [peerReviews, setPeerReviews] = useState<PeerReview[]>([]);
   const [openReview, setOpenReview] = useState<PeerReview | null>(null);
   const [blockingChecklists, setBlockingChecklists] = useState<AssessmentChecklist[]>([]);
@@ -224,6 +228,27 @@ export default function AssessmentFinalizeSection({
     } finally {
       setReopening(false);
       setShowReopenConfirm(false);
+    }
+  };
+
+  const handleExport = async (format: 'sarif' | 'cyclonedx') => {
+    setExporting(format);
+    setExportError('');
+    try {
+      const { blob, filename } = await vulnerabilitiesApi.exportMachineReadable(assessmentId, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      // Unlike the CSV exports elsewhere, this one reports rather than swallowing: a silent
+      // no-op on a button press reads as a broken build.
+      setExportError(err?.response?.data?.message
+        || `Could not export ${format === 'sarif' ? 'SARIF' : 'CycloneDX'}. Please try again.`);
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -349,6 +374,39 @@ export default function AssessmentFinalizeSection({
         onAssessmentUpdated={onAssessmentUpdated}
         readOnly={isCompleted}
       />
+
+      {/* Machine-readable exports — the same findings the report narrates, in the two formats a
+          scanner pipeline or an SBOM tool ingests. Available before finalizing too: the file is
+          just the current findings, and teams hand one over mid-engagement. */}
+      <div className="finalize-actions-card">
+        <h4 className="finalize-actions-title">Vulnerability Exports</h4>
+        {exportError && <div className="finalize-error">{exportError}</div>}
+        <div className="finalize-action-row">
+          <div className="finalize-action-info">
+            <strong>Machine-readable findings</strong>
+          </div>
+        </div>
+        <div className="finalize-export-btns">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={FileJson}
+            onClick={() => handleExport('sarif')}
+            disabled={exporting !== null}
+          >
+            {exporting === 'sarif' ? 'Exporting…' : 'SARIF'}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={FileJson}
+            onClick={() => handleExport('cyclonedx')}
+            disabled={exporting !== null}
+          >
+            {exporting === 'cyclonedx' ? 'Exporting…' : 'CycloneDX'}
+          </Button>
+        </div>
+      </div>
 
       {/* Status Actions */}
       {/* Shown while the assessment is open (peer review / finalize) and once it's completed,
