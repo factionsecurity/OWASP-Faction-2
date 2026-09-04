@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -35,6 +36,14 @@ public class PasswordResetService {
      * Request a password reset. Always returns successfully to avoid revealing
      * whether an email address exists in the system.
      */
+    /**
+     * {@code @Transactional} because clearing the user's previous tokens is a derived
+     * {@code deleteBy…}, which removes rows one at a time and needs one. Without it a first
+     * request succeeded (nothing to delete) and every request after it threw — so someone who did
+     * not receive the first email and asked again got an error, or worse, the 200 this endpoint
+     * always returns with no mail behind it.
+     */
+    @Transactional
     public void requestReset(String email) {
         Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
         if (userOpt.isEmpty()) {
