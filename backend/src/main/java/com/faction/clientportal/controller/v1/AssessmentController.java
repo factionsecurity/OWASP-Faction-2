@@ -610,8 +610,9 @@ public class AssessmentController {
                description = "Streams the file's bytes as an attachment. Requires read access to the assessment.")
     public ResponseEntity<Resource> downloadContent(
             @PathVariable String id,
-            @PathVariable String fileId) {
-        StorageService.StoredFile file = assessmentService.openFile(id, fileId);
+            @PathVariable String fileId,
+            Authentication authentication) {
+        StorageService.StoredFile file = assessmentService.openFile(id, fileId, authentication);
         return FileStreamResponse.attachment(file.stream(), file.fileName());
     }
 
