@@ -44,8 +44,9 @@ public class NotebookController {
     @Operation(summary = "Get notebook tree",
                description = "Returns the full notebook node tree for an application.")
     public ResponseEntity<JsonApiResponse<List<NotebookNodeDto>>> getTreeForApplication(
-            @PathVariable String appId) {
-        List<NotebookNodeDto> tree = notebookService.getTreeForApplication(appId);
+            @PathVariable String appId,
+            Authentication authentication) {
+        List<NotebookNodeDto> tree = notebookService.getTreeForApplication(appId, authentication);
         return ResponseUtil.success(tree);
     }
 
@@ -62,7 +63,7 @@ public class NotebookController {
             @Valid @RequestBody CreateNotebookNodeRequest request,
             Authentication authentication) {
         String userId = authentication.getName();
-        NotebookNodeDto node = notebookService.createNode(appId, request, userId);
+        NotebookNodeDto node = notebookService.createNode(appId, request, userId, authentication);
         return ResponseUtil.created("Notebook node created successfully", node);
     }
 
@@ -75,8 +76,9 @@ public class NotebookController {
     @Operation(summary = "Get notebook node",
                description = "Returns a single notebook node including its content and attachments.")
     public ResponseEntity<JsonApiResponse<NotebookNodeDto>> getNode(
-            @PathVariable String nodeId) {
-        return ResponseUtil.success(notebookService.getNode(nodeId));
+            @PathVariable String nodeId,
+            Authentication authentication) {
+        return ResponseUtil.success(notebookService.getNode(nodeId, authentication));
     }
 
     // -------------------------------------------------------------------------
@@ -92,7 +94,7 @@ public class NotebookController {
             @RequestBody UpdateNotebookNodeRequest request,
             Authentication authentication) {
         String userId = authentication.getName();
-        return ResponseUtil.success(notebookService.updateNode(nodeId, request, userId));
+        return ResponseUtil.success(notebookService.updateNode(nodeId, request, userId, authentication));
     }
 
     // -------------------------------------------------------------------------
@@ -107,7 +109,7 @@ public class NotebookController {
             @PathVariable String nodeId,
             Authentication authentication) {
         String userId = authentication.getName();
-        notebookService.deleteNode(nodeId, userId);
+        notebookService.deleteNode(nodeId, userId, authentication);
         return ResponseUtil.success("Notebook node deleted successfully");
     }
 
@@ -124,7 +126,7 @@ public class NotebookController {
             @RequestBody MoveNotebookNodeRequest request,
             Authentication authentication) {
         String userId = authentication.getName();
-        return ResponseUtil.success(notebookService.moveNode(nodeId, request, userId));
+        return ResponseUtil.success(notebookService.moveNode(nodeId, request, userId, authentication));
     }
 
     // -------------------------------------------------------------------------
@@ -140,8 +142,10 @@ public class NotebookController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String createdById,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
-        List<NotebookSearchResultDto> results = notebookService.searchNodes(appId, q, createdById, from, to);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            Authentication authentication) {
+        List<NotebookSearchResultDto> results =
+                notebookService.searchNodes(appId, q, createdById, from, to, authentication);
         return ResponseUtil.success(results);
     }
 
@@ -160,7 +164,7 @@ public class NotebookController {
             Authentication authentication) {
         String userId = authentication.getName();
         UploadTargetResponse response = notebookService.prepareUpload(
-                nodeId, request.getFileName(), userId);
+                nodeId, request.getFileName(), userId, authentication);
         return ResponseUtil.success(response);
     }
 
@@ -173,10 +177,11 @@ public class NotebookController {
             @PathVariable String nodeId,
             @PathVariable String fileId,
             @RequestParam String fileName,
-            HttpServletRequest request) throws IOException {
+            HttpServletRequest request,
+            Authentication authentication) throws IOException {
         notebookService.storeUpload(nodeId, fileId, fileName,
                 uploadRequests.contentType(request), uploadRequests.contentLength(request),
-                request.getInputStream());
+                request.getInputStream(), authentication);
         return ResponseUtil.success("File uploaded", null);
     }
 
@@ -195,7 +200,7 @@ public class NotebookController {
         String userId = authentication.getName();
         NotebookAttachmentDto dto = notebookService.confirmFileUpload(
                 nodeId, request.getFileId(), request.getFileName(),
-                request.getContentType(), request.getFileSize(), userId);
+                request.getContentType(), request.getFileSize(), userId, authentication);
         return ResponseUtil.created("File upload confirmed", dto);
     }
 
@@ -209,8 +214,9 @@ public class NotebookController {
                description = "Streams the attachment's bytes as an attachment download.")
     public ResponseEntity<Resource> downloadContent(
             @PathVariable String nodeId,
-            @PathVariable String fileId) {
-        StorageService.StoredFile file = notebookService.openFile(nodeId, fileId);
+            @PathVariable String fileId,
+            Authentication authentication) {
+        StorageService.StoredFile file = notebookService.openFile(nodeId, fileId, authentication);
         return FileStreamResponse.attachment(file.stream(), file.fileName());
     }
 
@@ -227,7 +233,7 @@ public class NotebookController {
             @PathVariable String fileId,
             Authentication authentication) {
         String userId = authentication.getName();
-        notebookService.deleteFile(nodeId, fileId, userId);
+        notebookService.deleteFile(nodeId, fileId, userId, authentication);
         return ResponseUtil.success("File deleted successfully");
     }
 }
