@@ -1,5 +1,6 @@
 package com.faction.clientportal.service;
 
+import com.faction.clientportal.exception.BusinessRuleException;
 import com.faction.clientportal.dto.AssessmentDto;
 import com.faction.clientportal.edition.EditionPolicy;
 import com.faction.clientportal.edition.Feature;
@@ -114,7 +115,7 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 : null);
 
         if (assessment.getTemplateFileId() == null) {
-            throw new IllegalStateException(
+            throw new BusinessRuleException(
                     "The report template has no DOCX file attached. "
                     + "Upload a DOCX template in the report designer first.");
         }

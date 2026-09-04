@@ -9,5 +9,4 @@ public interface AssessmentChecklistRepository extends JpaRepository<AssessmentC
 
     List<AssessmentChecklist> findByAssessmentId(String assessmentId);
 
-    void deleteByAssessmentId(String assessmentId);
 }
