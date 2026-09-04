@@ -22,8 +22,4 @@ public interface ExtensionLogRepository extends JpaRepository<ExtensionLog, Stri
     @Query("DELETE FROM ExtensionLog l WHERE l.extensionId = ?1")
     void deleteByExtensionId(String extensionId);
 
-    /** Trims the log table so a chatty extension cannot grow it without bound. */
-    @Modifying
-    @Query("DELETE FROM ExtensionLog l WHERE l.timestamp < ?1")
-    int deleteByTimestampBefore(LocalDateTime cutoff);
 }

@@ -1,6 +1,7 @@
 package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.*;
+import com.faction.clientportal.exception.BusinessRuleException;
 import com.faction.clientportal.exception.ResourceNotFoundException;
 import com.faction.clientportal.model.*;
 import com.faction.clientportal.repository.ApplicationRepository;
@@ -274,7 +275,7 @@ public class AssessmentService {
             com.faction.clientportal.model.AssessmentPeerReviewStatus prStatus = assessment.getPeerReviewStatus();
             if (prStatus == com.faction.clientportal.model.AssessmentPeerReviewStatus.IN_PEER_REVIEW
                     || prStatus == com.faction.clientportal.model.AssessmentPeerReviewStatus.NEEDS_ACCEPTANCE) {
-                throw new IllegalStateException("Assessment is locked for peer review");
+                throw new BusinessRuleException("Assessment is locked for peer review");
             }
         }
 

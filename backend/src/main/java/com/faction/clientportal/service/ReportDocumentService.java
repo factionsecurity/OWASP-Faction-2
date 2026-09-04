@@ -1,5 +1,6 @@
 package com.faction.clientportal.service;
 
+import com.faction.clientportal.exception.BusinessRuleException;
 import com.faction.clientportal.dto.ReportDocumentDto;
 import com.faction.clientportal.edition.EditionPolicy;
 import com.faction.clientportal.edition.Feature;
@@ -189,7 +190,7 @@ public class ReportDocumentService {
             return encryptionService.decrypt(assessment.getReportPasswordEncrypted());
         }
         if (!encryptionService.isConfigured()) {
-            throw new IllegalStateException(
+            throw new BusinessRuleException(
                     "SSO_ENCRYPTION_KEY is not configured — cannot store the encrypted PDF password. "
                     + "Generate one with: openssl rand -base64 32");
         }
