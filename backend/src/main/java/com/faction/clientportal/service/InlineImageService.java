@@ -187,6 +187,46 @@ public class InlineImageService {
     }
 
     /**
+     * Reference index for a field that is not scoped to one assessment.
+     *
+     * <p>{@link #updateRefsForField} keys on (assessment, field) and assumes every image in the
+     * content belongs to that assessment. A notebook node breaks that assumption: it is anchored
+     * to an application, only root nodes carry an assessment id at all, and its screenshots are
+     * uploaded against whichever assessment the author happened to be viewing. So each reference
+     * is filed under the assessment that owns <em>that image</em> — which is also what makes
+     * {@link #deleteRefsForAssessment} release it at the right time — and reconciliation is by
+     * field alone.
+     *
+     * @param fieldId globally unique for the field, since it is the whole reconciliation key
+     */
+    public void updateRefsForSharedField(String fieldId, String content) {
+        Set<String> currentIds = extractImageIds(content);
+        List<InlineImageRef> existing = inlineImageRefRepository.findByFieldId(fieldId);
+        Set<String> existingIds = existing.stream()
+                .map(InlineImageRef::getImageId)
+                .collect(Collectors.toSet());
+
+        for (String imageId : currentIds) {
+            if (existingIds.contains(imageId)) continue;
+            // An id in the content with no image behind it is a dangling reference, not something
+            // to index — indexing it would create a ref that nothing can ever release.
+            inlineImageRepository.findById(imageId).ifPresent(image ->
+                    inlineImageRefRepository.save(InlineImageRef.builder()
+                            .imageId(imageId)
+                            .assessmentId(image.getAssessmentId())
+                            .fieldId(fieldId)
+                            .updatedAt(LocalDateTime.now())
+                            .build()));
+        }
+
+        for (InlineImageRef ref : existing) {
+            if (!currentIds.contains(ref.getImageId())) {
+                inlineImageRefRepository.delete(ref);
+            }
+        }
+    }
+
+    /**
      * Remove all reference records for an assessment (called on assessment delete).
      */
     public void deleteRefsForAssessment(String assessmentId) {

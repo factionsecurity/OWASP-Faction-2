@@ -25,6 +25,7 @@ public class NotebookService {
     private static final int MAX_DEPTH = 5;
 
     private final NotebookNodeRepository notebookNodeRepository;
+    private final InlineImageService inlineImageService;
     private final com.faction.clientportal.repository.AssessmentRepository assessmentRepository;
     private final UserRepository userRepository;
     private final StorageService storageService;
@@ -255,6 +256,7 @@ public class NotebookService {
                 .build();
 
         NotebookNode saved = notebookNodeRepository.save(node);
+        indexInlineImages(saved);
         log.info("Created notebook node {} under application {}", saved.getId(), applicationId);
 
         if (!content.isBlank()) {
@@ -300,6 +302,7 @@ public class NotebookService {
         node.setLastModifiedAt(LocalDateTime.now());
 
         NotebookNode saved = notebookNodeRepository.save(node);
+        indexInlineImages(saved);
         log.info("Updated notebook node {} by user {}", nodeId, userId);
 
         if (request.getContent() != null && !request.getContent().isBlank()) {
@@ -329,6 +332,8 @@ public class NotebookService {
     private void softDeleteRecursive(NotebookNode node) {
         node.setDeletedAt(LocalDateTime.now());
         notebookNodeRepository.save(node);
+        // A deleted note no longer holds its screenshots open; they age out with the next GC.
+        inlineImageService.updateRefsForSharedField(noteImageFieldKey(node.getId()), "");
 
         List<NotebookNode> children = notebookNodeRepository
                 .findByParentIdAndDeletedAtIsNullOrderByOrderIndexAsc(node.getId());
@@ -582,5 +587,22 @@ public class NotebookService {
     private String stripHtml(String html) {
         if (html == null) return "";
         return html.replaceAll("<[^>]+>", "").trim();
+    }
+
+    /**
+     * Records which inline images a note uses, so the nightly GC does not reap them.
+     *
+     * <p>{@link InlineImageGcJob} deletes any image nothing references once it is a day old, and
+     * notes were never indexed — every screenshot pasted into the notebook was deleted the
+     * following night. Shared-field indexing rather than the assessment-scoped kind: a note is
+     * anchored to an application, and its screenshots can come from more than one assessment.
+     */
+    private void indexInlineImages(NotebookNode node) {
+        if (node == null) return;
+        inlineImageService.updateRefsForSharedField(noteImageFieldKey(node.getId()), node.getContent());
+    }
+
+    private static String noteImageFieldKey(String nodeId) {
+        return "notebook/" + nodeId + "/content";
     }
 }

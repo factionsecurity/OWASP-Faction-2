@@ -196,6 +196,14 @@ public class AssessmentService {
             .build();
 
         Assessment savedAssessment = assessmentRepository.save(assessment);
+        // Field values supplied at creation were never indexed — only updateAssessment did it —
+        // so a screenshot in a field of an assessment nobody edited again was deleted by the GC
+        // a day later. The id only exists after the save, which is why this is not up with the
+        // validation.
+        for (Map.Entry<String, String> entry : fieldValues.entrySet()) {
+            inlineImageService.updateRefsForField(
+                    savedAssessment.getId(), entry.getKey(), entry.getValue());
+        }
         log.info("Created assessment: {} from template: {} (version: {})",
             savedAssessment.getName(), template.getName(), template.getVersion());
 
