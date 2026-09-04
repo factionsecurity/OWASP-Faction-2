@@ -188,6 +188,9 @@ public class NotificationRecipientResolver {
             if (comment == null || comment.getContent() == null) continue;
             for (String username : mentionQueueService.extractMentions(comment.getContent())) {
                 userRepository.findByUsername(username)
+                        // A disabled account still gets the mail — the lockout is temporary and the
+                        // thread is waiting for them. A deleted one does not.
+                        .filter(u -> u.getDeletedAt() == null)
                         .map(u -> recipient(u, EmailNotificationAudience.MENTIONED_USERS))
                         .ifPresent(r -> { if (r != null) out.add(r); });
             }

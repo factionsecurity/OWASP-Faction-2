@@ -60,6 +60,15 @@ public interface UserRepository extends JpaRepository<User, String> {
             String organizationId);
 
     /**
+     * The same audience, but keeping disabled accounts. Disabling is temporary — a password
+     * lockout, or an imported account nobody has activated yet — and the person is still a
+     * colleague you would name in a comment thread, so mentions include them and the notification
+     * lands when they are let back in. Deletion is not temporary: that account is somebody who has
+     * left, and nothing should offer them up again.
+     */
+    List<User> findByOrganizationIdAndIsInternalFalseAndDeletedAtIsNull(String organizationId);
+
+    /**
      * Ids of everyone holding a role / belonging to a team. Used to narrow the user list: the
      * membership lists are jsonb, so containment has to be a native query, and resolving to ids
      * first keeps the list query itself JPQL — which is what lets {@code Pageable} sorting work.

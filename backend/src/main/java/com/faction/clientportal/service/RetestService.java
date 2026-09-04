@@ -59,10 +59,20 @@ public class RetestService {
     /** Retest statuses that mean work is booked in — these require an assessor and a date window. */
     private static final Set<String> SCHEDULED_STATUSES = Set.of("SCHEDULED", "IN_PROGRESS");
 
+    /**
+     * Retest statuses that still count as live work on the finding. A finding may only carry one
+     * of these at a time: a second open retest splits the verification history in two, and both
+     * copies then race to write the vulnerability's status.
+     */
+    static final Set<String> OPEN_STATUSES = Set.of(RETEST_REQUESTED, "SCHEDULED", "IN_PROGRESS");
+
     static final String SCHEDULE_REQUIRES_ASSESSOR =
             "A retest cannot be scheduled without at least one assigned assessor";
     static final String SCHEDULE_REQUIRES_DATES =
             "A retest cannot be scheduled without both a start and an end date";
+    static final String DUPLICATE_OPEN_RETEST =
+            "A retest is already open for this vulnerability. Reschedule or cancel the existing "
+            + "retest instead of creating another.";
 
     private static boolean isEmpty(List<String> ids) {
         return ids == null || ids.isEmpty();
@@ -99,8 +109,21 @@ public class RetestService {
             throw new IllegalArgumentException(
                     "Provide both scheduledStartDate and scheduledEndDate, or neither to request a retest");
         }
-        if (!requested && isEmpty(request.getAssignedAssessorIds())) {
-            throw new IllegalArgumentException(SCHEDULE_REQUIRES_ASSESSOR);
+        if (!requested) {
+            // Requesting and scheduling are different acts. An app owner asks for a retest;
+            // picking who runs it and when is staff work, so a dated create is staff-only.
+            denyExternalUser(userId, "schedule a retest");
+            if (isEmpty(request.getAssignedAssessorIds())) {
+                throw new IllegalArgumentException(SCHEDULE_REQUIRES_ASSESSOR);
+            }
+        }
+
+        // One live retest per finding. Staff reach this from several places (the remediation
+        // queue, the vulnerability drawer, a bulk selection in the vulnerability list), so the
+        // check has to sit here rather than in any one of them.
+        if (!retestRepository.findByVulnerabilityIdAndStatusInAndDeletedAtIsNull(
+                vuln.getId(), OPEN_STATUSES).isEmpty()) {
+            throw new IllegalArgumentException(DUPLICATE_OPEN_RETEST);
         }
 
         Retest retest = Retest.builder()
@@ -233,6 +256,7 @@ public class RetestService {
     // ── Update ────────────────────────────────────────────────────────────────
 
     public RetestDto update(String id, UpdateRetestRequest request, String userId) {
+        denyExternalUser(userId, "change a retest");
         Retest retest = retestRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Retest not found: " + id));
 
@@ -352,6 +376,7 @@ public class RetestService {
     // ── Complete ──────────────────────────────────────────────────────────────
 
     public RetestDto complete(String id, CompleteRetestRequest request, String userId) {
+        denyExternalUser(userId, "verify a retest");
         Retest retest = retestRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Retest not found: " + id));
 
@@ -589,6 +614,25 @@ public class RetestService {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Fails the request when the caller is a customer-side account. Mirrors
+     * {@code VulnerabilityService.denyExternalUser} — see that javadoc for why the rule is the
+     * account flag rather than a permission, and why an unresolvable (machine) principal passes.
+     *
+     * <p>An external user's part in the retest lifecycle is asking for one and withdrawing it:
+     * {@link #create} without dates and {@link #cancel}. Scheduling, editing and verifying are
+     * staff work.
+     */
+    private void denyExternalUser(String username, String action) {
+        boolean external = userRepository.findByUsername(username)
+                .map(u -> Boolean.FALSE.equals(u.getIsInternal()))
+                .orElse(false);
+        if (external) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "External users cannot " + action);
+        }
+    }
 
     /** Moves the vulnerability to the given lifecycle status via the standard
      *  status-change path (system comment, closedAt bookkeeping, events). */

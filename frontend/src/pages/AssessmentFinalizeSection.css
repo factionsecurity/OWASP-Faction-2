@@ -269,3 +269,12 @@
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+/* Export buttons sit in a wrapping row, like .finalize-calendar-btns above — the card holds two
+   now but the list of formats is the kind that grows. */
+.finalize-export-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}

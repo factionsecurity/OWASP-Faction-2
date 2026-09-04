@@ -225,3 +225,14 @@
   align-items: center;
   gap: 0.6rem;
 }
+
+/* The disable/enable action on an account that is currently off. Unlike the other action
+   icons this carries its colour at rest: a disabled account is a state worth spotting while
+   scanning the table, not just on hover. Qualified with .btn-icon so it beats that rule's
+   background regardless of which stylesheet the bundler emits first; the hover rule is more
+   specific still, so .btn-icon-warning's amber fill survives. */
+.btn-icon.user-toggle--disabled {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.5);
+  background-color: rgba(245, 158, 11, 0.12);
+}

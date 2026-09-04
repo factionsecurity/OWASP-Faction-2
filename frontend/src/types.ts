@@ -14,6 +14,8 @@ export interface User {
   lastLogin?: string;
   disabledAt?: string;
   deletedAt?: string;
+  /** Consecutive failed sign-ins. Non-zero on a disabled account means a lockout, not an admin. */
+  failedLoginAttempts?: number;
   profileImageId?: string | null;
 }
 
@@ -147,6 +149,12 @@ export interface UpdateUserRequest {
   teamIds?: string[];
   isInternal: boolean;
   organizationId?: string;
+  /**
+   * Disable or re-enable the account. Omit to leave the current state alone — the server treats
+   * null as "no change", so an ordinary edit cannot silently re-enable someone. Re-enabling also
+   * clears the failed sign-in counter that a lockout left behind.
+   */
+  disabled?: boolean;
 }
 
 export interface Team {
@@ -969,6 +977,11 @@ export interface VulnerabilityContext {
 }
 
 export interface Vulnerability {
+  /**
+   * The finding this one was carried forward from, when it was added from another assessment's
+   * history. Null for a finding raised in place.
+   */
+  carriedForwardFromId?: string;
   /** Usernames following the discussion; everyone here is notified on a new comment. */
   subscribers?: string[];
   id: string;

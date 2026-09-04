@@ -1041,6 +1041,82 @@ class UserControllerTest extends TestContainersConfig {
                 .andExpect(jsonPath("$.data[*].username", not(hasItem("betamember"))));
     }
 
+    // ==================== DISABLE / RE-ENABLE ====================
+
+    /** A full-replace update body for the given user, with the extra fields appended verbatim. */
+    private String updateBodyFor(User user, String extraJson) {
+        return String.format("""
+                {
+                    "username": "%s",
+                    "email": "%s",
+                    "firstName": "%s",
+                    "lastName": "%s",
+                    "loginOption": "NATIVE",
+                    "roleIds": ["%s"],
+                    "teamIds": [],
+                    "isInternal": true%s
+                }
+                """, user.getUsername(), user.getEmail(), user.getFirstName(), user.getLastName(),
+                pentesterRole.getId(), extraJson);
+    }
+
+    @Test
+    void updateUser_withDisabledTrue_switchesTheAccountOff() throws Exception {
+        String token = generateToken(usersAllUser, List.of("users:edit:all"));
+
+        mockMvc.perform(put("/api/v1/users/" + teamBetaMemberUser.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(updateBodyFor(teamBetaMemberUser, ",\n    \"disabled\": true")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.disabledAt").isNotEmpty());
+
+        assertThat(userRepository.findById(teamBetaMemberUser.getId()).orElseThrow().getDisabledAt())
+                .isNotNull();
+        // Disabling is not deleting: the account is still there, and still listed.
+        assertThat(userRepository.findById(teamBetaMemberUser.getId()).orElseThrow().getDeletedAt())
+                .isNull();
+    }
+
+    @Test
+    void updateUser_withDisabledFalse_reEnablesAndClearsTheLockoutCounter() throws Exception {
+        // Standing in for a password lockout: disabled, with the failed count that caused it.
+        User locked = userRepository.findById(teamBetaMemberUser.getId()).orElseThrow();
+        locked.setDisabledAt(LocalDateTime.now());
+        locked.setFailedLoginAttempts(5);
+        userRepository.save(locked);
+
+        String token = generateToken(usersAllUser, List.of("users:edit:all"));
+        mockMvc.perform(put("/api/v1/users/" + locked.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(updateBodyFor(locked, ",\n    \"disabled\": false")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.disabledAt").doesNotExist());
+
+        User reEnabled = userRepository.findById(locked.getId()).orElseThrow();
+        assertThat(reEnabled.getDisabledAt()).isNull();
+        // Without this they would be locked straight back out on the next typo.
+        assertThat(reEnabled.getFailedLoginAttempts()).isZero();
+    }
+
+    @Test
+    void updateUser_omittingDisabled_leavesADisabledAccountDisabled() throws Exception {
+        User locked = userRepository.findById(teamBetaMemberUser.getId()).orElseThrow();
+        locked.setDisabledAt(LocalDateTime.now());
+        userRepository.save(locked);
+
+        // An ordinary edit — renaming someone — must not quietly let them back in.
+        String token = generateToken(usersAllUser, List.of("users:edit:all"));
+        mockMvc.perform(put("/api/v1/users/" + locked.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(updateBodyFor(locked, "")))
+                .andExpect(status().isOk());
+
+        assertThat(userRepository.findById(locked.getId()).orElseThrow().getDisabledAt()).isNotNull();
+    }
+
     // ==================== HELPER METHODS ====================
 
     private String generateToken(User user, List<String> permissions) {

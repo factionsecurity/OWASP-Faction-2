@@ -31,6 +31,7 @@ import ThreadSubscribers from '../components/ThreadSubscribers';
 import DataTable, { type Column, type PaginationInfo, type SortState } from '../components/DataTable';
 import { applyClientSort, type SortAccessors } from '../utils/tableSort';
 import VulnerabilityDetailDrawer from '../components/VulnerabilityDetailDrawer';
+import CommentSearch, { useCommentSearch } from '../components/CommentSearch';
 import VulnSummaryPanel from '../components/VulnSummaryPanel';
 import ReportPreviewDrawer from '../components/ReportPreviewDrawer';
 import SurveyDrawer from '../components/SurveyDrawer';
@@ -278,6 +279,9 @@ export default function ApplicationEdit() {
 
   // Chat
   const [comments, setComments] = useState<ApplicationComment[]>([]);
+  // Derived, not stored: the 20s poll in useCommentPolling swaps the whole array out, and an
+  // active search has to survive that.
+  const commentSearch = useCommentSearch(comments);
   const [subscribers, setSubscribers] = useState<string[]>([]);
   const [commentDraft, setCommentDraft] = useState('');
   const [composeExpanded, setComposeExpanded] = useState(false);
@@ -1485,11 +1489,22 @@ export default function ApplicationEdit() {
               )}
             </div>
           </div>
+          {comments.length > 1 && (
+            <CommentSearch
+              value={commentSearch.query}
+              onChange={commentSearch.setQuery}
+              matchCount={commentSearch.filtered.length}
+              totalCount={comments.length}
+            />
+          )}
           <div className="app-detail-chat-list">
             {comments.length === 0 && (
               <p className="app-chat-empty">No messages yet — start the conversation with the app team.</p>
             )}
-            {[...comments]
+            {comments.length > 0 && commentSearch.filtered.length === 0 && (
+              <p className="comment-search-empty">No messages match “{commentSearch.query.trim()}”.</p>
+            )}
+            {[...commentSearch.filtered]
               .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
               .map((c) => {
                 const displayName = c.authorName || c.authorId;

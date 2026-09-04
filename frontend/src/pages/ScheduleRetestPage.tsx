@@ -12,6 +12,9 @@ import AssessmentCalendar from '../components/AssessmentCalendar';
 import Page from '../components/Page';
 import './ScheduleRetestPage.css';
 
+/** Mirrors RetestService.OPEN_STATUSES — a finding may carry only one retest in these. */
+const OPEN_RETEST_STATUSES = ['REQUESTED', 'SCHEDULED', 'IN_PROGRESS'];
+
 const RETEST_STATUS_COLORS: Record<string, string> = {
   RETEST_SCHEDULED: '#0891b2',
   RETEST_IN_PROGRESS: '#7c3aed',
@@ -97,6 +100,8 @@ export default function ScheduleRetestPage() {
   const [error, setError] = useState('');
 
   const [previewVuln, setPreviewVuln] = useState<Vulnerability | null>(null);
+  /** Retests already open on the selected findings — one per finding is the server's rule. */
+  const [blockingRetests, setBlockingRetests] = useState<Retest[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [teamAssessments, setTeamAssessments] = useState<Assessment[]>([]);
@@ -128,11 +133,14 @@ export default function ScheduleRetestPage() {
     const calStart = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
     const calEnd = new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
     try {
-      const [usersRes, asmtRes, teamRes, retestsRes] = await Promise.all([
+      const [usersRes, asmtRes, teamRes, retestsRes, openRetestsRes] = await Promise.all([
         usersApi.getAll(0, 500).catch(() => ({ data: [] as User[], success: false })),
         assessmentId ? assessmentsApi.getById(assessmentId).catch(() => null) : Promise.resolve(null),
         assessmentsApi.getCalendarView(calStart, calEnd).catch(() => ({ data: [] as Assessment[], success: false })),
         retestApi.getCalendar(calStart, calEnd).catch(() => ({ data: [] as Retest[], success: false })),
+        assessmentId
+          ? retestApi.getByAssessment(assessmentId).catch(() => ({ data: [] as Retest[], success: false }))
+          : Promise.resolve(null),
       ]);
 
       if (usersRes.success && usersRes.data) {
@@ -152,9 +160,25 @@ export default function ScheduleRetestPage() {
       if (retestsRes.success && retestsRes.data) {
         setCalendarRetests(Array.isArray(retestsRes.data) ? retestsRes.data : []);
       }
+
+      if (openRetestsRes && openRetestsRes.success && openRetestsRes.data) {
+        applyBlockingRetests(openRetestsRes.data);
+      }
     } catch {
       // ignore
     }
+  };
+
+  /**
+   * The server allows one live retest per finding. Catching that here keeps a multi-vulnerability
+   * selection from failing half-way through, and names the retest already in the way.
+   */
+  const applyBlockingRetests = (assessmentRetests: Retest[]) => {
+    const selected = new Set(vulnerabilityIds);
+    setBlockingRetests(assessmentRetests.filter(r =>
+      selected.has(r.vulnerabilityId)
+      && r.id !== retestId
+      && OPEN_RETEST_STATUSES.includes(r.status)));
   };
 
   const checkConflicts = async () => {
@@ -182,6 +206,12 @@ export default function ScheduleRetestPage() {
     // retest, which app owners do from the vulnerability drawer, still needs neither.)
     if (assessorIds.length === 0) {
       setError('Please assign at least one assessor before scheduling.');
+      return;
+    }
+
+    if (!isEditMode && blockingRetests.length > 0) {
+      setError('One of the selected findings already has an open retest. Reschedule or cancel it '
+        + 'instead of creating another.');
       return;
     }
 
@@ -216,8 +246,19 @@ export default function ScheduleRetestPage() {
         );
         navigate('/retests');
       }
-    } catch {
-      setError(isEditMode ? 'Failed to update retest. Please try again.' : 'Failed to schedule retest(s). Please try again.');
+    } catch (err: any) {
+      // The server enforces one open retest per finding; show what it said rather than a
+      // generic failure, since the fix is to go and reschedule the existing one.
+      setError(err?.response?.data?.message
+        || (isEditMode ? 'Failed to update retest. Please try again.' : 'Failed to schedule retest(s). Please try again.'));
+      // A multi-vulnerability schedule can fail part-way, leaving some findings retested and some
+      // not. Re-read so a retry sees which ones are now spoken for.
+      if (!isEditMode && assessmentId) {
+        try {
+          const res = await retestApi.getByAssessment(assessmentId);
+          if (res.success && res.data) applyBlockingRetests(res.data);
+        } catch { /* the banner already says what went wrong */ }
+      }
     } finally {
       setSubmitting(false);
     }
@@ -287,6 +328,33 @@ export default function ScheduleRetestPage() {
                     </p>
                   )}
                 </div>
+
+                {!isEditMode && blockingRetests.length > 0 && (
+                  <div className="conflict-warning" style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}>
+                    <strong>
+                      {blockingRetests.length === 1
+                        ? 'This finding already has an open retest:'
+                        : 'These findings already have an open retest:'}
+                    </strong>
+                    <ul style={{ margin: '0.5rem 0 0 0', paddingLeft: '1.25rem' }}>
+                      {blockingRetests.map(r => (
+                        <li key={r.id}>
+                          <button
+                            type="button"
+                            className="schedule-retest-existing-link"
+                            onClick={() => navigate(`/retests/${r.id}`)}
+                          >
+                            {r.vulnerabilityName || r.vulnerabilityId}
+                          </button>
+                          {' — '}{r.status.replace('_', ' ').toLowerCase()}
+                        </li>
+                      ))}
+                    </ul>
+                    <p style={{ margin: '0.5rem 0 0 0' }}>
+                      Reschedule or cancel the existing retest instead of creating another.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="form-section">
@@ -366,7 +434,8 @@ export default function ScheduleRetestPage() {
               <button
                 type="submit"
                 className="schedule-retest-submit-btn"
-                disabled={submitting || !startDate || !endDate || assessorIds.length === 0}
+                disabled={submitting || !startDate || !endDate || assessorIds.length === 0
+                  || (!isEditMode && blockingRetests.length > 0)}
               >
                 {submitting
                   ? (isEditMode ? 'Saving…' : 'Scheduling…')

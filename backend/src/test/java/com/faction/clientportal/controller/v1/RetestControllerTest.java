@@ -444,6 +444,145 @@ class RetestControllerTest extends TestContainersConfig {
                 .andExpect(status().isCreated());
     }
 
+    // ── One open retest per finding ──────────────────────────────────────────
+
+    @Test
+    void schedulingASecondRetest_whileOneIsScheduled_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value(org.hamcrest.Matchers.containsString("already open")));
+
+        // The rejected create left nothing behind.
+        assertThat(retestRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void schedulingARetest_whileOneIsInProgress_returns400() throws Exception {
+        String createBody = mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String retestId = objectMapper.readTree(createBody).at("/data/id").asText();
+
+        mockMvc.perform(patch("/api/v1/retests/{id}", retestId)
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("status", "IN_PROGRESS"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void schedulingARetest_overAnOutstandingRequest_returns400() throws Exception {
+        // The app owner's request is the retest. Staff schedule that record (PATCH) rather than
+        // creating a second one alongside it, which would leave the request stuck as REQUESTED.
+        mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("vulnerabilityId", testVuln.getId()))))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isBadRequest());
+
+        assertThat(retestRepository.findAll()).hasSize(1);
+        assertThat(retestRepository.findAll().get(0).getStatus()).isEqualTo("REQUESTED");
+    }
+
+    @Test
+    void requestingASecondRetest_whileOneIsOpen_returns400() throws Exception {
+        // Same rule from the app owner's side — the drawer disables the button, but the API is
+        // reachable directly.
+        for (int i = 0; i < 2; i++) {
+            var result = mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                            .header("Authorization", "Bearer " + jwtToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    Map.of("vulnerabilityId", testVuln.getId()))));
+            if (i == 0) {
+                result.andExpect(status().isCreated());
+            } else {
+                result.andExpect(status().isBadRequest());
+            }
+        }
+
+        assertThat(retestRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void aCompletedRetestDoesNotBlockTheNextOne() throws Exception {
+        // A failed retest is the normal reason to schedule another one — it must not be blocked.
+        String createBody = mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String retestId = objectMapper.readTree(createBody).at("/data/id").asText();
+
+        mockMvc.perform(post("/api/v1/retests/{id}/complete", retestId)
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("result", "FAIL"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void anOpenRetestOnlyBlocksItsOwnFinding() throws Exception {
+        Vulnerability other = vulnerabilityRepository.save(Vulnerability.builder()
+                .name("Reflected XSS")
+                .severity(VulnerabilitySeverity.MEDIUM)
+                .assessmentId(testAssessment.getId())
+                .order(1)
+                .openedAt(LocalDateTime.now())
+                .status("Open")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "vulnerabilityId", other.getId(),
+                                "scheduledStartDate", "2026-04-01T09:00:00",
+                                "scheduledEndDate", "2026-04-05T17:00:00",
+                                "assignedAssessorIds", List.of(userId)))))
+                .andExpect(status().isCreated());
+    }
+
     @Test
     void requestRetest_withoutDates_createsRequestedAndLeavesVulnStatus() throws Exception {
         // An app-owner request has no dates: it becomes REQUESTED and the
@@ -732,6 +871,14 @@ class RetestControllerTest extends TestContainersConfig {
             assertThat(updated.getStatus())
                     .as("retest %s should move the vulnerability to %s", tc.getKey(), tc.getValue())
                     .isEqualTo(tc.getValue());
+
+            // A finding carries one open retest at a time, so retire this one before the next
+            // iteration schedules another. IN_PROGRESS is the only case still open here.
+            Retest done = retestRepository.findById(retestId).orElseThrow();
+            if (!"PASSED".equals(done.getStatus()) && !"FAILED".equals(done.getStatus())) {
+                done.setStatus("CANCELLED");
+                retestRepository.save(done);
+            }
         }
     }
 

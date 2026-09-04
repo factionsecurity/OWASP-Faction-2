@@ -102,6 +102,79 @@ class AuthServiceTest extends TestContainersConfig {
                 .hasMessageContaining("Account is disabled");
     }
 
+    // ── Password lockout ────────────────────────────────────────────────────
+    // faction.security.max-failed-login-attempts is unset in application-test.yml, so the
+    // default of 5 applies.
+
+    private static final int LOCKOUT_AT = 5;
+
+    private void failLogin(int times) {
+        for (int i = 0; i < times; i++) {
+            assertThatThrownBy(() -> authService.login("testuser", "wrongpass"))
+                    .isInstanceOf(BadCredentialsException.class);
+        }
+    }
+
+    @Test
+    void reachingTheFailedAttemptLimit_disablesTheAccount() {
+        failLogin(LOCKOUT_AT);
+
+        User locked = userRepository.findByUsername("testuser").orElseThrow();
+        assertThat(locked.getDisabledAt()).isNotNull();
+        assertThat(locked.getFailedLoginAttempts()).isEqualTo(LOCKOUT_AT);
+
+        // And the right password no longer gets them in — only an admin can lift it.
+        assertThatThrownBy(() -> authService.login("testuser", "testpass"))
+                .isInstanceOf(BadCredentialsException.class)
+                .hasMessageContaining("Account is disabled");
+    }
+
+    @Test
+    void oneAttemptShortOfTheLimit_leavesTheAccountUsable() {
+        failLogin(LOCKOUT_AT - 1);
+
+        assertThat(userRepository.findByUsername("testuser").orElseThrow().getDisabledAt()).isNull();
+        assertThat(authService.login("testuser", "testpass")).isNotNull();
+    }
+
+    @Test
+    void aSuccessfulLoginResetsTheCount_soTheLimitMeansConsecutiveFailures() {
+        failLogin(LOCKOUT_AT - 1);
+        authService.login("testuser", "testpass");
+        assertThat(userRepository.findByUsername("testuser").orElseThrow().getFailedLoginAttempts()).isZero();
+
+        // Starting over: the next few misses must not tip an already-forgiven run over the edge.
+        failLogin(LOCKOUT_AT - 1);
+        assertThat(userRepository.findByUsername("testuser").orElseThrow().getDisabledAt()).isNull();
+    }
+
+    @Test
+    void failedAttemptsAgainstAnAlreadyDisabledAccountAreNotCounted() {
+        // An admin switched this one off by hand; the counter is what tells them apart from a
+        // lockout, so guessing at a disabled account must not manufacture one.
+        testUser.setDisabledAt(LocalDateTime.now());
+        userRepository.save(testUser);
+
+        failLogin(3);
+
+        User after = userRepository.findByUsername("testuser").orElseThrow();
+        assertThat(after.getFailedLoginAttempts()).isZero();
+    }
+
+    @Test
+    void reEnablingClearsTheLockoutAndTheCounter() {
+        failLogin(LOCKOUT_AT);
+
+        // What the Users page's re-enable does: clear disabledAt and the failed count together.
+        // Without the second part they would be locked out again on the next typo.
+        User locked = userRepository.findByUsername("testuser").orElseThrow();
+        locked.setDisabledAt(null);
+        locked.setFailedLoginAttempts(0);
+        userRepository.save(locked);
+
+        assertThat(authService.login("testuser", "testpass")).isNotNull();
+    }
+
     @Test
     void getPermissions_ReturnsUserPermissions() {
         List<String> permissions = authService.getPermissions(testUser);

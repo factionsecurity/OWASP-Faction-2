@@ -42,8 +42,10 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
   // hold no vulnerabilities:edit:* — the API rejects their writes, so the panel must not
   // offer status, field or exception editing in the first place. An editable control that
   // silently fails to save is worse than a read-only one.
-  const { permissions: userPerms } = usePermissions();
-  const canEditVulns = userPerms.canEditVulnerabilities;
+  const { permissions: userPerms, isExternal } = usePermissions();
+  // External accounts never edit a finding, whatever their role was granted — the API refuses
+  // it on the account flag, so the panel must open read-only for them too.
+  const canEditVulns = userPerms.canEditVulnerabilities && !isExternal;
 
   const [vulns, setVulns] = useState<VulnerabilityListItem[]>([]);
   const [remediationStages, setRemediationStages] = useState<RemediationStage[]>([]);

@@ -89,6 +89,57 @@ class MentionableUserServiceTest extends TestContainersConfig {
         assertThat(find(null, null, null, externalAuth("me"))).isEmpty();
     }
 
+    // ── Disabled vs deleted ─────────────────────────────────────────────────────
+    // Two different states. Disabling is temporary — a password lockout, or an imported account
+    // nobody has activated — and the person is still a colleague, so the thread can name them and
+    // the notification lands when an admin lets them back in. Deleting is for someone who has
+    // left, and nothing should offer them up again.
+
+    @Test
+    void aDisabledColleagueIsStillMentionable() {
+        external("me", orgA);
+        disable(external("locked-out", orgA));
+
+        assertThat(usernames(find(null, null, null, externalAuth("me")))).containsExactly("locked-out");
+    }
+
+    @Test
+    void aDeletedColleagueIsNot() {
+        external("me", orgA);
+        softDelete(external("departed", orgA));
+
+        assertThat(find(null, null, null, externalAuth("me"))).isEmpty();
+    }
+
+    @Test
+    void aDeletedUserIsNotOfferedEvenFromTheThreadTheyAreOn() {
+        // The directory is not the only route in — a subscriber or remediation owner is added by
+        // username, so the rule has to hold on the way out, not just on the way in.
+        User me = external("me", orgA);
+        User owner = softDelete(internal("departed-owner"));
+        softDelete(internal("departed-subscriber"));
+        internal("current-subscriber");
+        String vulnId = vulnerabilityOn(ownedApp(orgA, me), owner.getId(),
+                List.of("departed-subscriber", "current-subscriber"));
+
+        assertThat(usernames(find(null, vulnId, null, externalAuth("me"))))
+                .containsExactly("current-subscriber");
+    }
+
+    @Test
+    void staffDoNotSeeDeletedAccountsInTheDirectoryEither() {
+        internal("staff");
+        internal("still-here");
+        softDelete(internal("departed"));
+        disable(internal("locked-out"));
+
+        var result = usernames(find(null, null, null,
+                auth("staff", Permission.USERS_READ_ALL.getPermission())));
+
+        assertThat(result).contains("still-here", "locked-out");
+        assertThat(result).doesNotContain("departed");
+    }
+
     // ── The conversation ────────────────────────────────────────────────────────
 
     @Test
@@ -184,6 +235,18 @@ class MentionableUserServiceTest extends TestContainersConfig {
 
     private User internal(String username) {
         return userRepository.save(baseUser(username).isInternal(true).build());
+    }
+
+    /** Temporarily off — a lockout or an unactivated import. Still a colleague. */
+    private User disable(User user) {
+        user.setDisabledAt(LocalDateTime.now());
+        return userRepository.save(user);
+    }
+
+    /** Gone from the company. */
+    private User softDelete(User user) {
+        user.setDeletedAt(LocalDateTime.now());
+        return userRepository.save(user);
     }
 
     private User.UserBuilder baseUser(String username) {

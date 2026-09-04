@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
-import { Edit2, Trash2, Plus, X, Search, Mail, Check } from 'lucide-react';
+import { Edit2, Trash2, Plus, X, Search, Mail, Check, UserX, UserCheck } from 'lucide-react';
 import { usersApi, rolesApi, teamsApi, authApi, organizationsApi, applicationsApi, azureUsersApi } from '../api';
 import type { User, Role, Team, Organization, Application, CreateUserRequest, UpdateUserRequest, AzureDirectoryUser } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
@@ -65,6 +65,11 @@ export default function Users() {
   const [azureOpen, setAzureOpen] = useState(false);
   const appliedAzureEmail = useRef('');
   const [confirmResetUser, setConfirmResetUser] = useState<User | null>(null);
+  // Disable / re-enable, and delete — both confirmed, both acting on one row.
+  const [confirmToggleUser, setConfirmToggleUser] = useState<User | null>(null);
+  const [togglingDisabled, setTogglingDisabled] = useState(false);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -283,14 +288,47 @@ export default function Users() {
     }
   };
 
-  const handleDelete = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user?')) return;
-
+  /**
+   * Flip the account's disabled state. The update endpoint is a full replace, so the row's own
+   * values are echoed back with only `disabled` changed — anything left out would be wiped.
+   */
+  const handleToggleDisabled = async () => {
+    const user = confirmToggleUser;
+    if (!user) return;
+    setTogglingDisabled(true);
     try {
-      await usersApi.delete(userId);
+      await usersApi.update(user.id, {
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        loginOption: user.loginOption,
+        roleIds: user.roleIds,
+        teamIds: user.teamIds || [],
+        isInternal: user.isInternal,
+        organizationId: user.organizationId || '',
+        disabled: !user.disabledAt,
+      });
+      setConfirmToggleUser(null);
       await loadUsers();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to delete user');
+      setError(err.response?.data?.message || 'Failed to update the account');
+    } finally {
+      setTogglingDisabled(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDeleteUser) return;
+    setDeletingUser(true);
+    try {
+      await usersApi.delete(confirmDeleteUser.id);
+      setConfirmDeleteUser(null);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to delete user');
+    } finally {
+      setDeletingUser(false);
     }
   };
 
@@ -418,9 +456,21 @@ export default function Users() {
     });
   };
 
+  /** "First Last (username)", for confirmation copy that has to name exactly one person. */
+  const userLabel = (user: User | null) =>
+    user ? `${user.firstName} ${user.lastName} (${user.username})` : '';
+
   const getStatusBadge = (user: User) => {
     if (user.deletedAt) return <Badge variant="danger">Deleted</Badge>;
-    if (user.disabledAt) return <Badge variant="warning">Disabled</Badge>;
+    if (user.disabledAt) {
+      // Failed attempts survive the lockout precisely so this can say what happened; an admin
+      // who switched the account off by hand leaves the counter at 0.
+      const attempts = user.failedLoginAttempts ?? 0;
+      const why = attempts > 0
+        ? `Locked out after ${attempts} failed sign-in attempt${attempts === 1 ? '' : 's'}`
+        : 'Disabled by an administrator';
+      return <span title={why}><Badge variant="warning">Disabled</Badge></span>;
+    }
     return <Badge variant="success">Active</Badge>;
   };
 
@@ -545,7 +595,7 @@ export default function Users() {
     },
     {
       header: 'Actions',
-      width: '140px',
+      width: '170px',
       render: (user) => (
         <ActionButtons>
           {user.loginOption === 'NATIVE' && (
@@ -562,11 +612,25 @@ export default function Users() {
             title="Edit"
             onClick={() => handleEdit(user)}
           />
+          {/* Deleted accounts are shown badged so an admin can see them, but there is nothing
+              left to switch on or off — the disable toggle is for live accounts. */}
+          {!user.deletedAt && (
+            <IconButton
+              icon={user.disabledAt ? UserCheck : UserX}
+              variant="warning"
+              // Amber at rest on a disabled account, so the row reads as "off" from the action
+              // column too and not only from the Status badge. Active rows stay neutral —
+              // colouring both would make the yellow mean nothing.
+              className={user.disabledAt ? 'user-toggle--disabled' : ''}
+              title={user.disabledAt ? 'Re-enable account' : 'Disable account'}
+              onClick={() => setConfirmToggleUser(user)}
+            />
+          )}
           <IconButton
             icon={Trash2}
             variant="delete"
             title="Delete"
-            onClick={() => handleDelete(user.id)}
+            onClick={() => setConfirmDeleteUser(user)}
           />
         </ActionButtons>
       ),
@@ -982,6 +1046,30 @@ export default function Users() {
         confirmText="Send Reset Link"
         variant="info"
         isLoading={sendingReset}
+      />
+
+      <ConfirmDialog
+        isOpen={!!confirmToggleUser}
+        onClose={() => setConfirmToggleUser(null)}
+        onConfirm={handleToggleDisabled}
+        title={confirmToggleUser?.disabledAt ? 'Re-enable Account' : 'Disable Account'}
+        message={confirmToggleUser?.disabledAt
+          ? `${userLabel(confirmToggleUser)} will be able to sign in again, and any API keys they own start working. This also clears the failed sign-in counter, so an old lockout won't lock them straight back out.`
+          : `${userLabel(confirmToggleUser)} will not be able to sign in and their API keys stop working. They keep their history and can still be mentioned in comments — re-enable them here at any time.`}
+        confirmText={confirmToggleUser?.disabledAt ? 'Re-enable' : 'Disable'}
+        variant={confirmToggleUser?.disabledAt ? 'info' : 'warning'}
+        isLoading={togglingDisabled}
+      />
+
+      <ConfirmDialog
+        isOpen={!!confirmDeleteUser}
+        onClose={() => setConfirmDeleteUser(null)}
+        onConfirm={handleDelete}
+        title="Delete User"
+        message={`Delete ${userLabel(confirmDeleteUser)}? Deletion is for someone who has left — they drop out of mentions and every picker for good. If this is a password lockout or an account that isn't ready yet, disable them instead.`}
+        confirmText="Delete"
+        variant="danger"
+        isLoading={deletingUser}
       />
     </Page>
   );

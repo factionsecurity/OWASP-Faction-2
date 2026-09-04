@@ -141,3 +141,14 @@
     position: static;
   }
 }
+
+/* Link out to the retest already open on a selected finding. */
+.schedule-retest-existing-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

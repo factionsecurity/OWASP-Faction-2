@@ -1,0 +1,88 @@
+/* Search box for a comment thread. Deliberately a smaller sibling of .search-container in
+   DataTable.css — same shape and focus behaviour, sized for a drawer column rather than a page
+   header, so the two read as one control at two scales. */
+
+.comment-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.comment-search-box {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.25rem 0.35rem 0.25rem 0.55rem;
+  background-color: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+
+.comment-search-box:focus-within {
+  border-color: var(--primary-color);
+  background-color: var(--primary-bg);
+}
+
+.comment-search-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.comment-search-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 1.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+}
+
+.comment-search-input:focus {
+  /* The box shows focus via :focus-within; the global input:focus ring would draw a second
+     border inside it. Same reason as .dt-search-input. */
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.comment-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.comment-search-clear:hover {
+  color: var(--text-primary);
+  background-color: var(--tertiary-bg);
+}
+
+.comment-search-count {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Shown in place of the thread when a search matches nothing. Mirrors the empty-thread copy
+   each page already has, rather than introducing a third style of empty state. */
+.comment-search-empty {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 1rem 0;
+}

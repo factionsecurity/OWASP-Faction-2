@@ -13,6 +13,10 @@ import java.util.Optional;
 
 public interface RetestRepository extends JpaRepository<Retest, String> {
     List<Retest> findByVulnerabilityIdAndDeletedAtIsNull(String vulnerabilityId);
+
+    /** The still-open retests on a finding — used to refuse scheduling a second one alongside. */
+    List<Retest> findByVulnerabilityIdAndStatusInAndDeletedAtIsNull(
+            String vulnerabilityId, Collection<String> statuses);
     List<Retest> findByAssessmentIdAndDeletedAtIsNull(String assessmentId);
     Optional<Retest> findByIdAndDeletedAtIsNull(String id);
     @Query(value = "SELECT * FROM retests WHERE assigned_assessor_ids @> CAST(CONCAT('[\"', ?1, '\"]') AS jsonb) AND deleted_at IS NULL", nativeQuery = true)
