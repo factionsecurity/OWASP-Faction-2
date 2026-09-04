@@ -1590,6 +1590,20 @@ public class AssessmentService {
      * returned stream and must close it.
      */
     public StorageService.StoredFile openFile(String assessmentId, String fileId) {
+        return openFile(assessmentId, fileId, null);
+    }
+
+    /**
+     * An engagement's attachments — scoping documents, raw tool output, screenshots.
+     *
+     * <p>The scope check is the tenant boundary: the permissions on this endpoint include the
+     * external {@code :org} and {@code :owned} reads, and the path is on the media-cookie
+     * allowlist, so without it a plain link with a foreign id served another customer's evidence.
+     * ReportController has done this correctly all along; this path did not.
+     */
+    public StorageService.StoredFile openFile(
+            String assessmentId, String fileId, Authentication authentication) {
+        accessScopeService.checkAssessmentAccess(authentication, assessmentId);
         Assessment assessment = assessmentRepository.findByIdAndDeletedAtIsNull(assessmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment not found: " + assessmentId));
 

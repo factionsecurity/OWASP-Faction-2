@@ -41,6 +41,21 @@ public class SubOrganizationService {
     private final AccessScopeService accessScopeService;
 
     public List<SubOrganizationDto> listForOrganization(String organizationId) {
+        return listForOrganization(organizationId, null);
+    }
+
+    /**
+     * A customer's internal divisions and how many applications sit under each — an org chart and
+     * an estate-size disclosure. Confirming the parent organization exists is not a scope check:
+     * this endpoint accepts the external {@code :org} and {@code :owned} reads, so without
+     * resolving what the caller may actually see, any id returned another customer's structure.
+     * The cross-organization variant below has always filtered; this one did not.
+     */
+    public List<SubOrganizationDto> listForOrganization(String organizationId, Authentication authentication) {
+        if (authentication != null && !visibleOrganizationIds(authentication).contains(organizationId)) {
+            throw new ResourceNotFoundException("Organization not found with id: " + organizationId);
+        }
+
         requireOrganization(organizationId);
         return subOrganizationRepository.findByOrganizationIdOrderByNameAsc(organizationId).stream()
                 .map(sub -> SubOrganizationDto.fromEntity(

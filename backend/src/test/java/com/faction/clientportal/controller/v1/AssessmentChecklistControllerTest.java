@@ -34,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AssessmentChecklistControllerTest extends TestContainersConfig {
 
     @Autowired private MockMvc mockMvc;
+    @Autowired private com.faction.clientportal.repository.AssessmentRepository assessmentRepository;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private ChecklistTemplateRepository checklistTemplateRepository;
     @Autowired private AssessmentChecklistRepository assessmentChecklistRepository;
@@ -52,6 +53,7 @@ class AssessmentChecklistControllerTest extends TestContainersConfig {
     void setUp() {
         assessmentChecklistRepository.deleteAll();
         checklistTemplateRepository.deleteAll();
+        assessmentRepository.deleteAll();
         userRepository.deleteAll();
         roleRepository.deleteAll();
 
@@ -70,7 +72,13 @@ class AssessmentChecklistControllerTest extends TestContainersConfig {
         editToken   = jwtService.generateToken(user.getUsername(), List.of(new SimpleGrantedAuthority("assessments:edit:all")));
         noPermToken = jwtService.generateToken(user.getUsername(), List.of(new SimpleGrantedAuthority("assessments:read:team")));
 
-        assessmentId = UUID.randomUUID().toString();
+        // A real assessment row, not a bare uuid: the endpoint is scoped now, and a scope check
+        // on an assessment that does not exist is denied by design — so that the endpoint cannot
+        // be used to find out which assessment ids are real.
+        assessmentId = assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
+                .name("Checklist host").applicationId("app-1").organizationId("org-1")
+                .assessmentTypeId("type-1").status("IN_PROGRESS")
+                .createdAt(LocalDateTime.now()).build()).getId();
 
         savedTemplate = checklistTemplateRepository.save(ChecklistTemplate.builder()
                 .name("Test Checklist")
@@ -156,16 +164,26 @@ class AssessmentChecklistControllerTest extends TestContainersConfig {
                 .build());
 
         mockMvc.perform(get("/api/v1/assessments/" + assessmentId + "/checklists")
-                        .header("Authorization", "Bearer " + noPermToken))
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].id").value(checklist.getId()));
     }
 
     @Test
-    void getByAssessment_EmptyAssessment_ReturnsEmptyList() throws Exception {
+    void getByAssessment_OutOfScopeCaller_IsRefused() throws Exception {
+        // noPermToken is assessments:read:team on a user in no team, so this assessment is not
+        // theirs to see. This endpoint used to serve a checklist — the tester's methodology,
+        // results and notes — to any authenticated caller who knew an assessment id.
         mockMvc.perform(get("/api/v1/assessments/" + assessmentId + "/checklists")
                         .header("Authorization", "Bearer " + noPermToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getByAssessment_EmptyAssessment_ReturnsEmptyList() throws Exception {
+        mockMvc.perform(get("/api/v1/assessments/" + assessmentId + "/checklists")
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(0)));
     }

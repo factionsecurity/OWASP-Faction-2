@@ -33,9 +33,10 @@ public class AssessmentChecklistController {
     @AuthenticatedOnly
     @Operation(summary = "Get checklists for an assessment")
     public ResponseEntity<JsonApiResponse<List<AssessmentChecklistDto>>> getByAssessment(
-            @PathVariable String assessmentId) {
+            @PathVariable String assessmentId,
+            Authentication authentication) {
         return ResponseUtil.success("Assessment checklists retrieved successfully",
-                service.getByAssessment(assessmentId));
+                service.getByAssessment(assessmentId, authentication));
     }
 
     @PostMapping

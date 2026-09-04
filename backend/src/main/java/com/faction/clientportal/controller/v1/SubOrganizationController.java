@@ -46,9 +46,10 @@ public class SubOrganizationController {
             @ApiResponse(responseCode = "404", description = "Organization not found"),
         }
     )
-    public ResponseEntity<JsonApiResponse<List<SubOrganizationDto>>> list(@PathVariable String organizationId) {
+    public ResponseEntity<JsonApiResponse<List<SubOrganizationDto>>> list(@PathVariable String organizationId,
+            Authentication authentication) {
         return ResponseUtil.success("Sub-organizations retrieved successfully",
-                subOrganizationService.listForOrganization(organizationId));
+                subOrganizationService.listForOrganization(organizationId, authentication));
     }
 
     @PostMapping
