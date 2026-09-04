@@ -977,6 +977,11 @@ export interface VulnerabilityContext {
 }
 
 export interface Vulnerability {
+  /**
+   * The finding this one was carried forward from, when it was added from another assessment's
+   * history. Null for a finding raised in place.
+   */
+  carriedForwardFromId?: string;
   /** Usernames following the discussion; everyone here is notified on a new comment. */
   subscribers?: string[];
   id: string;

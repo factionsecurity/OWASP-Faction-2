@@ -73,6 +73,78 @@ public class InlineImageService {
                 storageService.openStream(image.getStorageKey()), image.getOriginalFileName());
     }
 
+    /** An inline image's bytes and media type, ready to be embedded in an export. */
+    public record EmbeddedImage(byte[] content, String contentType) {}
+
+    /**
+     * Reads an inline image into memory for embedding in an export document.
+     *
+     * <p>Empty rather than throwing when the image is unknown, too large, or unreadable: an export
+     * carrying most of its screenshots beats one that fails outright because a single object is
+     * missing from storage. The size is checked from the tracking row before any bytes are pulled,
+     * so an oversized image costs nothing.
+     *
+     * @param maxBytes refuse anything larger; the caller is budgeting a whole document
+     */
+    public Optional<EmbeddedImage> loadForEmbedding(String imageId, long maxBytes) {
+        InlineImage image = inlineImageRepository.findById(imageId).orElse(null);
+        if (image == null) {
+            return Optional.empty();
+        }
+        if (image.getFileSize() != null && image.getFileSize() > maxBytes) {
+            log.debug("Inline image {} is {} bytes, over the {} budget — not embedded",
+                    imageId, image.getFileSize(), maxBytes);
+            return Optional.empty();
+        }
+        try (var stream = storageService.openStream(image.getStorageKey())) {
+            byte[] content = stream.readAllBytes();
+            if (content.length > maxBytes) {
+                return Optional.empty();
+            }
+            String contentType = image.getContentType() == null || image.getContentType().isBlank()
+                    ? "application/octet-stream"
+                    : image.getContentType();
+            return Optional.of(new EmbeddedImage(content, contentType));
+        } catch (Exception e) {
+            log.warn("Could not read inline image {} for export: {}", imageId, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Copies an image into another assessment, as a new image owned by that assessment.
+     *
+     * <p>Needed because an inline image is authorised against its owning assessment: HTML moved
+     * between assessments has to point at an image the new assessment owns, or it 403s for anyone
+     * who cannot read the original. A real copy rather than a second row over the same storage
+     * key — {@link #deleteImage} removes the object, so sharing a key would let the GC blank one
+     * finding's screenshot by reaping another's.
+     *
+     * @return the new image's id, or empty when the source could not be read
+     */
+    public Optional<String> copyToAssessment(String sourceImageId, String targetAssessmentId, String userId) {
+        InlineImage source = inlineImageRepository.findById(sourceImageId).orElse(null);
+        if (source == null) {
+            return Optional.empty();
+        }
+        byte[] bytes;
+        try (var stream = storageService.openStream(source.getStorageKey())) {
+            bytes = stream.readAllBytes();
+        } catch (Exception e) {
+            log.warn("Could not read inline image {} to copy it: {}", sourceImageId, e.getMessage());
+            return Optional.empty();
+        }
+        String filename = source.getOriginalFileName() == null ? "image" : source.getOriginalFileName();
+        String contentType = source.getContentType() == null
+                ? "application/octet-stream" : source.getContentType();
+        return Optional.of(uploadImage(targetAssessmentId, filename, contentType, bytes, userId).getId());
+    }
+
+    /** Whether the tracking row exists — tells a dangling reference from one refused for size. */
+    public boolean exists(String imageId) {
+        return inlineImageRepository.existsById(imageId);
+    }
+
     /** The assessment an inline image belongs to, for access-scope checks. */
     public String getAssessmentId(String imageId) {
         return inlineImageRepository.findById(imageId)

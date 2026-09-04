@@ -1404,7 +1404,12 @@ export default function AssessmentDetail() {
 
           {/* ── Section: History ── */}
           {activeSection === 'history' && (
-            <AssessmentHistorySection assessment={assessment} />
+            <AssessmentHistorySection
+                assessment={assessment}
+                // A finalized or peer-review-locked assessment takes no new findings.
+                canAddFindings={permissions.canCreateVulnerabilities && !isFinalized && !isPeerReviewLocked}
+                onFindingAdded={refreshVulnerabilitySummary}
+              />
           )}
 
           {/* ── Section: Finalize ── */}

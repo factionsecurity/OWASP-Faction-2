@@ -141,6 +141,25 @@ export const profileApi = {
   },
 };
 
+/**
+ * The filename a download endpoint chose, off its Content-Disposition. Handles the RFC 5987
+ * `filename*=UTF-8''…` form first — that is the one servers send when the name is not pure
+ * ASCII, and it wins over the plain `filename=` fallback that sits beside it.
+ */
+export function filenameFromContentDisposition(header?: string): string | null {
+  if (!header) return null;
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1].trim());
+    } catch {
+      // A malformed value should fall through to the plain form, not blow up the download.
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain ? plain[1].trim() : null;
+}
+
 export const usersApi = {
   getAll: async (
     page = 0,
@@ -1164,6 +1183,30 @@ export const vulnerabilitiesApi = {
     return api.get('/vulnerabilities/export.csv', { params: q, responseType: 'blob' })
               .then(r => r.data as Blob);
   },
+
+  /**
+   * Adds a finding from another assessment to this one. An open source keeps its opened date and
+   * status (the same live issue); a closed one comes across as a fresh occurrence. Either way the
+   * new finding links back, and its screenshots are re-homed so they resolve for readers of the
+   * target assessment.
+   */
+  carryForward: (assessmentId: string, sourceVulnerabilityId: string) =>
+    api.post(`/assessments/${assessmentId}/vulnerabilities/carry-forward/${sourceVulnerabilityId}`)
+       .then(r => r.data as ApiResponse<Vulnerability>),
+
+  /**
+   * An assessment's findings as SARIF 2.1.0 or CycloneDX 1.6. The server names the file (it knows
+   * the assessment name), so the caller reads it off Content-Disposition rather than guessing.
+   */
+  exportMachineReadable: (assessmentId: string, format: 'sarif' | 'cyclonedx'):
+      Promise<{ blob: Blob; filename: string }> =>
+    api.get(`/assessments/${assessmentId}/vulnerabilities/export`,
+            { params: { format }, responseType: 'blob' })
+       .then(r => ({
+         blob: r.data as Blob,
+         filename: filenameFromContentDisposition(r.headers['content-disposition'])
+           ?? `vulnerabilities.${format === 'sarif' ? 'sarif' : 'cdx.json'}`,
+       })),
 
   /** Composed remediation-stage view: every configured stage in order, with completions.
    *  The terminal (last) stage reflects the vulnerability's own closedAt. */
