@@ -1305,6 +1305,19 @@ export const vulnerabilitiesApi = {
 };
 
 export const inlineImagesApi = {
+  /**
+   * Uploads a reusable image for a content template or default vulnerability. Not scoped to an
+   * assessment: it is readable by any authenticated user, and is copied into an assessment when
+   * the template is used there, so the assessment's copy cannot change underneath it later.
+   */
+  uploadLibrary: async (file: File): Promise<ApiResponse<{ id: string; url: string }>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/inline-images/library', formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } });
+    return response.data;
+  },
+
   upload: async (
     assessmentId: string,
     file: File

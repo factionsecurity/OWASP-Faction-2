@@ -1,5 +1,6 @@
 package com.faction.clientportal.controller.v1;
 
+import com.faction.clientportal.model.InlineImageScope;
 import com.faction.clientportal.model.Permission;
 import com.faction.clientportal.security.RequiresPermission;
 import com.faction.clientportal.dto.InlineImageUploadResponse;
@@ -64,6 +65,44 @@ public class InlineImageController {
     }
 
     /**
+     * Upload an image owned by a template rather than by an assessment.
+     *
+     * <p>Gated on authoring a template, because that is what the image is for. Anyone who can
+     * write boilerplate that every assessment reuses can add a picture to it.
+     */
+    @PostMapping("/api/v1/inline-images/library")
+    @RequiresPermission({Permission.CONTENT_TEMPLATES_CREATE, Permission.CONTENT_TEMPLATES_EDIT,
+            Permission.DEFAULT_VULNERABILITIES_CREATE, Permission.DEFAULT_VULNERABILITIES_EDIT})
+    @Operation(summary = "Upload a reusable template image",
+               description = "Uploads an image for a content template or default vulnerability. "
+                       + "Unlike an assessment's images it is not scoped to one engagement — it is "
+                       + "readable by any authenticated user, and is copied into an assessment when "
+                       + "the template is used there, so the assessment's copy cannot change "
+                       + "underneath it afterwards.")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<?> uploadLibrary(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth
+    ) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+        }
+        try {
+            String filename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "image";
+            String contentType = file.getContentType() != null
+                    ? file.getContentType() : "application/octet-stream";
+
+            InlineImageUploadResponse result = inlineImageService.uploadLibraryImage(
+                    filename, contentType, file.getBytes(), auth.getName());
+
+            return ResponseEntity.ok(Map.of("success", true, "data", result));
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "error", "Failed to read uploaded file"));
+        }
+    }
+
+    /**
      * Stream an inline image to the browser.
      *
      * <p>Authenticated, and scoped to the assessment the image belongs to: these
@@ -79,8 +118,14 @@ public class InlineImageController {
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<Resource> serve(@PathVariable String imageId, Authentication authentication) {
         try {
-            accessScopeService.checkAssessmentAccess(
-                    authentication, inlineImageService.getAssessmentId(imageId));
+            // A library image belongs to a template, not an engagement, so there is no assessment
+            // to scope it to — and it has to load for whoever is reading the finding it ended up
+            // in, which includes app owners. Templates are boilerplate, so that is acceptable;
+            // client evidence is never LIBRARY scope.
+            if (inlineImageService.getScope(imageId) != InlineImageScope.LIBRARY) {
+                accessScopeService.checkAssessmentAccess(
+                        authentication, inlineImageService.getAssessmentId(imageId));
+            }
             StorageService.StoredFile file = inlineImageService.openImage(imageId);
             return FileStreamResponse.inlineImage(file.stream(), file.fileName());
         } catch (NoSuchElementException e) {

@@ -18,6 +18,7 @@ import java.util.List;
 public class ContentTemplateService {
 
     private final ContentTemplateRepository contentTemplateRepository;
+    private final InlineImageService inlineImageService;
 
     /** Every template, enabled or not — the admin list. */
     public List<ContentTemplateDto> getTemplates() {
@@ -49,13 +50,17 @@ public class ContentTemplateService {
                 .createdAt(LocalDateTime.now())
                 .build();
         applyRequest(template, request, username);
-        return ContentTemplateDto.fromEntity(contentTemplateRepository.save(template));
+        ContentTemplate created = contentTemplateRepository.save(template);
+        indexInlineImages(created);
+        return ContentTemplateDto.fromEntity(created);
     }
 
     public ContentTemplateDto updateTemplate(String id, SaveContentTemplateRequest request, String username) {
         ContentTemplate template = getEntity(id);
         applyRequest(template, request, username);
-        return ContentTemplateDto.fromEntity(contentTemplateRepository.save(template));
+        ContentTemplate updated = contentTemplateRepository.save(template);
+        indexInlineImages(updated);
+        return ContentTemplateDto.fromEntity(updated);
     }
 
     public void deleteTemplate(String id) {
@@ -80,5 +85,14 @@ public class ContentTemplateService {
         if (request.getEnabled() != null) template.setEnabled(request.getEnabled());
         template.setLastUpdatedBy(username);
         template.setUpdatedAt(LocalDateTime.now());
+    }
+
+    /**
+     * Holds the template's library images open against the nightly GC, which deletes any image
+     * nothing references. Shared-field indexing because a library image has no assessment.
+     */
+    private void indexInlineImages(ContentTemplate template) {
+        inlineImageService.updateRefsForSharedField(
+                "content-template/" + template.getId() + "/content", template.getContent());
     }
 }
