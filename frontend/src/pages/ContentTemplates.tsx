@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Edit2, Plus, Trash2 } from 'lucide-react';
-import { contentTemplatesApi } from '../api';
+import { contentTemplatesApi, inlineImagesApi } from '../api';
 import type { ContentTemplate, ContentTemplateScope } from '../types';
 import DataTable, { Column, PaginationInfo } from '../components/DataTable';
 import {
@@ -49,6 +49,18 @@ const emptyEditor = (): EditorState => ({
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
+
+
+/**
+ * Uploads a screenshot for a template. Template images are reusable across assessments and are
+ * copied into an assessment when the template is used there, so an assessment already signed off
+ * never changes because someone edited the template afterwards.
+ */
+const handleLibraryImageUpload = async (file: File): Promise<string> => {
+  const res = await inlineImagesApi.uploadLibrary(file);
+  if (res.success && res.data) return res.data.url;
+  throw new Error('Image upload failed');
+};
 
 export default function ContentTemplates() {
   const [templates, setTemplates] = useState<ContentTemplate[]>([]);
@@ -306,6 +318,7 @@ export default function ContentTemplates() {
           <RichTextEditor
             value={editor.content}
             onChange={html => setEditor(prev => ({ ...prev, content: html }))}
+            onImageUpload={handleLibraryImageUpload}
             placeholder="Write the boilerplate exactly as it should appear in the editor…"
           />
         </FormGroup>
