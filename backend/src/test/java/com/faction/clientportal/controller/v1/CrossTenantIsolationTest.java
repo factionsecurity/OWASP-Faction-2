@@ -170,6 +170,27 @@ class CrossTenantIsolationTest extends TestContainersConfig {
     }
 
     @Test
+    void anAdministratorCanStillReadSubOrganizations() throws Exception {
+        // The other half of the scope check, and the half a cross-tenant test cannot catch by
+        // itself: unrestricted callers are represented by a null visibility set, so a check that
+        // goes straight to contains() throws for every administrator and every import script.
+        Role adminRole = roleRepository.save(Role.builder()
+                .name("Admin").permissions(List.of("super_admin")).build());
+        User admin = userRepository.save(User.builder()
+                .username("root").email("root@test.com").password("x")
+                .loginOption(LoginOption.NATIVE).roleIds(List.of(adminRole.getId()))
+                .isInternal(true).createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+        String adminToken = jwtService.generateToken(admin.getUsername(),
+                List.of(new SimpleGrantedAuthority("super_admin")));
+
+        mockMvc.perform(get("/api/v1/organizations/{id}/sub-organizations", orgB.getId())
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.data.length()").value(1));
+    }
+
+    @Test
     void theirFindingsAreNotReadable() throws Exception {
         // The control: this one is already scoped, so it proves the fixture really is foreign.
         mustBeRefused("/api/v1/assessments/{aid}/vulnerabilities/{vid}",
