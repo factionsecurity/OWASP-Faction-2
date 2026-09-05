@@ -2045,4 +2045,13 @@ export interface TerminologyConfig {
   organizationPlural: string;
   subOrganizationSingular: string;
   subOrganizationPlural: string;
+  /**
+   * What this installation calls each severity. Labels only — the API still sends and accepts
+   * CRITICAL..INFORMATIONAL, so filters, sorting and exports are unaffected by a rename.
+   */
+  severityCritical: string;
+  severityHigh: string;
+  severityMedium: string;
+  severityLow: string;
+  severityInformational: string;
 }

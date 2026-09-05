@@ -9,7 +9,6 @@ import type { Assessment, Vulnerability, RemediationQueueRow } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import { Badge, FormLabel, Checkbox } from '../components';
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
-import { SEVERITY_OPTIONS } from '../utils/vulnSeverity';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
 import { Button } from '../components/Button';
@@ -42,7 +41,7 @@ const formatAssessmentLabel = (a: Assessment): SelectOption => {
 };
 
 export default function RemediationPage() {
-  const { organizationPlural, organizationSingular } = useTerminology();
+  const { severityOptions, organizationPlural, organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
   // The queue is reachable on a retest permission alone, which external users hold. Editing
@@ -574,7 +573,7 @@ export default function RemediationPage() {
       <SearchableSelect
         value={filterSeverity}
         onChange={(v) => { setFilterSeverity(v); setPage(0); }}
-        options={SEVERITY_OPTIONS}
+        options={severityOptions}
         searchable={false}
         placeholder="All Severities"
       />

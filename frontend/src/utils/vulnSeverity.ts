@@ -13,7 +13,10 @@ export const VULNERABILITY_SEVERITIES: VulnerabilitySeverity[] = [
   'INFORMATIONAL',
 ];
 
-// Title-case display labels for each severity.
+// The PRODUCT'S OWN labels — the defaults an installation sees until it renames them in
+// Organization Config. For anything a user reads, call `severityLabel` from useTerminology()
+// instead; these are what it falls back to. Kept here so the fallback lives next to the enum
+// it belongs to rather than inside the context.
 export const SEVERITY_LABELS: Record<VulnerabilitySeverity, string> = {
   CRITICAL: 'Critical',
   HIGH: 'High',

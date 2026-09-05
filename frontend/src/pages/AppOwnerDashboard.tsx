@@ -9,11 +9,11 @@ import VulnerabilityDetailDrawer from '../components/VulnerabilityDetailDrawer';
 import SeverityPillCard, { positiveEmpty } from '../components/SeverityPillCard';
 import Page from '../components/Page';
 import { DEFAULT_VULN_STATUSES } from '../utils/vulnStatus';
-import { SEVERITY_OPTIONS } from '../utils/vulnSeverity';
 import type {
   Assessment, RemediationQueueRow, Vulnerability, VulnerabilityTrendSummary,
 } from '../types';
 import './AppOwnerDashboard.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 const DAY_MS = 86_400_000;
 
@@ -53,6 +53,7 @@ function meanDays(summary: VulnerabilityTrendSummary | null, ...severities: stri
 }
 
 export default function AppOwnerDashboard() {
+  const { severityOptions } = useTerminology();
   const [statsLoading, setStatsLoading] = useState(true);
   const [summary, setSummary] = useState<VulnerabilityTrendSummary | null>(null);
   const [nextAssessment, setNextAssessment] = useState<Assessment | null>(null);
@@ -254,7 +255,7 @@ export default function AppOwnerDashboard() {
       <SearchableSelect
         value={filterSeverity}
         onChange={(v) => { setFilterSeverity(v); setPagination(prev => ({ ...prev, page: 0 })); }}
-        options={SEVERITY_OPTIONS}
+        options={severityOptions}
         searchable={false}
         placeholder="All Severities"
       />

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { SeverityLegend, SEVERITIES, SEV_COLORS } from './VulnTrendPanel';
 import './SeverityPillCard.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 /** The green "all clear" empty state, for the buckets where zero is good news. */
 export function positiveEmpty(text: string) {
@@ -11,11 +12,6 @@ export function positiveEmpty(text: string) {
       <span>{text}</span>
     </div>
   );
-}
-
-/** "CRITICAL" -> "Critical", matching the legend's labels. */
-function label(severity: string): string {
-  return severity.charAt(0) + severity.slice(1).toLowerCase();
 }
 
 // ── Pill card ─────────────────────────────────────────────────────────────────
@@ -32,6 +28,7 @@ export default function SeverityPillCard({ title, counts, loading, emptyContent 
   loading: boolean;
   emptyContent?: React.ReactNode;
 }) {
+  const { severityLabel: label } = useTerminology();
   const [hovered, setHovered] = useState<string | null>(null);
 
   const total = SEVERITIES.reduce((sum, k) => sum + (counts[k] || 0), 0);

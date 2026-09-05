@@ -103,8 +103,21 @@ public class ReportData {
         private String id;
         private String name;
 
-        /** Display string: "Critical", "High", "Medium", "Low", or "Informational" */
+        /**
+         * What this installation calls the severity — "Critical" by default, but whatever the
+         * terminology config says. This is the string templates render via {@code ${severity}}.
+         */
         private String severity;
+
+        /**
+         * The unchanging enum name: CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL, or "" when unset.
+         *
+         * <p>Kept separate from {@link #severity} because the DOCX templates key off it — the
+         * {@code ${riskCountN}} tallies and the {@code ${[asmtCRITICAL]}} finding loops. Matching
+         * those on the display string would mean that renaming Critical to "Sev-1" silently
+         * reported zero findings in every report built from an existing template.
+         */
+        private String severityKey;
 
         private String likelihood;
         private String impact;
