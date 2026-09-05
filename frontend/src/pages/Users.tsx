@@ -604,6 +604,12 @@ export default function Users() {
       width: '170px',
       render: (user) => (
         <ActionButtons>
+          <IconButton
+            icon={Edit2}
+            variant="edit"
+            title="Edit"
+            onClick={() => handleEdit(user)}
+          />
           {user.loginOption === 'NATIVE' && (
             <IconButton
               icon={resetSentId === user.id ? Check : Mail}
@@ -612,12 +618,6 @@ export default function Users() {
               onClick={() => setConfirmResetUser(user)}
             />
           )}
-          <IconButton
-            icon={Edit2}
-            variant="edit"
-            title="Edit"
-            onClick={() => handleEdit(user)}
-          />
           {/* Deleted accounts are shown badged so an admin can see them, but there is nothing
               left to switch on or off — the disable toggle is for live accounts. */}
           {!user.deletedAt && (
