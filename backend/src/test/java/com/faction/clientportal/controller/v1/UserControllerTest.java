@@ -1010,7 +1010,7 @@ class UserControllerTest extends TestContainersConfig {
                     "email": "alphamember@test.com",
                     "firstName": "Alpha",
                     "lastName": "Member",
-                    "password": "newpassword123",
+                    "password": "Newpassword123",
                     "loginOption": "NATIVE",
                     "roleIds": ["%s"],
                     "teamIds": ["%s"],
@@ -1026,7 +1026,7 @@ class UserControllerTest extends TestContainersConfig {
 
         User updatedUser = userRepository.findById(teamAlphaMemberUser.getId()).orElseThrow();
         assertThat(updatedUser.getPassword()).isNotEqualTo(oldPasswordHash);
-        assertThat(passwordEncoder.matches("newpassword123", updatedUser.getPassword())).isTrue();
+        assertThat(passwordEncoder.matches("Newpassword123", updatedUser.getPassword())).isTrue();
     }
 
     @Test

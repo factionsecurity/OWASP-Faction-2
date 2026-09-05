@@ -40,6 +40,7 @@ class ExternalUserGateTest {
 
     @Mock private UserRepository userRepository;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private com.faction.clientportal.service.PasswordPolicyService passwordPolicyService;
     @Mock private RoleRepository roleRepository;
     @Mock private OrganizationRepository organizationRepository;
     @Mock private ApiKeyService apiKeyService;

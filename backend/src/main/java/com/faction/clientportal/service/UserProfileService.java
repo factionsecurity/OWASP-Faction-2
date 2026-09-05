@@ -30,6 +30,7 @@ public class UserProfileService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordPolicyService passwordPolicyService;
     private final StorageService storageService;
 
     public User getByUsernameOrThrow(String username) {
@@ -46,6 +47,7 @@ public class UserProfileService {
         if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
             throw new IllegalArgumentException("Current password is incorrect.");
         }
+        passwordPolicyService.validate(newPassword);
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
         log.info("Password changed for user {}", username);

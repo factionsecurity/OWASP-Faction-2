@@ -29,21 +29,20 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordPolicyService passwordPolicyService;
 
-    /**
-     * Consecutive failed passwords that disable the account, or 0 to never lock out.
-     *
-     * <p>A lockout is the same state an admin sets by hand — there is one "disabled", and it
-     * always takes an admin to lift it. Deliberately not a self-clearing cooldown: an account
-     * being guessed at is worth a human looking, and re-enabling from the Users page resets the
-     * counter in the same write.
-     */
-    @Value("${faction.security.max-failed-login-attempts:5}")
-    private int maxFailedLoginAttempts;
 
     public String login(String username, String password) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
+
+        // Checked before the password, so a locked account cannot have its counter driven higher
+        // by someone still guessing at it. Also clears a cooldown that has run its course.
+        if (passwordPolicyService.isLockedOut(user)) {
+            userRepository.save(user);
+            throw new BadCredentialsException(
+                    "Too many failed sign-in attempts. Try again later or contact an administrator.");
+        }
 
         if (!passwordEncoder.matches(password, user.getPassword())) {
             registerFailedAttempt(user);
@@ -56,7 +55,7 @@ public class AuthService {
 
         List<GrantedAuthority> authorities = getAuthorities(user);
 
-        user.setFailedLoginAttempts(0);
+        passwordPolicyService.clearFailedAttempts(user);
         user.setLastLogin(LocalDateTime.now());
         userRepository.save(user);
 
@@ -75,14 +74,11 @@ public class AuthService {
      */
     private void registerFailedAttempt(User user) {
         if (user.getDisabledAt() != null) {
+            // Already off. Counting further attempts would let someone guessing at an account an
+            // administrator disabled manufacture a lockout history against it.
             return;
         }
-        int attempts = user.getFailedLoginAttempts() + 1;
-        user.setFailedLoginAttempts(attempts);
-        if (maxFailedLoginAttempts > 0 && attempts >= maxFailedLoginAttempts) {
-            user.setDisabledAt(LocalDateTime.now());
-            log.warn("Account {} disabled after {} failed sign-in attempts", user.getUsername(), attempts);
-        }
+        passwordPolicyService.registerFailedAttempt(user);
         userRepository.save(user);
     }
 
