@@ -49,6 +49,7 @@ import { useBranding } from '../context/BrandingContext';
 import { useEdition } from '../context/EditionContext';
 import type { FeatureKey } from '../types';
 import './DashboardLayout.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -347,6 +348,16 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
     authorities.some((a: string) => a.endsWith(':org') || a.endsWith(':owned'));
 
   // Check if user has permission to view a menu item
+  const { organizationPlural } = useTerminology();
+
+  /**
+   * The wording shown for a menu entry. Deliberately separate from `name`, which is the entry's
+   * identity — hasPermission and the external-user gate both key off it, so renaming the field
+   * would silently unhook a menu item from its permission.
+   */
+  const menuLabel = (name: string): string =>
+    name === 'Organizations' ? organizationPlural : name;
+
   const hasPermission = (menuName: string): boolean => {
     // Super admin can see everything
     if (authorities.includes('super_admin')) {
@@ -577,7 +588,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                         if (subItem.heading) {
                           return (
                             <div key={`heading-${subItem.name}`} className="nav-subheading">
-                              {subItem.name}
+                              {menuLabel(subItem.name)}
                             </div>
                           );
                         }
@@ -589,7 +600,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                             title={subItem.name}
                           >
                             <SubIcon className="nav-icon" size={18} />
-                            <span className="nav-label">{subItem.name}</span>
+                            <span className="nav-label">{menuLabel(subItem.name)}</span>
                           </button>
                         );
                       })}
@@ -607,7 +618,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                         if (subItem.heading) {
                           return (
                             <div key={`heading-${subItem.name}`} className="nav-flyout-heading">
-                              {subItem.name}
+                              {menuLabel(subItem.name)}
                             </div>
                           );
                         }
@@ -625,7 +636,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                             className={`nav-flyout-item ${subActive ? 'active' : ''}`}
                           >
                             <SubIcon size={16} />
-                            <span>{subItem.name}</span>
+                            <span>{menuLabel(subItem.name)}</span>
                           </button>
                         );
                       })}

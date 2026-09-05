@@ -24,6 +24,7 @@ import {
 } from '../components';
 import '../components/SearchableSelect.css';
 import './Applications.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 const APPLICATION_STATUS_COLORS: Record<ApplicationStatus, 'success' | 'warning' | 'info' | 'danger'> = {
   PRODUCTION: 'success',
@@ -48,6 +49,7 @@ const COMMON_TECHNOLOGIES = [
 type ApplicationsTab = 'applications' | 'assessments' | 'vulnerabilities';
 
 export default function Applications() {
+  const { organizationSingular } = useTerminology();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
@@ -440,7 +442,7 @@ export default function Applications() {
       ),
     },
     {
-      header: 'Organization',
+      header: organizationSingular,
       render: (app) => (app.organizationId && orgNameById[app.organizationId]) || '—',
     },
     {
@@ -768,7 +770,7 @@ export default function Applications() {
             </FormRow>
             <FormRow columns={2}>
               <FormGroup>
-                <FormLabel>Organization</FormLabel>
+                <FormLabel>{organizationSingular}</FormLabel>
                 <Select
                   value={formData.organizationId}
                   onChange={(e) => setFormData({ ...formData, organizationId: e.target.value })}

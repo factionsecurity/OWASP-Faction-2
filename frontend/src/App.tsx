@@ -5,6 +5,7 @@ import { authApi } from './api';
 import { getCurrentUser } from './utils/permissions';
 import { BrandingProvider } from './context/BrandingContext';
 import { EditionProvider } from './context/EditionContext';
+import { TerminologyProvider } from './context/TerminologyContext';
 import UpgradeDialog from './components/UpgradeDialog';
 import { PaidFeature } from './components/PaidFeature';
 import { SsoConfig, BrandingPage, InboundEmailConfigPage } from '@enterprise';
@@ -132,6 +133,7 @@ function App() {
   return (
     <BrandingProvider>
     <EditionProvider>
+      <TerminologyProvider>
     <PageTitleProvider>
     <UpgradeDialog />
     <Router>
@@ -791,6 +793,7 @@ function App() {
       </Routes>
     </Router>
     </PageTitleProvider>
+      </TerminologyProvider>
     </EditionProvider>
     </BrandingProvider>
   );

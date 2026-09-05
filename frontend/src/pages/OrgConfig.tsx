@@ -3,8 +3,9 @@ import { Plus, X, Trash2, GripVertical } from 'lucide-react';
 import { Button, IconButton, Input, Select, Toast } from '../components';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Page from '../components/Page';
-import { entityFieldsApi, regionConfigApi } from '../api';
-import type { UserDefinedField, FieldType } from '../types';
+import { entityFieldsApi, regionConfigApi, terminologyApi } from '../api';
+import type { UserDefinedField, FieldType, TerminologyConfig } from '../types';
+import { useTerminology } from '../context/TerminologyContext';
 import './ReportDesigner.css';
 import './OrgConfig.css';
 import './Applications.css';
@@ -34,6 +35,10 @@ export default function OrgConfig() {
   const [showToast, setShowToast] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [regions, setRegions] = useState<string[]>([]);
+  const [terminology, setTerminology] = useState<TerminologyConfig | null>(null);
+  // So a rename takes effect across the interface the moment it is saved, rather than at the
+  // next full page load.
+  const { refresh: refreshTerminology } = useTerminology();
   const [newRegion, setNewRegion] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState | null>(null);
   const [pointerDrag, setPointerDrag] = useState<PointerDrag | null>(null);
@@ -58,6 +63,10 @@ export default function OrgConfig() {
     regionsTimeoutRef.current = setTimeout(async () => {
       try {
         await regionConfigApi.updateRegions(regions);
+        if (terminology) {
+          await terminologyApi.updateConfig(terminology);
+          await refreshTerminology();
+        }
         setToastKey(k => k + 1);
         setShowToast(true);
       } catch (err: any) {
@@ -79,12 +88,14 @@ export default function OrgConfig() {
     try {
       setLoading(true);
       setError(null);
-      const [orgRes, appRes, regionsData] = await Promise.all([
+      const [orgRes, appRes, regionsData, terminologyRes] = await Promise.all([
         entityFieldsApi.getConfig('ORGANIZATION'),
         entityFieldsApi.getConfig('APPLICATION'),
         regionConfigApi.getRegions(),
+        terminologyApi.getConfig(),
       ]);
       setRegions(regionsData);
+      if (terminologyRes.data) setTerminology(terminologyRes.data);
       regionsLoadedRef.current = true;
       if (orgRes.data) {
         const sorted = [...(orgRes.data.fieldDefinitions || [])].sort(
@@ -502,6 +513,42 @@ export default function OrgConfig() {
             )}
           </div>
         </div>
+
+        {terminology && (
+          <div className="rd-section">
+            <div className="rd-section-header">
+              <span>Terminology</span>
+            </div>
+            <div className="rd-fields orgconfig-terminology">
+              <p className="orgconfig-terminology-hint">
+                What this installation calls these things. Wording only — nothing about how they
+                behave changes, and existing data is untouched.
+              </p>
+              {([
+                ['organizationSingular', 'Organization (singular)', 'Value Stream'],
+                ['organizationPlural', 'Organizations (plural)', 'Value Streams'],
+                ['subOrganizationSingular', 'Sub-organization (singular)', 'Sub-value Stream'],
+                ['subOrganizationPlural', 'Sub-organizations (plural)', 'Sub-value Streams'],
+              ] as [keyof TerminologyConfig, string, string][]).map(([key, label, example]) => (
+                <div key={key} className="orgconfig-terminology-row">
+                  <label htmlFor={`terminology-${key}`}>{label}</label>
+                  <Input
+                    id={`terminology-${key}`}
+                    value={terminology[key]}
+                    placeholder={example}
+                    onChange={(e) => setTerminology({ ...terminology, [key]: e.target.value })}
+                  />
+                </div>
+              ))}
+              {/* Both forms are asked for rather than derived: appending "s" gets "Value Streams"
+                  right and "Entitys" wrong. */}
+              <p className="orgconfig-terminology-hint">
+                The plural is asked for separately because it cannot be derived reliably — "Entity"
+                becomes "Entities", not "Entitys".
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="rd-section">
           <div className="rd-section-header">

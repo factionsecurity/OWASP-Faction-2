@@ -5,6 +5,7 @@ import type { SubOrganization } from '../types';
 import { Button, IconButton, Input } from './index';
 import ConfirmDialog from './ConfirmDialog';
 import './SubOrganizationsPanel.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 export interface SubOrganizationsPanelProps {
   organizationId: string;
@@ -18,6 +19,7 @@ export interface SubOrganizationsPanelProps {
  * editing the organization itself.
  */
 export default function SubOrganizationsPanel({ organizationId, canWrite }: SubOrganizationsPanelProps) {
+  const { subOrganizationPlural } = useTerminology();
   const [subs, setSubs] = useState<SubOrganization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export default function SubOrganizationsPanel({ organizationId, canWrite }: SubO
 
   return (
     <div className="form-panel sub-orgs-panel">
-      <h3 className="form-section-title">Sub-Organizations</h3>
+      <h3 className="form-section-title">{subOrganizationPlural}</h3>
       <p className="sub-orgs-intro">
         Divisions within this organization — business units, subsidiaries or regions. Applications
         can be attributed to one. This does not change who can see the application.

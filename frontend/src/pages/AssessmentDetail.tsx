@@ -47,6 +47,7 @@ import { usePermissions } from '../utils/permissions';
 import { createSseParser } from '../utils/sse';
 import ConfirmDialog from '../components/ConfirmDialog';
 import './AssessmentDetail.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 /**
  * How long after completion an assessment can still be reopened. Mirrors
@@ -106,6 +107,7 @@ function isLinkableSection(section: string | null): boolean {
 }
 
 export default function AssessmentDetail() {
+  const { organizationSingular } = useTerminology();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { permissions } = usePermissions();
@@ -938,7 +940,7 @@ export default function AssessmentDetail() {
                   <td>{assessment.applicationName || '-'}</td>
                 </tr>
                 <tr>
-                  <td className="info-label">Organization</td>
+                  <td className="info-label">{organizationSingular}</td>
                   <td>{organization?.name || '-'}</td>
                 </tr>
                 <tr>

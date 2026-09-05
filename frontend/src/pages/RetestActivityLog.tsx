@@ -6,6 +6,7 @@ import type { RetestActivitySummary, RetestCompletionLog } from '../types';
 import DataTable, { sortParam } from '../components/DataTable';
 import type { Column, SortState } from '../components/DataTable';
 import { SeverityBadge } from '../components';
+import { useTerminology } from '../context/TerminologyContext';
 
 /** yyyy-MM-dd for a date input, in local time — `toISOString` would shift the day near midnight. */
 function isoDate(d: Date): string {
@@ -44,6 +45,7 @@ function formatTime(iso?: string): string {
  * on screen, so paging through the log never changes them.
  */
 export default function RetestActivityLog() {
+  const { organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
   const [from, setFrom] = useState(() => daysAgo(6));
@@ -107,7 +109,7 @@ export default function RetestActivityLog() {
       ),
     },
     { header: 'Application', render: r => r.applicationName || '—' },
-    { header: 'Organization', render: r => r.organizationName || '—' },
+    { header: organizationSingular, render: r => r.organizationName || '—' },
     { header: 'Verified by', render: r => r.completedByName || r.completedBy || '—' },
     {
       header: 'Note',

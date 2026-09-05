@@ -17,8 +17,10 @@ import {
   ErrorMessage,
 } from '../components';
 import './Organizations.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 export default function OrganizationEdit() {
+  const { organizationSingular, organizationPlural } = useTerminology();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -33,8 +35,8 @@ export default function OrganizationEdit() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: 'Organizations', to: '/organizations' },
-      { label: formData.name || 'Organization' },
+      { label: organizationPlural, to: '/organizations' },
+      { label: formData.name || organizationSingular },
     ]);
     return () => setBreadcrumbs(null);
   }, [formData.name]);

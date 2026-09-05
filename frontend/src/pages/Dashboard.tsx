@@ -13,6 +13,7 @@ import { authApi } from '../api';
 import { getCurrentUser } from '../utils/permissions';
 import { usePageTitle } from '../context/PageTitleContext';
 import './Dashboard.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 // Super admins can view every role dashboard; Pentester is the first/default view.
 const ADMIN_DASHBOARD_VIEWS = [
@@ -64,6 +65,7 @@ function SuperAdminDashboard() {
 }
 
 export default function Dashboard() {
+  const { organizationPlural } = useTerminology();
   const [roles, setRoles] = useState<string[] | null>(() => getCurrentUser()?.roles ?? null);
 
   // Sessions created before role names were added to the login response have no
@@ -129,7 +131,7 @@ export default function Dashboard() {
             <Building2 size={28} />
           </div>
           <div className="stat-info">
-            <p className="stat-label">Organizations</p>
+            <p className="stat-label">{organizationPlural}</p>
             <p className="stat-value">--</p>
           </div>
         </div>

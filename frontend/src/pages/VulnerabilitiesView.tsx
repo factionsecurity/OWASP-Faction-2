@@ -12,6 +12,7 @@ import { DEFAULT_VULN_STATUSES, vulnStatusBadgeVariant } from '../utils/vulnStat
 import { usePermissions } from '../utils/permissions';
 import { SEVERITY_OPTIONS } from '../utils/vulnSeverity';
 import './Applications.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 const PAGE_SIZE = 10; // must match a DataTable page-size option (10/25/50/100)
 // App/assessment dropdowns default to a starter list; typing server-searches the rest.
@@ -36,6 +37,7 @@ interface VulnerabilitiesViewProps {
 }
 
 export default function VulnerabilitiesView({ onFiltersChange }: VulnerabilitiesViewProps = {}) {
+  const { organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
   // External users (app owners, org users) reach this page on their read permission but
@@ -412,7 +414,7 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
     },
     { header: 'Application', sortKey: 'applicationName', render: (v) => <span>{v.applicationName || '-'}</span> },
     { header: 'Assessment', sortKey: 'assessmentName', render: (v) => <span>{v.assessmentName || '-'}</span> },
-    { header: 'Organization', sortKey: 'organizationName', render: (v) => <span>{v.organizationName || '-'}</span> },
+    { header: organizationSingular, sortKey: 'organizationName', render: (v) => <span>{v.organizationName || '-'}</span> },
     { header: 'Opened', sortKey: 'openedAt', render: (v) => v.openedAt ? new Date(v.openedAt).toLocaleDateString() : '-' },
     // One column per configured non-terminal remediation stage, shown only when a row on this
     // page carries that stage's date (the terminal stage IS the Closed column). The header is
