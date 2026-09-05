@@ -43,6 +43,7 @@ import java.util.Map;
 public class UserController {
 
     private final UserService userService;
+    private final com.faction.clientportal.service.PasswordResetService passwordResetService;
 
     /**
      * Sortable user columns. Roles and Teams/Organization render names resolved from JSONB id
@@ -215,6 +216,28 @@ public class UserController {
             Authentication authentication) {
         UserDto updatedUser = userService.updateUserDto(id, request, authentication);
         return ResponseUtil.success("User updated successfully", updatedUser);
+    }
+
+    @PostMapping("/{id}/password-reset")
+    @RequiresPermission({Permission.USERS_EDIT_ALL, Permission.USERS_EDIT_TEAM})
+    @Operation(
+            summary = "Send a password reset link to a user",
+            description = "Emails a reset link to the user, on an administrator's behalf. Unlike "
+                    + "the public forgot-password endpoint, which must answer identically whatever "
+                    + "happens so it cannot be used to discover which addresses have accounts, this "
+                    + "one reports what actually happened: that the user has no email address, that "
+                    + "they sign in through an identity provider, or that email is not configured.",
+            responses = {
+                @ApiResponse(responseCode = "200", description = "The link was sent"),
+                @ApiResponse(responseCode = "400", description = "No email, an SSO account, or email not configured"),
+                @ApiResponse(responseCode = "403", description = "Forbidden - requires users:edit"),
+                @ApiResponse(responseCode = "404", description = "User not found")
+            }
+    )
+    public ResponseEntity<JsonApiResponse<Map<String, String>>> sendPasswordReset(
+            @PathVariable String id) {
+        String email = passwordResetService.sendResetLinkFor(id);
+        return ResponseUtil.success("Password reset link sent", Map.of("email", email));
     }
 
     @DeleteMapping("/{id}")

@@ -4,6 +4,7 @@ import com.faction.clientportal.dto.AcceptPeerReviewRequest;
 import com.faction.clientportal.dto.PeerReviewDto;
 import com.faction.clientportal.dto.PeerReviewVulnerabilityDto;
 import com.faction.clientportal.dto.UpdatePeerReviewRequest;
+import com.faction.clientportal.exception.BusinessRuleException;
 import com.faction.clientportal.exception.ResourceNotFoundException;
 import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.Permission;
@@ -209,7 +210,7 @@ public class PeerReviewService {
         AssessmentPeerReviewStatus currentPrStatus = assessment.getPeerReviewStatus();
         if (currentPrStatus == AssessmentPeerReviewStatus.IN_PEER_REVIEW
                 || currentPrStatus == AssessmentPeerReviewStatus.NEEDS_ACCEPTANCE) {
-            throw new IllegalStateException("Assessment is already locked for peer review");
+            throw new BusinessRuleException("Assessment is already locked for peer review");
         }
 
         // Snapshot all live vulnerabilities
@@ -380,7 +381,7 @@ public class PeerReviewService {
         checkEditAccess(authentication, getAssessmentOrThrow(review.getAssessmentId()));
         checkNotSelfReview(authentication, review);
         if (review.getStatus() != PeerReviewStatus.PENDING) {
-            throw new IllegalStateException("Review is not in PENDING status");
+            throw new BusinessRuleException("Review is not in PENDING status");
         }
         review.setStatus(PeerReviewStatus.IN_REVIEW);
         review.setReviewedByUserId(actorId(userId, authentication));
@@ -441,7 +442,7 @@ public class PeerReviewService {
         checkEditAccess(authentication, getAssessmentOrThrow(review.getAssessmentId()));
         checkNotSelfReview(authentication, review);
         if (review.getStatus() != PeerReviewStatus.IN_REVIEW) {
-            throw new IllegalStateException("Review must be IN_REVIEW to complete");
+            throw new BusinessRuleException("Review must be IN_REVIEW to complete");
         }
 
         review.setStatus(PeerReviewStatus.COMPLETED);
@@ -471,7 +472,7 @@ public class PeerReviewService {
         PeerReview review = getPeerReviewOrThrow(reviewId);
         checkEditAccess(authentication, getAssessmentOrThrow(review.getAssessmentId()));
         if (review.getStatus() != PeerReviewStatus.COMPLETED) {
-            throw new IllegalStateException("Review must be COMPLETED before accepting changes");
+            throw new BusinessRuleException("Review must be COMPLETED before accepting changes");
         }
 
         Assessment assessment = getAssessmentOrThrow(review.getAssessmentId());

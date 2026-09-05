@@ -10,6 +10,8 @@ import com.faction.clientportal.model.ChecklistResponse;
 import com.faction.clientportal.model.ChecklistTemplate;
 import com.faction.clientportal.repository.AssessmentChecklistRepository;
 import com.faction.clientportal.repository.ChecklistTemplateRepository;
+import com.faction.clientportal.service.AccessScopeService;
+import org.springframework.security.core.Authentication;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -23,8 +25,19 @@ public class AssessmentChecklistService {
 
     private final AssessmentChecklistRepository repository;
     private final ChecklistTemplateRepository templateRepository;
+    private final AccessScopeService accessScopeService;
 
     public List<AssessmentChecklistDto> getByAssessment(String assessmentId) {
+        return getByAssessment(assessmentId, null);
+    }
+
+    /**
+     * A checklist is the tester's methodology for one engagement — the questions, the results and
+     * their notes. The permission to reach this endpoint is only a login, so the assessment scope
+     * check is the entire tenant boundary here.
+     */
+    public List<AssessmentChecklistDto> getByAssessment(String assessmentId, Authentication authentication) {
+        accessScopeService.checkAssessmentAccess(authentication, assessmentId);
         return repository.findByAssessmentId(assessmentId).stream()
                 .map(AssessmentChecklistDto::fromEntity)
                 .collect(Collectors.toList());

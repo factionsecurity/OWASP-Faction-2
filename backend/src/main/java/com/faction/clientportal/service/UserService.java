@@ -36,6 +36,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordPolicyService passwordPolicyService;
     private final RoleRepository roleRepository;
     private final OrganizationRepository organizationRepository;
     private final ApiKeyService apiKeyService;
@@ -262,7 +263,7 @@ public class UserService {
                 .email(request.getEmail())
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
-                .password(passwordEncoder.encode(request.getPassword()))
+                .password(encodeToPolicy(request.getPassword()))
                 .loginOption(request.getLoginOption())
                 .roleIds(request.getRoleIds())
                 .teamIds(request.getTeamIds() != null ? request.getTeamIds() : new ArrayList<>())
@@ -331,7 +332,7 @@ public class UserService {
 
         // Only update password if provided
         if (request.getPassword() != null && !request.getPassword().isEmpty()) {
-            user.setPassword(passwordEncoder.encode(request.getPassword()));
+            user.setPassword(encodeToPolicy(request.getPassword()));
         }
 
         user.setLoginOption(request.getLoginOption());
@@ -473,5 +474,17 @@ public class UserService {
                 .lastLogin(user.getLastLogin())
                 .profileImageId(user.getProfileImageId())
                 .build();
+    }
+
+    /**
+     * Hashes a password after holding it to the configured policy.
+     *
+     * <p>Applied to every route that sets one, including an administrator setting it on somebody
+     * else's behalf: a policy the admin screens can step around is not a policy, and a weak
+     * password set for a user is exactly as weak as one they chose.
+     */
+    private String encodeToPolicy(String rawPassword) {
+        passwordPolicyService.validate(rawPassword);
+        return passwordEncoder.encode(rawPassword);
     }
 }

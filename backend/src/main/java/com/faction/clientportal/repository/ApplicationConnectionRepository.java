@@ -28,9 +28,4 @@ public interface ApplicationConnectionRepository extends JpaRepository<Applicati
             String targetApplicationId
     );
 
-    // Delete all connections for an application
-    void deleteBySourceApplicationIdOrTargetApplicationId(
-            String sourceApplicationId,
-            String targetApplicationId
-    );
 }

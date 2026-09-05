@@ -1,6 +1,7 @@
 package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.*;
+import com.faction.clientportal.exception.BusinessRuleException;
 import com.faction.clientportal.exception.ResourceNotFoundException;
 import com.faction.clientportal.model.*;
 import com.faction.clientportal.repository.ApplicationRepository;
@@ -196,6 +197,14 @@ public class AssessmentService {
             .build();
 
         Assessment savedAssessment = assessmentRepository.save(assessment);
+        // Field values supplied at creation were never indexed — only updateAssessment did it —
+        // so a screenshot in a field of an assessment nobody edited again was deleted by the GC
+        // a day later. The id only exists after the save, which is why this is not up with the
+        // validation.
+        for (Map.Entry<String, String> entry : fieldValues.entrySet()) {
+            inlineImageService.updateRefsForField(
+                    savedAssessment.getId(), entry.getKey(), entry.getValue());
+        }
         log.info("Created assessment: {} from template: {} (version: {})",
             savedAssessment.getName(), template.getName(), template.getVersion());
 
@@ -266,7 +275,7 @@ public class AssessmentService {
             com.faction.clientportal.model.AssessmentPeerReviewStatus prStatus = assessment.getPeerReviewStatus();
             if (prStatus == com.faction.clientportal.model.AssessmentPeerReviewStatus.IN_PEER_REVIEW
                     || prStatus == com.faction.clientportal.model.AssessmentPeerReviewStatus.NEEDS_ACCEPTANCE) {
-                throw new IllegalStateException("Assessment is locked for peer review");
+                throw new BusinessRuleException("Assessment is locked for peer review");
             }
         }
 
@@ -1581,6 +1590,20 @@ public class AssessmentService {
      * returned stream and must close it.
      */
     public StorageService.StoredFile openFile(String assessmentId, String fileId) {
+        return openFile(assessmentId, fileId, null);
+    }
+
+    /**
+     * An engagement's attachments — scoping documents, raw tool output, screenshots.
+     *
+     * <p>The scope check is the tenant boundary: the permissions on this endpoint include the
+     * external {@code :org} and {@code :owned} reads, and the path is on the media-cookie
+     * allowlist, so without it a plain link with a foreign id served another customer's evidence.
+     * ReportController has done this correctly all along; this path did not.
+     */
+    public StorageService.StoredFile openFile(
+            String assessmentId, String fileId, Authentication authentication) {
+        accessScopeService.checkAssessmentAccess(authentication, assessmentId);
         Assessment assessment = assessmentRepository.findByIdAndDeletedAtIsNull(assessmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment not found: " + assessmentId));
 

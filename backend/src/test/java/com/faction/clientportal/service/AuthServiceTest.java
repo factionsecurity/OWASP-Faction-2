@@ -103,10 +103,25 @@ class AuthServiceTest extends TestContainersConfig {
     }
 
     // ── Password lockout ────────────────────────────────────────────────────
-    // faction.security.max-failed-login-attempts is unset in application-test.yml, so the
-    // default of 5 applies.
+    // The behaviour now comes from the configurable policy, so these set it explicitly rather
+    // than depending on whatever the default happens to be. The policy's own rules — cooldown
+    // versus permanent, composition — are covered in PasswordPolicyTest; what is asserted here is
+    // that AuthService applies whatever it is told.
 
     private static final int LOCKOUT_AT = 5;
+
+    @Autowired private PasswordPolicyService passwordPolicyService;
+    @Autowired private com.faction.clientportal.repository.PasswordPolicyRepository passwordPolicyRepository;
+
+    /** A permanent lock at the limit, which is what these tests were written against. */
+    private void useLockUntilAdminPolicy() {
+        passwordPolicyRepository.deleteAll();
+        passwordPolicyService.updatePolicy(
+                com.faction.clientportal.model.PasswordPolicy.builder()
+                        .maxFailedLoginAttempts(LOCKOUT_AT)
+                        .lockoutDurationMinutes(0)
+                        .build());
+    }
 
     private void failLogin(int times) {
         for (int i = 0; i < times; i++) {
@@ -117,6 +132,7 @@ class AuthServiceTest extends TestContainersConfig {
 
     @Test
     void reachingTheFailedAttemptLimit_disablesTheAccount() {
+        useLockUntilAdminPolicy();
         failLogin(LOCKOUT_AT);
 
         User locked = userRepository.findByUsername("testuser").orElseThrow();
@@ -131,6 +147,7 @@ class AuthServiceTest extends TestContainersConfig {
 
     @Test
     void oneAttemptShortOfTheLimit_leavesTheAccountUsable() {
+        useLockUntilAdminPolicy();
         failLogin(LOCKOUT_AT - 1);
 
         assertThat(userRepository.findByUsername("testuser").orElseThrow().getDisabledAt()).isNull();
@@ -139,6 +156,7 @@ class AuthServiceTest extends TestContainersConfig {
 
     @Test
     void aSuccessfulLoginResetsTheCount_soTheLimitMeansConsecutiveFailures() {
+        useLockUntilAdminPolicy();
         failLogin(LOCKOUT_AT - 1);
         authService.login("testuser", "testpass");
         assertThat(userRepository.findByUsername("testuser").orElseThrow().getFailedLoginAttempts()).isZero();
@@ -150,6 +168,7 @@ class AuthServiceTest extends TestContainersConfig {
 
     @Test
     void failedAttemptsAgainstAnAlreadyDisabledAccountAreNotCounted() {
+        useLockUntilAdminPolicy();
         // An admin switched this one off by hand; the counter is what tells them apart from a
         // lockout, so guessing at a disabled account must not manufacture one.
         testUser.setDisabledAt(LocalDateTime.now());
@@ -163,6 +182,7 @@ class AuthServiceTest extends TestContainersConfig {
 
     @Test
     void reEnablingClearsTheLockoutAndTheCounter() {
+        useLockUntilAdminPolicy();
         failLogin(LOCKOUT_AT);
 
         // What the Users page's re-enable does: clear disabledAt and the failed count together.

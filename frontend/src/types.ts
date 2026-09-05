@@ -2026,3 +2026,15 @@ export interface UpgradeRequired {
   message: string;
   upgradeUrl: string;
 }
+
+/** The installation's password and sign-in rules, set by an administrator. */
+export interface PasswordPolicy {
+  maxFailedLoginAttempts: number;
+  /** 0 means the account stays locked until an administrator re-enables it. */
+  lockoutDurationMinutes: number;
+  minimumLength: number;
+  requireUppercase: boolean;
+  requireLowercase: boolean;
+  requireDigit: boolean;
+  requireSymbol: boolean;
+}

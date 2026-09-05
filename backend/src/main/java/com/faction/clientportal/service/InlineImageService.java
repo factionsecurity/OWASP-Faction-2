@@ -3,11 +3,13 @@ package com.faction.clientportal.service;
 import com.faction.clientportal.dto.InlineImageUploadResponse;
 import com.faction.clientportal.model.InlineImage;
 import com.faction.clientportal.model.InlineImageRef;
+import com.faction.clientportal.model.InlineImageScope;
 import com.faction.clientportal.repository.InlineImageRefRepository;
 import com.faction.clientportal.repository.InlineImageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -112,6 +114,66 @@ public class InlineImageService {
     }
 
     /**
+     * Uploads an image owned by a template rather than by an assessment.
+     *
+     * <p>Reusable across assessments, and readable by any authenticated user — see
+     * {@link InlineImageScope#LIBRARY} for why that is unavoidable and what it costs.
+     */
+    public InlineImageUploadResponse uploadLibraryImage(
+            String filename, String contentType, byte[] bytes, String uploadedBy) {
+        String imageId = UUID.randomUUID().toString().replace("-", "");
+        String storageKey = String.format("inline-images/library/%s/%s", imageId, filename);
+
+        storageService.uploadBytes(storageKey, bytes, contentType);
+
+        inlineImageRepository.save(InlineImage.builder()
+                .id(imageId)
+                .assessmentId(null)
+                .scope(InlineImageScope.LIBRARY)
+                .storageKey(storageKey)
+                .originalFileName(filename)
+                .contentType(contentType)
+                .fileSize((long) bytes.length)
+                .uploadedBy(uploadedBy)
+                .uploadedAt(LocalDateTime.now())
+                .build());
+        log.info("Uploaded library inline image {}", imageId);
+
+        return new InlineImageUploadResponse(imageId, "/api/v1/inline-images/" + imageId);
+    }
+
+    /** The image's scope, for the access check on serving it. */
+    public InlineImageScope getScope(String imageId) {
+        return inlineImageRepository.findById(imageId)
+                .map(i -> i.getScope() == null ? InlineImageScope.ASSESSMENT : i.getScope())
+                .orElseThrow(() -> new NoSuchElementException("Inline image not found: " + imageId));
+    }
+
+    /**
+     * The image id an assessment's content should point at.
+     *
+     * <p>Already owned by that assessment, and it is left alone. Owned by anything else — a
+     * template's library image, or another assessment's — and it is copied in, because an inline
+     * image authorises against its owner: content referencing someone else's image renders broken
+     * for exactly the readers it was written for. Copying at the point of use is also what keeps a
+     * finalized report fixed, rather than depending on a shared object someone can later change.
+     *
+     * @return the id to reference, unchanged when no copy was needed
+     */
+    public String materializeInto(String imageId, String targetAssessmentId, String userId) {
+        InlineImage image = inlineImageRepository.findById(imageId).orElse(null);
+        if (image == null) {
+            // A dangling reference. Left as it is: a broken image someone can investigate beats
+            // failing the save it happens to be sitting in.
+            return imageId;
+        }
+        if (targetAssessmentId.equals(image.getAssessmentId())) {
+            return imageId;
+        }
+        return copyToAssessment(imageId, targetAssessmentId, userId).orElse(imageId);
+    }
+
+    /**
      * Copies an image into another assessment, as a new image owned by that assessment.
      *
      * <p>Needed because an inline image is authorised against its owning assessment: HTML moved
@@ -137,6 +199,8 @@ public class InlineImageService {
         String filename = source.getOriginalFileName() == null ? "image" : source.getOriginalFileName();
         String contentType = source.getContentType() == null
                 ? "application/octet-stream" : source.getContentType();
+        // Always lands as ASSESSMENT scope, whatever the source was: a copy taken into an
+        // assessment is that assessment's evidence now, not shared boilerplate.
         return Optional.of(uploadImage(targetAssessmentId, filename, contentType, bytes, userId).getId());
     }
 
@@ -156,6 +220,7 @@ public class InlineImageService {
      * Update the reference index for a single rich-text field after it is saved.
      * Extracts all inline image IDs from the content, upserts refs, and removes stale ones.
      */
+    @Transactional
     public void updateRefsForField(String assessmentId, String fieldId, String content) {
         Set<String> currentIds = extractImageIds(content);
 
@@ -187,8 +252,56 @@ public class InlineImageService {
     }
 
     /**
-     * Remove all reference records for an assessment (called on assessment delete).
+     * Reference index for a field that is not scoped to one assessment.
+     *
+     * <p>{@link #updateRefsForField} keys on (assessment, field) and assumes every image in the
+     * content belongs to that assessment. A notebook node breaks that assumption: it is anchored
+     * to an application, only root nodes carry an assessment id at all, and its screenshots are
+     * uploaded against whichever assessment the author happened to be viewing. So each reference
+     * is filed under the assessment that owns <em>that image</em> — which is also what makes
+     * {@link #deleteRefsForAssessment} release it at the right time — and reconciliation is by
+     * field alone.
+     *
+     * @param fieldId globally unique for the field, since it is the whole reconciliation key
      */
+    @Transactional
+    public void updateRefsForSharedField(String fieldId, String content) {
+        Set<String> currentIds = extractImageIds(content);
+        List<InlineImageRef> existing = inlineImageRefRepository.findByFieldId(fieldId);
+        Set<String> existingIds = existing.stream()
+                .map(InlineImageRef::getImageId)
+                .collect(Collectors.toSet());
+
+        for (String imageId : currentIds) {
+            if (existingIds.contains(imageId)) continue;
+            // An id in the content with no image behind it is a dangling reference, not something
+            // to index — indexing it would create a ref that nothing can ever release.
+            inlineImageRepository.findById(imageId).ifPresent(image ->
+                    inlineImageRefRepository.save(InlineImageRef.builder()
+                            .imageId(imageId)
+                            .assessmentId(image.getAssessmentId())
+                            .fieldId(fieldId)
+                            .updatedAt(LocalDateTime.now())
+                            .build()));
+        }
+
+        for (InlineImageRef ref : existing) {
+            if (!currentIds.contains(ref.getImageId())) {
+                inlineImageRefRepository.delete(ref);
+            }
+        }
+    }
+
+    /**
+     * Remove all reference records for an assessment (called on assessment delete).
+     *
+     * <p>{@code @Transactional} because a derived {@code deleteBy…} loads the rows and removes
+     * them one by one, and {@code remove} needs a transaction. Nothing on the delete path supplied
+     * one, so deleting an assessment that had any inline image reference threw
+     * {@code TransactionRequiredException} — an assessment with no images deleted fine, which is
+     * why it went unnoticed.
+     */
+    @Transactional
     public void deleteRefsForAssessment(String assessmentId) {
         inlineImageRefRepository.deleteByAssessmentId(assessmentId);
         log.info("Deleted inline image refs for assessment {}", assessmentId);

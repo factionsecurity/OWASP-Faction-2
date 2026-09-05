@@ -6,6 +6,10 @@ import com.faction.clientportal.model.*;
 import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.NotebookNodeRepository;
 import com.faction.clientportal.repository.UserRepository;
+import com.faction.clientportal.model.Application;
+import com.faction.clientportal.model.Assessment;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,11 +29,13 @@ public class NotebookService {
     private static final int MAX_DEPTH = 5;
 
     private final NotebookNodeRepository notebookNodeRepository;
+    private final InlineImageService inlineImageService;
     private final com.faction.clientportal.repository.AssessmentRepository assessmentRepository;
     private final UserRepository userRepository;
     private final StorageService storageService;
     private final ApplicationRepository applicationRepository;
     private final MentionQueueService mentionQueueService;
+    private final AccessScopeService accessScopeService;
 
     // -------------------------------------------------------------------------
     // Assessment integration
@@ -92,6 +98,11 @@ public class NotebookService {
      * Assessment-owned roots that have no non-deleted descendants are excluded.
      */
     public List<NotebookNodeDto> getTreeForApplication(String applicationId) {
+        return getTreeForApplication(applicationId, null);
+    }
+
+    public List<NotebookNodeDto> getTreeForApplication(String applicationId, Authentication authentication) {
+        checkApplicationAccess(applicationId, authentication);
         List<NotebookNode> roots = notebookNodeRepository
                 .findByApplicationIdAndParentIdIsNullAndDeletedAtIsNullOrderByOrderIndexAsc(applicationId);
 
@@ -191,6 +202,11 @@ public class NotebookService {
     // -------------------------------------------------------------------------
 
     public NotebookNodeDto getNode(String nodeId) {
+        return getNode(nodeId, null);
+    }
+
+    public NotebookNodeDto getNode(String nodeId, Authentication authentication) {
+        nodeWithAccessCheck(nodeId, authentication);
         NotebookNode node = notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
         NotebookNodeDto dto = NotebookNodeDto.fromEntity(node);
@@ -204,6 +220,12 @@ public class NotebookService {
     // -------------------------------------------------------------------------
 
     public NotebookNodeDto createNode(String applicationId, CreateNotebookNodeRequest request, String userId) {
+        return createNode(applicationId, request, userId, null);
+    }
+
+    public NotebookNodeDto createNode(String applicationId, CreateNotebookNodeRequest request,
+                                      String userId, Authentication authentication) {
+        checkApplicationAccess(applicationId, authentication);
         // Verify application exists
         applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found: " + applicationId));
@@ -255,6 +277,7 @@ public class NotebookService {
                 .build();
 
         NotebookNode saved = notebookNodeRepository.save(node);
+        indexInlineImages(saved);
         log.info("Created notebook node {} under application {}", saved.getId(), applicationId);
 
         if (!content.isBlank()) {
@@ -273,6 +296,12 @@ public class NotebookService {
     // -------------------------------------------------------------------------
 
     public NotebookNodeDto updateNode(String nodeId, UpdateNotebookNodeRequest request, String userId) {
+        return updateNode(nodeId, request, userId, null);
+    }
+
+    public NotebookNodeDto updateNode(String nodeId, UpdateNotebookNodeRequest request,
+                                      String userId, Authentication authentication) {
+        nodeWithAccessCheck(nodeId, authentication);
         NotebookNode node = notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
 
@@ -300,6 +329,7 @@ public class NotebookService {
         node.setLastModifiedAt(LocalDateTime.now());
 
         NotebookNode saved = notebookNodeRepository.save(node);
+        indexInlineImages(saved);
         log.info("Updated notebook node {} by user {}", nodeId, userId);
 
         if (request.getContent() != null && !request.getContent().isBlank()) {
@@ -319,6 +349,11 @@ public class NotebookService {
     // -------------------------------------------------------------------------
 
     public void deleteNode(String nodeId, String userId) {
+        deleteNode(nodeId, userId, null);
+    }
+
+    public void deleteNode(String nodeId, String userId, Authentication authentication) {
+        nodeWithAccessCheck(nodeId, authentication);
         NotebookNode node = notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
 
@@ -329,6 +364,8 @@ public class NotebookService {
     private void softDeleteRecursive(NotebookNode node) {
         node.setDeletedAt(LocalDateTime.now());
         notebookNodeRepository.save(node);
+        // A deleted note no longer holds its screenshots open; they age out with the next GC.
+        inlineImageService.updateRefsForSharedField(noteImageFieldKey(node.getId()), "");
 
         List<NotebookNode> children = notebookNodeRepository
                 .findByParentIdAndDeletedAtIsNullOrderByOrderIndexAsc(node.getId());
@@ -342,6 +379,12 @@ public class NotebookService {
     // -------------------------------------------------------------------------
 
     public NotebookNodeDto moveNode(String nodeId, MoveNotebookNodeRequest request, String userId) {
+        return moveNode(nodeId, request, userId, null);
+    }
+
+    public NotebookNodeDto moveNode(String nodeId, MoveNotebookNodeRequest request,
+                                    String userId, Authentication authentication) {
+        nodeWithAccessCheck(nodeId, authentication);
         NotebookNode node = notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
 
@@ -390,6 +433,13 @@ public class NotebookService {
     public List<NotebookSearchResultDto> searchNodes(
             String applicationId, String q, String createdById,
             LocalDateTime from, LocalDateTime to) {
+        return searchNodes(applicationId, q, createdById, from, to, null);
+    }
+
+    public List<NotebookSearchResultDto> searchNodes(
+            String applicationId, String q, String createdById,
+            LocalDateTime from, LocalDateTime to, Authentication authentication) {
+        checkApplicationAccess(applicationId, authentication);
 
         List<NotebookNode> allNodes = notebookNodeRepository.findByApplicationIdAndDeletedAtIsNull(applicationId);
 
@@ -470,6 +520,12 @@ public class NotebookService {
      * out a storage URL.
      */
     public UploadTargetResponse prepareUpload(String nodeId, String fileName, String userId) {
+        return prepareUpload(nodeId, fileName, userId, null);
+    }
+
+    public UploadTargetResponse prepareUpload(String nodeId, String fileName, String userId,
+                                              Authentication authentication) {
+        nodeWithAccessCheck(nodeId, authentication);
         notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
 
@@ -487,8 +543,13 @@ public class NotebookService {
     /** Stream an uploaded body straight into storage under the allocated key. */
     public void storeUpload(String nodeId, String fileId, String fileName,
                             String contentType, long contentLength, InputStream body) {
-        notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
+        storeUpload(nodeId, fileId, fileName, contentType, contentLength, body, null);
+    }
+
+    public void storeUpload(String nodeId, String fileId, String fileName,
+                            String contentType, long contentLength, InputStream body,
+                            Authentication authentication) {
+        nodeWithAccessCheck(nodeId, authentication);
         storageService.uploadStream(attachmentKey(nodeId, fileId, fileName), body, contentLength, contentType);
     }
 
@@ -502,6 +563,13 @@ public class NotebookService {
     public NotebookAttachmentDto confirmFileUpload(
             String nodeId, String fileId, String fileName,
             String contentType, Long fileSize, String userId) {
+        return confirmFileUpload(nodeId, fileId, fileName, contentType, fileSize, userId, null);
+    }
+
+    public NotebookAttachmentDto confirmFileUpload(
+            String nodeId, String fileId, String fileName,
+            String contentType, Long fileSize, String userId, Authentication authentication) {
+        nodeWithAccessCheck(nodeId, authentication);
 
         NotebookNode node = notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
@@ -535,6 +603,11 @@ public class NotebookService {
      * returned stream and must close it.
      */
     public StorageService.StoredFile openFile(String nodeId, String fileId) {
+        return openFile(nodeId, fileId, null);
+    }
+
+    public StorageService.StoredFile openFile(String nodeId, String fileId, Authentication authentication) {
+        nodeWithAccessCheck(nodeId, authentication);
         NotebookNode node = notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
 
@@ -551,6 +624,11 @@ public class NotebookService {
      * Delete a file from storage and remove its metadata from the notebook node.
      */
     public void deleteFile(String nodeId, String fileId, String userId) {
+        deleteFile(nodeId, fileId, userId, null);
+    }
+
+    public void deleteFile(String nodeId, String fileId, String userId, Authentication authentication) {
+        nodeWithAccessCheck(nodeId, authentication);
         NotebookNode node = notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
 
@@ -582,5 +660,75 @@ public class NotebookService {
     private String stripHtml(String html) {
         if (html == null) return "";
         return html.replaceAll("<[^>]+>", "").trim();
+    }
+
+    /**
+     * Records which inline images a note uses, so the nightly GC does not reap them.
+     *
+     * <p>{@link InlineImageGcJob} deletes any image nothing references once it is a day old, and
+     * notes were never indexed — every screenshot pasted into the notebook was deleted the
+     * following night. Shared-field indexing rather than the assessment-scoped kind: a note is
+     * anchored to an application, and its screenshots can come from more than one assessment.
+     */
+    private void indexInlineImages(NotebookNode node) {
+        if (node == null) return;
+        inlineImageService.updateRefsForSharedField(noteImageFieldKey(node.getId()), node.getContent());
+    }
+
+    private static String noteImageFieldKey(String nodeId) {
+        return "notebook/" + nodeId + "/content";
+    }
+
+    // ── Access scope ──────────────────────────────────────────────────────────
+
+    /**
+     * A notebook belongs to an application, so that application's access decides who may read or
+     * write it.
+     *
+     * <p>Enforced here rather than in the controller because notes are reached three ways — by
+     * application, by node id, and by attachment id — and the node and file routes carry no
+     * application in the URL at all. Every one of those used to serve on the strength of the id
+     * alone: notes are working material, so they hold credentials, tokens and exploitation steps
+     * that are deliberately kept out of the report.
+     *
+     * <p>A null authentication is an internal caller (schedulers, the assessment bootstrap) and is
+     * unscoped, matching the convention in AccessScopeService.
+     */
+    private void checkApplicationAccess(String applicationId, Authentication authentication) {
+        if (authentication == null) return;
+        Application application = applicationRepository.findById(applicationId)
+                // Denied rather than "not found", so the endpoint cannot be used to work out which
+                // application ids exist.
+                .orElseThrow(() -> new AccessDeniedException("Access denied"));
+
+        // Keeps one customer's organization out of another's. This is the whole check for an
+        // external caller; for an internal one it returns without deciding anything, because
+        // checkScope only constrains :org and :owned authorities.
+        accessScopeService.checkApplicationAccess(authentication, application);
+
+        // …so internal callers are held to their assessment scope instead: a tester may open the
+        // notebook of an application they have an assessment on, and not one they do not. Without
+        // this an assignment-scoped tester could read every engagement's working notes, which is
+        // where credentials and exploitation steps live.
+        AccessScopeService.AssessmentScope scope =
+                accessScopeService.resolveAssessmentScope(authentication);
+        List<Assessment> onApplication =
+                assessmentRepository.findByApplicationIdAndDeletedAtIsNull(applicationId);
+        if (onApplication.isEmpty()) {
+            // Nothing has been tested here yet, so there is nothing to keep anyone out of, and
+            // refusing would make the notebook unusable on a newly created application.
+            return;
+        }
+        if (onApplication.stream().noneMatch(scope::permits)) {
+            throw new AccessDeniedException("Access denied");
+        }
+    }
+
+    /** The same check for a route that only knows a node. */
+    private NotebookNode nodeWithAccessCheck(String nodeId, Authentication authentication) {
+        NotebookNode node = notebookNodeRepository.findByIdAndDeletedAtIsNull(nodeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Notebook node not found: " + nodeId));
+        checkApplicationAccess(node.getApplicationId(), authentication);
+        return node;
     }
 }

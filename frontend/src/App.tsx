@@ -22,6 +22,7 @@ import Roles from './pages/Roles';
 import MyApiKeys from './pages/MyApiKeys';
 import ProfilePage from './pages/ProfilePage';
 import AssessmentConfig from './pages/AssessmentConfig';
+import PasswordPolicyPage from './pages/PasswordPolicyPage';
 import DefaultVulnerabilities from './pages/DefaultVulnerabilities';
 import DefaultVulnerabilityForm from './pages/DefaultVulnerabilityForm';
 import Organizations from './pages/Organizations';
@@ -273,6 +274,20 @@ function App() {
             )
           }
         />
+
+        <Route path="/password-policy" element={
+
+
+          <ProtectedRoute requiredPermission="canManageAssessmentWorkflow">
+
+
+            <PasswordPolicyPage />
+
+
+          </ProtectedRoute>
+
+
+        } />
 
         <Route
           path="/assessment-config"

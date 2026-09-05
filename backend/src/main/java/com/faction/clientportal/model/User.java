@@ -58,6 +58,16 @@ public class User {
 
     private LocalDateTime disabledAt;
 
+    /**
+     * When a failed-password lockout expires, or null when the account is not locked out.
+     *
+     * <p>Separate from {@link #disabledAt} on purpose: an administrator switching an account off
+     * and the system locking it for a few minutes are different decisions, and a cooldown must
+     * never quietly re-enable somebody a human disabled. A policy configured with no lockout
+     * duration sets {@code disabledAt} instead, and then only an administrator can lift it.
+     */
+    private LocalDateTime lockedUntil;
+
     @Builder.Default
     private Integer failedLoginAttempts = 0;
 

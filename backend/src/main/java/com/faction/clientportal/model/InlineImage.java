@@ -23,7 +23,13 @@ public class InlineImage implements Persistable<String> {
     @Id
     private String id;
 
+    /** Null for a {@link InlineImageScope#LIBRARY} image, which belongs to a template instead. */
     private String assessmentId;
+
+    /** Who owns this image, and therefore who may load it. */
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    private InlineImageScope scope = InlineImageScope.ASSESSMENT;
 
     private String storageKey;
     private String originalFileName;
