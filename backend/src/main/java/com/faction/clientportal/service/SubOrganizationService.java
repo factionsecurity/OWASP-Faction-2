@@ -52,7 +52,11 @@ public class SubOrganizationService {
      * The cross-organization variant below has always filtered; this one did not.
      */
     public List<SubOrganizationDto> listForOrganization(String organizationId, Authentication authentication) {
-        if (authentication != null && !visibleOrganizationIds(authentication).contains(organizationId)) {
+        // null means unrestricted here — a super admin or organizations:read:all — which is why
+        // this cannot go straight to contains(). The cross-organization variant below has always
+        // treated null that way; this check did not, and every admin call would have thrown.
+        Set<String> visible = visibleOrganizationIds(authentication);
+        if (visible != null && !visible.contains(organizationId)) {
             throw new ResourceNotFoundException("Organization not found with id: " + organizationId);
         }
 
