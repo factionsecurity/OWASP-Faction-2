@@ -23,8 +23,10 @@ import {
 } from '../components';
 import Page from '../components/Page';
 import './Users.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 export default function Users() {
+  const { organizationLower, organizationPlural, organizationSingular } = useTerminology();
   const hasExternalOwners = useEdition().hasFeature('external_owners');
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -524,7 +526,7 @@ export default function Users() {
         value={filterOrganizationId}
         onChange={(v) => { setFilterOrganizationId(v); resetPage(); }}
         options={toOptions(organizations)}
-        placeholder="All Organizations"
+        placeholder={`All ${organizationPlural}`}
       />
       <SearchableSelect
         value={filterType}
@@ -578,7 +580,7 @@ export default function Users() {
       ),
     },
     {
-      header: 'Teams / Organization',
+      header: `Teams / ${organizationSingular}`,
       render: (user) => (
         <span className="text-sm text-secondary">
           {user.isInternal ? getTeamNames(user.teamIds) : getOrgName(user.organizationId)}
@@ -930,7 +932,7 @@ export default function Users() {
                     checked={accessScope === 'organization'}
                     onChange={() => setAccessScope('organization')}
                   />
-                  <span>Entire organization</span>
+                  <span>Entire {organizationLower}</span>
                 </label>
                 <label className="radio-label">
                   <input
@@ -952,15 +954,15 @@ export default function Users() {
                     value={formData.organizationId}
                     onChange={(e) => setFormData({ ...formData, organizationId: e.target.value })}
                   >
-                    <option value="">No organization</option>
+                    <option value="">No {organizationLower}</option>
                     {organizations.map((org) => (
                       <option key={org.id} value={org.id}>{org.name}</option>
                     ))}
                   </Select>
                   <FormHint>
                     {formData.organizationId
-                      ? 'Full access to everything in the selected organization.'
-                      : 'No organization-wide access. Assign specific applications instead, or leave with no access.'}
+                      ? `Full access to everything in the selected ${organizationLower}.`
+                      : `No ${organizationLower}-wide access. Assign specific applications instead, or leave with no access.`}
                   </FormHint>
                 </>
               ) : (

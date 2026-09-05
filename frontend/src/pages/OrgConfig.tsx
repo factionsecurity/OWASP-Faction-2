@@ -27,6 +27,7 @@ interface ConfirmDeleteState {
 }
 
 export default function OrgConfig() {
+  const { organizationSingular } = useTerminology();
   const [orgFields, setOrgFields] = useState<UserDefinedField[]>([]);
   const [appFields, setAppFields] = useState<UserDefinedField[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +51,9 @@ export default function OrgConfig() {
   const appTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const regionsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const regionsLoadedRef = useRef(false);
+  const terminologyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  /** What the server last confirmed, so an unchanged form does not save itself back. */
+  const savedTerminologyRef = useRef<string | null>(null);
   const reorderLockRef = useRef(false);
   const fieldRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -63,10 +67,6 @@ export default function OrgConfig() {
     regionsTimeoutRef.current = setTimeout(async () => {
       try {
         await regionConfigApi.updateRegions(regions);
-        if (terminology) {
-          await terminologyApi.updateConfig(terminology);
-          await refreshTerminology();
-        }
         setToastKey(k => k + 1);
         setShowToast(true);
       } catch (err: any) {
@@ -75,12 +75,40 @@ export default function OrgConfig() {
     }, 800);
   }, [regions]);
 
+  // Terminology saves on its own debounce. It was originally folded into the regions effect
+  // above, which meant it only ever saved when a region also happened to change — editing a
+  // label alone did nothing at all.
+  useEffect(() => {
+    if (!terminology) return;
+    // The effect also runs on the render that follows loading, so without this the page would
+    // save what it had just fetched — a pointless write and a toast on every visit.
+    if (JSON.stringify(terminology) === savedTerminologyRef.current) return;
+    if (terminologyTimeoutRef.current) clearTimeout(terminologyTimeoutRef.current);
+    terminologyTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await terminologyApi.updateConfig(terminology);
+        // The server trims and rejects blanks, so take back what it actually stored rather than
+        // leaving the form showing something that was not saved.
+        if (res.data) {
+          savedTerminologyRef.current = JSON.stringify(res.data);
+          setTerminology(res.data);
+        }
+        await refreshTerminology();
+        setToastKey(k => k + 1);
+        setShowToast(true);
+      } catch (err: any) {
+        setError(err.response?.data?.message || 'Failed to save terminology');
+      }
+    }, 800);
+  }, [terminology]);
+
   useEffect(() => {
     loadData();
     return () => {
       if (orgTimeoutRef.current) clearTimeout(orgTimeoutRef.current);
       if (appTimeoutRef.current) clearTimeout(appTimeoutRef.current);
       if (regionsTimeoutRef.current) clearTimeout(regionsTimeoutRef.current);
+      if (terminologyTimeoutRef.current) clearTimeout(terminologyTimeoutRef.current);
     };
   }, []);
 
@@ -95,7 +123,10 @@ export default function OrgConfig() {
         terminologyApi.getConfig(),
       ]);
       setRegions(regionsData);
-      if (terminologyRes.data) setTerminology(terminologyRes.data);
+      if (terminologyRes.data) {
+        savedTerminologyRef.current = JSON.stringify(terminologyRes.data);
+        setTerminology(terminologyRes.data);
+      }
       regionsLoadedRef.current = true;
       if (orgRes.data) {
         const sorted = [...(orgRes.data.fieldDefinitions || [])].sort(
@@ -482,7 +513,7 @@ export default function OrgConfig() {
 
         <div className="rd-section">
           <div className="rd-section-header">
-            <span>Organization Fields</span>
+            <span>{organizationSingular} Fields</span>
             <Button onClick={() => addField('ORGANIZATION')} icon={Plus} size="sm" disabled={saving}>
               Add Field
             </Button>

@@ -220,7 +220,7 @@ interface AppFormSnapshot {
 }
 
 export default function ApplicationEdit() {
-  const { organizationSingular, subOrganizationSingular } = useTerminology();
+  const { organizationArticle, organizationLower, organizationSingular, subOrganizationSingular, subOrganizationsLower } = useTerminology();
   const { id } = useParams<{ id: string }>();
   const { setBreadcrumbs } = usePageTitle();
 
@@ -1047,10 +1047,10 @@ export default function ApplicationEdit() {
                     </Select>
                     <FormHint>
                       {!formData.organizationId
-                        ? 'Choose an organization first.'
+                        ? `Choose ${organizationArticle} ${organizationLower} first.`
                         : subOrganizations.length === 0
-                          ? 'This organization has no sub-organizations yet.'
-                          : 'Optional division within the organization.'}
+                          ? `This ${organizationLower} has no ${subOrganizationsLower} yet.`
+                          : `Optional division within the ${organizationLower}.`}
                     </FormHint>
                   </FormGroup>
                   <FormGroup>

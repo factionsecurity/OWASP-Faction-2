@@ -19,8 +19,10 @@ import {
   ErrorMessage,
 } from '../components';
 import './Organizations.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 export default function Organizations() {
+  const { organizationLower, organizationSingular, organizationsLower } = useTerminology();
   const navigate = useNavigate();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +74,7 @@ export default function Organizations() {
         });
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load organizations');
+      setError(err.response?.data?.message || `Failed to load ${organizationsLower}`);
     } finally {
       setLoading(false);
     }
@@ -107,13 +109,13 @@ export default function Organizations() {
   };
 
   const handleDelete = async (organizationId: string) => {
-    if (!confirm('Are you sure you want to delete this organization?')) return;
+    if (!confirm(`Are you sure you want to delete this ${organizationLower}?`)) return;
 
     try {
       await organizationsApi.delete(organizationId);
       await loadOrganizations();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to delete organization');
+      alert(err.response?.data?.message || `Failed to delete ${organizationLower}`);
     }
   };
 
@@ -132,7 +134,7 @@ export default function Organizations() {
       setShowModal(false);
       await loadOrganizations();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to save organization');
+      setError(err.response?.data?.message || `Failed to save ${organizationLower}`);
     }
   };
 
@@ -199,7 +201,7 @@ export default function Organizations() {
         <div />
         {canCreate && (
           <Button onClick={handleCreate} icon={Plus}>
-            Create Organization
+            Create {organizationSingular}
           </Button>
         )}
       </div>
@@ -212,8 +214,8 @@ export default function Organizations() {
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
         onSearchChange={handleSearchChange}
-        searchPlaceholder="Search organizations"
-        emptyMessage="No organizations found"
+        searchPlaceholder={`Search ${organizationsLower}`}
+        emptyMessage={`No ${organizationsLower} found`}
         idAccessor="id"
         sort={sort}
         onSortChange={handleSortChange}
@@ -223,7 +225,7 @@ export default function Organizations() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="Create Organization"
+        title={`Create ${organizationSingular}`}
         closeOnOverlayClick={false}
       >
         <form onSubmit={handleSubmit} className="organization-form">
@@ -238,7 +240,7 @@ export default function Organizations() {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Organization name"
+                placeholder={`${organizationSingular} name`}
                 required
               />
             </FormGroup>
@@ -249,7 +251,7 @@ export default function Organizations() {
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Organization description"
+                placeholder={`${organizationSingular} description`}
                 rows={4}
               />
             </FormGroup>

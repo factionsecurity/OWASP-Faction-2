@@ -20,7 +20,7 @@ import './Organizations.css';
 import { useTerminology } from '../context/TerminologyContext';
 
 export default function OrganizationEdit() {
-  const { organizationSingular, organizationPlural } = useTerminology();
+  const { organizationLower, organizationPlural, organizationSingular } = useTerminology();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -67,7 +67,7 @@ export default function OrganizationEdit() {
         }
       })
       .catch((err: any) => {
-        setError(err.response?.data?.message || 'Failed to load organization');
+        setError(err.response?.data?.message || `Failed to load ${organizationLower}`);
       })
       .finally(() => {
         setLoading(false);
@@ -102,7 +102,7 @@ export default function OrganizationEdit() {
       await organizationsApi.update(id, updateData);
       navigate('/organizations');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to save organization');
+      setError(err.response?.data?.message || `Failed to save ${organizationLower}`);
       setSaving(false);
     }
   };
@@ -130,7 +130,7 @@ export default function OrganizationEdit() {
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Organization name"
+              placeholder={`${organizationSingular} name`}
               required
               disabled={!canWrite}
             />
@@ -142,7 +142,7 @@ export default function OrganizationEdit() {
               id="description"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Organization description"
+              placeholder={`${organizationSingular} description`}
               rows={4}
               disabled={!canWrite}
             />

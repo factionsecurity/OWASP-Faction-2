@@ -37,7 +37,7 @@ interface VulnerabilitiesViewProps {
 }
 
 export default function VulnerabilitiesView({ onFiltersChange }: VulnerabilitiesViewProps = {}) {
-  const { organizationSingular } = useTerminology();
+  const { organizationPlural, organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
   // External users (app owners, org users) reach this page on their read permission but
@@ -458,7 +458,7 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
           setFilterAssessmentId(''); setDraftAssessmentId(''); setTablePage(0);
         }}
         options={orgOptions}
-        placeholder="All Organizations"
+        placeholder={`All ${organizationPlural}`}
       />
       <MultiSelect
         selected={filterSeverities}

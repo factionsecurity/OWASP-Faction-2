@@ -22,6 +22,11 @@ interface TerminologyContextValue extends TerminologyConfig {
   /** Lower-cased plural. */
   organizationsLower: string;
   subOrganizationsLower: string;
+  /**
+   * "a" or "an" for the singular. "an organization" but "a value stream" — a renamed label that
+   * leaves the wrong article behind reads as a bug in the sentence around it.
+   */
+  organizationArticle: string;
   /** Re-reads after an administrator changes the wording, so the change is visible immediately. */
   refresh: () => Promise<void>;
 }
@@ -32,6 +37,7 @@ const TerminologyContext = createContext<TerminologyContextValue>({
   organizationsLower: 'organizations',
   subOrganizationLower: 'sub-organization',
   subOrganizationsLower: 'sub-organizations',
+  organizationArticle: 'an',
   refresh: async () => {},
 });
 
@@ -55,6 +61,9 @@ export function TerminologyProvider({ children }: { children: ReactNode }) {
     organizationsLower: config.organizationPlural.toLowerCase(),
     subOrganizationLower: config.subOrganizationSingular.toLowerCase(),
     subOrganizationsLower: config.subOrganizationPlural.toLowerCase(),
+    // Good enough for the handful of sentences that need it: the vowel test is wrong for a
+    // "hour"/"university" style label, which is not a plausible name for a business unit.
+    organizationArticle: /^[aeiou]/i.test(config.organizationSingular.trim()) ? 'an' : 'a',
     refresh: load,
   }), [config]);
 

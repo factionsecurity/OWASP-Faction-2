@@ -42,7 +42,7 @@ const formatAssessmentLabel = (a: Assessment): SelectOption => {
 };
 
 export default function RemediationPage() {
-  const { organizationSingular } = useTerminology();
+  const { organizationPlural, organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
   // The queue is reachable on a retest permission alone, which external users hold. Editing
@@ -569,7 +569,7 @@ export default function RemediationPage() {
           setFilterAssessmentId(''); setDraftAssessmentId(''); setPage(0);
         }}
         options={orgOptions}
-        placeholder="All Organizations"
+        placeholder={`All ${organizationPlural}`}
       />
       <SearchableSelect
         value={filterSeverity}
