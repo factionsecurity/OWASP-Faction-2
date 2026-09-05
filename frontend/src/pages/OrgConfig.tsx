@@ -577,6 +577,11 @@ export default function OrgConfig() {
                 The plural is asked for separately because it cannot be derived reliably — "Entity"
                 becomes "Entities", not "Entitys".
               </p>
+
+              {/* Severity names are the other half of this record, but they are configured in
+                  Assessment Config > Severity Names — a severity is a property of the findings an
+                  assessment produces, not of the organization the work was done for. Both pages
+                  PUT the whole config, so neither can clobber the other's half. */}
             </div>
           </div>
         )}

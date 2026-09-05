@@ -75,8 +75,9 @@ public class DocxUtils {
 
     public String FONT = "";
 
+    /** Enum names, not labels — see {@link ReportData.ReportVulnerability#getSeverityKey()}. */
     private static final List<String> SEVERITIES =
-            List.of("Critical", "High", "Medium", "Low", "Informational");
+            List.of("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFORMATIONAL");
 
     private final WordprocessingMLPackage mlp;
     private final ReportData data;
@@ -89,8 +90,9 @@ public class DocxUtils {
     // ── severity helpers ────────────────────────────────────────────────────
 
     /**
-     * Maps a severity display string to the legacy integer used in
-     * {@code ${riskCountN}} template variables (Critical=9 … Informational=5).
+     * Maps a severity <em>enum name</em> to the legacy integer used in {@code ${riskCountN}}
+     * template variables (CRITICAL=9 … INFORMATIONAL=5). Deliberately not the display label: a
+     * customer who renames Critical must not lose the counts in their existing templates.
      */
     private int severityToInt(String severity) {
         if (severity == null) return -1;
@@ -1015,7 +1017,7 @@ public class DocxUtils {
         int[] results = new int[10];
         int totals    = 0;
         for (ReportData.ReportVulnerability v : getFilteredVulns()) {
-            int i = severityToInt(v.getSeverity());
+            int i = severityToInt(v.getSeverityKey());
             if (i >= 0) {
                 results[i]++;
                 totals++;
@@ -1033,7 +1035,7 @@ public class DocxUtils {
         int[] results = new int[10];
         int totals    = 0;
         for (ReportData.ReportVulnerability v : getFilteredVulns()) {
-            int i = severityToInt(v.getSeverity());
+            int i = severityToInt(v.getSeverityKey());
             if (i >= 0) {
                 results[i]++;
                 totals++;
@@ -1070,7 +1072,7 @@ public class DocxUtils {
         String html        = "<ol>\r\n";
         boolean isSomething = false;
         for (ReportData.ReportVulnerability v : getFilteredVulns()) {
-            if (severity.equalsIgnoreCase(v.getSeverity())) {
+            if (severity.equalsIgnoreCase(v.getSeverityKey())) {
                 isSomething = true;
                 html += "<li>" + v.getName() + "</li>";
             }

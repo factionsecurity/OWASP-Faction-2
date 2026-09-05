@@ -74,6 +74,7 @@ public class DocxReportGenerationService implements ReportGenerationService {
     private final LibreOfficeConverter          libreOfficeConverter;
     private final ReportEncryptor               reportEncryptor;
     private final com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
+    private final TerminologyConfigService      terminologyConfigService;
 
     /**
      * The order findings appear in a report: most severe first, Informational last.
@@ -451,8 +452,11 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 .id(v.getId())
                 .name(v.getName())
                 .severity(severityDisplayName(v.getSeverity()))
-                .likelihood(v.getLikelihood())
-                .impact(v.getImpact())
+                .severityKey(v.getSeverity() == null ? "" : v.getSeverity().name())
+                // Likelihood and impact hold a severity by name, so they follow the same rename
+                // as the severity itself; anything else passes through untouched.
+                .likelihood(terminologyConfigService.severityLabelForName(v.getLikelihood()))
+                .impact(terminologyConfigService.severityLabelForName(v.getImpact()))
                 .cvssScore(v.getCvssScore())
                 .cvssString(v.getCvssString())
                 .assetLocation(v.getAssetLocation())
@@ -572,11 +576,13 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 assessmentElement, vulnElements, token);
     }
 
-    /** Returns a human-readable severity string, e.g. "Critical". */
+    /**
+     * This installation's word for the severity — "Critical" unless the terminology config renames
+     * it. Only what a reader sees; {@code ReportVulnerability.severityKey} carries the enum name
+     * that the template tokens match on.
+     */
     private String severityDisplayName(VulnerabilitySeverity severity) {
-        if (severity == null) return "";
-        String name = severity.name();
-        return name.charAt(0) + name.substring(1).toLowerCase();
+        return terminologyConfigService.severityLabel(severity);
     }
 
     private byte[] generateDocxBytes(byte[] templateBytes, ReportData data,

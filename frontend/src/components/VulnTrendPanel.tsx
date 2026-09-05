@@ -1,4 +1,5 @@
 import { PieChart, Pie, Cell, Label, Tooltip, ResponsiveContainer } from 'recharts';
+import { useTerminology } from '../context/TerminologyContext';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -49,13 +50,14 @@ export function SeverityLegend({ counts, reverse = false }: {
   counts: Record<string, number>;
   reverse?: boolean;
 }) {
+  const { severityLabel } = useTerminology();
   const order = reverse ? [...SEVERITIES].reverse() : SEVERITIES;
   return (
     <div className="vdash-legend">
       {order.map(s => (
         <div key={s} className="vdash-legend-row">
           <span className="vdash-legend-dot" style={{ background: SEV_COLORS[s] }} />
-          <span className="vdash-legend-name">{s.charAt(0) + s.slice(1).toLowerCase()}</span>
+          <span className="vdash-legend-name">{severityLabel(s)}</span>
           <span className="vdash-legend-count">{counts[s] || 0}</span>
         </div>
       ))}
@@ -73,10 +75,13 @@ interface DonutProps {
 }
 
 export function DonutCard({ title, counts, loading, emptyContent }: DonutProps) {
+  const { severityLabel } = useTerminology();
   const total = SEVERITIES.reduce((s, k) => s + (counts[k] || 0), 0);
+  // `key` stays the enum value — it drives the slice colour and the legend lookup, so a
+  // renamed label only ever changes `name`, which is what the tooltip shows.
   const pieData = SEVERITIES
     .filter(s => (counts[s] || 0) > 0)
-    .map(s => ({ name: s.charAt(0) + s.slice(1).toLowerCase(), value: counts[s], key: s }));
+    .map(s => ({ name: severityLabel(s), value: counts[s], key: s }));
 
   return (
     <div className="vdash-card">

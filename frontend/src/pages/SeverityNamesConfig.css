@@ -1,0 +1,82 @@
+/* Severity naming, rendered as a tab inside Assessment Config. Three columns so the product's
+   own word, the installation's word, and the resulting badge line up down the page — an
+   administrator renaming five levels is comparing rows, not reading one field at a time. */
+
+.sevnames-intro {
+  max-width: 62ch;
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.sevnames-card {
+  max-width: 640px;
+  padding: 0.75rem 1rem 1rem;
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.sevnames-head,
+.sevnames-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr 7rem;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.sevnames-head {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sevnames-row {
+  padding: 0.45rem 0;
+}
+
+.sevnames-name {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.sevnames-hint {
+  margin: 0.75rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.sevnames-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.sevnames-saved {
+  color: var(--success-color, #22c55e);
+  font-size: 0.8125rem;
+}
+
+/* The badge column is a preview, not a control — it should not stretch to fill its cell. */
+.sevnames-row .badge {
+  justify-self: start;
+}
+
+@media (max-width: 640px) {
+  .sevnames-head {
+    display: none;
+  }
+
+  .sevnames-row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+}

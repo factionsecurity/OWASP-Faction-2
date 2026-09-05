@@ -1,6 +1,8 @@
 package com.faction.clientportal.service;
 
+import com.faction.clientportal.dto.TerminologyConfigRequest;
 import com.faction.clientportal.model.TerminologyConfig;
+import com.faction.clientportal.model.VulnerabilitySeverity;
 import com.faction.clientportal.repository.TerminologyConfigRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,25 +22,51 @@ public class TerminologyConfigService {
                 .orElseGet(() -> repository.save(TerminologyConfig.builder().id(SINGLETON_ID).build()));
     }
 
-    public TerminologyConfig updateConfig(TerminologyConfig config) {
-        config.setId(SINGLETON_ID);
+    /**
+     * Applies a partial update onto the stored config. A field that is null or blank keeps the
+     * value it already had — a blank label would leave a screen with a gap where a noun should be,
+     * and an omitted one was never meant to change.
+     */
+    public TerminologyConfig updateConfig(TerminologyConfigRequest request) {
         TerminologyConfig current = getConfig();
 
-        // A blank label leaves a screen with a gap where a noun should be, so an empty value means
-        // "leave this one alone" rather than "erase it".
-        config.setOrganizationSingular(orDefault(config.getOrganizationSingular(),
+        current.setOrganizationSingular(orDefault(request.getOrganizationSingular(),
                 current.getOrganizationSingular()));
-        config.setOrganizationPlural(orDefault(config.getOrganizationPlural(),
+        current.setOrganizationPlural(orDefault(request.getOrganizationPlural(),
                 current.getOrganizationPlural()));
-        config.setSubOrganizationSingular(orDefault(config.getSubOrganizationSingular(),
+        current.setSubOrganizationSingular(orDefault(request.getSubOrganizationSingular(),
                 current.getSubOrganizationSingular()));
-        config.setSubOrganizationPlural(orDefault(config.getSubOrganizationPlural(),
+        current.setSubOrganizationPlural(orDefault(request.getSubOrganizationPlural(),
                 current.getSubOrganizationPlural()));
+        current.setSeverityCritical(orDefault(request.getSeverityCritical(),
+                current.getSeverityCritical()));
+        current.setSeverityHigh(orDefault(request.getSeverityHigh(), current.getSeverityHigh()));
+        current.setSeverityMedium(orDefault(request.getSeverityMedium(), current.getSeverityMedium()));
+        current.setSeverityLow(orDefault(request.getSeverityLow(), current.getSeverityLow()));
+        current.setSeverityInformational(orDefault(request.getSeverityInformational(),
+                current.getSeverityInformational()));
 
-        TerminologyConfig saved = repository.save(config);
-        log.info("Terminology updated: {} / {}", saved.getOrganizationPlural(),
-                saved.getSubOrganizationPlural());
+        TerminologyConfig saved = repository.save(current);
+        log.info("Terminology updated: {} / {} / severities {}..{}", saved.getOrganizationPlural(),
+                saved.getSubOrganizationPlural(), saved.getSeverityCritical(),
+                saved.getSeverityInformational());
         return saved;
+    }
+
+    /**
+     * This installation's word for one severity, for server-rendered output — reports and the
+     * digest email. The interface has its own copy via the terminology endpoint.
+     */
+    public String severityLabel(VulnerabilitySeverity severity) {
+        return getConfig().labelFor(severity);
+    }
+
+    /**
+     * The same, for a rating held as free text — likelihood and impact. Passes through anything
+     * that is not one of the five severities.
+     */
+    public String severityLabelForName(String name) {
+        return getConfig().labelForName(name);
     }
 
     private static String orDefault(String value, String fallback) {
