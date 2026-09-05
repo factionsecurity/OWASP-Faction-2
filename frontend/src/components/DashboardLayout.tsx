@@ -29,7 +29,6 @@ import {
   Mail,
   KeyRound,
   UserCircle,
-  Hash,
   PenLine,
   Sparkles,
   ScrollText,
@@ -122,7 +121,6 @@ const menuItems: MenuItem[] = [
       // Everything that configures the installation itself.
       { name: 'System', icon: Sliders, heading: true },
       { name: 'Assessment Config', path: '/assessment-config', icon: Sliders },
-      { name: 'Application IDs', path: '/application-id-config', icon: Hash },
       { name: 'Branding', path: '/branding', icon: Palette, feature: 'branding' },
       { name: 'App Store', path: '/app-store', icon: Blocks },
       { name: 'Logs', path: '/logs', icon: ScrollText },
