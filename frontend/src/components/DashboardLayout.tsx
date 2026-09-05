@@ -89,6 +89,7 @@ const menuItems: MenuItem[] = [
       { name: 'Users', path: '/users', icon: Users },
       { name: 'Teams', path: '/teams', icon: UserCog },
       { name: 'Roles', path: '/roles', icon: Shield },
+      { name: 'Password Policy', path: '/password-policy', icon: KeyRound },
       { name: 'Assessment Config', path: '/assessment-config', icon: Sliders },
       { name: 'Default Vulnerabilities', path: '/default-vulnerabilities', icon: BookOpen },
       { name: 'Content Templates', path: '/content-templates', icon: ClipboardList },

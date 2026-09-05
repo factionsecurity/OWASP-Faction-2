@@ -60,7 +60,7 @@ class PasswordResetServiceTest extends TestContainersConfig {
         passwordResetService.requestReset("forgetful@test.com");
         String current = tokenRepository.findAll().get(0).getToken();
 
-        passwordResetService.resetPassword(current, "a-new-password");
+        passwordResetService.resetPassword(current, "A-new-password1");
 
         assertThat(tokenRepository.findByToken(current).orElseThrow().isUsed()).isTrue();
     }
@@ -69,9 +69,9 @@ class PasswordResetServiceTest extends TestContainersConfig {
     void aTokenCannotBeUsedTwice() {
         passwordResetService.requestReset("forgetful@test.com");
         String token = tokenRepository.findAll().get(0).getToken();
-        passwordResetService.resetPassword(token, "first-password");
+        passwordResetService.resetPassword(token, "First-password1");
 
-        assertThatThrownBy(() -> passwordResetService.resetPassword(token, "second-password"))
+        assertThatThrownBy(() -> passwordResetService.resetPassword(token, "Second-password1"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already been used");
     }
@@ -92,6 +92,39 @@ class PasswordResetServiceTest extends TestContainersConfig {
         // Their password lives with the identity provider; issuing a link here would be a way in
         // that the IdP's own controls never see.
         assertThat(tokenRepository.findAll()).isEmpty();
+    }
+
+    // ── Administrator-initiated ──────────────────────────────────────────────
+
+    @Test
+    void anAdministratorGetsARealAnswerWhereThePublicEndpointStaysSilent() {
+        // The public route must answer identically whatever happens, so it cannot be used to
+        // discover which addresses have accounts. An administrator is on the other side of this
+        // one and needs to know when nothing was sent.
+        userRepository.save(user("federated2", "fed2@test.com", LoginOption.SAML2));
+        String ssoId = userRepository.findByUsername("federated2").orElseThrow().getId();
+
+        assertThatThrownBy(() -> passwordResetService.sendResetLinkFor(ssoId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("identity provider");
+        assertThat(tokenRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void anAdministratorSendingToAnUnknownUserIs404() {
+        assertThatThrownBy(() -> passwordResetService.sendResetLinkFor("no-such-user"))
+                .isInstanceOf(com.faction.clientportal.exception.ResourceNotFoundException.class);
+    }
+
+    @Test
+    void aUserWithNoEmailAddressIsReportedRatherThanSilentlySkipped() {
+        User noEmail = userRepository.save(User.builder()
+                .username("no-email").email(null).password("x")
+                .loginOption(LoginOption.NATIVE).roleIds(List.of())
+                .isInternal(true).createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+
+        assertThatThrownBy(() -> passwordResetService.sendResetLinkFor(noEmail.getId()))
+                .hasMessageContaining("no email address");
     }
 
     @Test

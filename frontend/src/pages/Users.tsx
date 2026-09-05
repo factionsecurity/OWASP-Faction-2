@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { Edit2, Trash2, Plus, X, Search, Mail, Check, UserX, UserCheck } from 'lucide-react';
-import { usersApi, rolesApi, teamsApi, authApi, organizationsApi, applicationsApi, azureUsersApi } from '../api';
+import { usersApi, rolesApi, teamsApi, organizationsApi, applicationsApi, azureUsersApi } from '../api';
 import type { User, Role, Team, Organization, Application, CreateUserRequest, UpdateUserRequest, AzureDirectoryUser } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
@@ -274,17 +274,23 @@ export default function Users() {
   };
 
   const handleSendReset = async () => {
-    if (!confirmResetUser?.email) return;
+    if (!confirmResetUser) return;
     setSendingReset(true);
+    setError('');
     try {
-      await authApi.forgotPassword(confirmResetUser.email);
+      // The admin endpoint, not the public forgot-password one. That one answers 200 whatever
+      // happens — deliberately, so it cannot be used to discover which addresses have accounts —
+      // which meant an admin sending a link to an SSO user was told it worked when nothing was
+      // sent at all.
+      await usersApi.sendPasswordReset(confirmResetUser.id);
       setResetSentId(confirmResetUser.id);
       setTimeout(() => setResetSentId(null), 3000);
-    } catch {
-      // silently ignore — server always returns 200
+      setConfirmResetUser(null);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not send the reset link.');
+      setConfirmResetUser(null);
     } finally {
       setSendingReset(false);
-      setConfirmResetUser(null);
     }
   };
 
