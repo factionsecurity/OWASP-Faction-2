@@ -787,3 +787,22 @@
     padding: 0 1rem;
   }
 }
+
+/* Section labels inside a menu's sub-item list. Deliberately quiet — they are there to break a
+   long list into scannable groups, not to compete with the items themselves. */
+.nav-subheading,
+.nav-flyout-heading {
+  padding: 0.5rem 0.75rem 0.2rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+/* No leading gap on the first group — the menu already has its own padding above. */
+.nav-subheading:first-child,
+.nav-flyout-heading:first-child {
+  padding-top: 0.15rem;
+}

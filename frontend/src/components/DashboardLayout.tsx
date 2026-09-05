@@ -69,6 +69,12 @@ interface MenuItem {
    * the feature is rather than a 404.
    */
   feature?: FeatureKey;
+  /**
+   * A label, not a destination. Administration had grown to nineteen flat entries, which is a
+   * list you read rather than scan; these break it into the four things an admin is usually
+   * actually here to do. Carries no path and is never clickable.
+   */
+  heading?: boolean;
 }
 
 const menuItems: MenuItem[] = [
@@ -85,25 +91,41 @@ const menuItems: MenuItem[] = [
     name: 'Administration',
     icon: Settings,
     subItems: [
-      { name: 'Organizations', path: '/organizations', icon: Building2 },
+      // People and how they get in.
+      { name: 'People & Access', icon: Users, heading: true },
       { name: 'Users', path: '/users', icon: Users },
       { name: 'Teams', path: '/teams', icon: UserCog },
       { name: 'Roles', path: '/roles', icon: Shield },
       { name: 'Password Policy', path: '/password-policy', icon: KeyRound },
-      { name: 'Assessment Config', path: '/assessment-config', icon: Sliders },
+      { name: 'SSO Config', path: '/sso-config', icon: Shield, feature: 'sso' },
+
+      // Who the work is for.
+      { name: 'Organizations', icon: Building2, heading: true },
+      { name: 'Organizations', path: '/organizations', icon: Building2 },
+      { name: 'Organization Config', path: '/org-config', icon: DatabaseZap },
+
+      // What goes into a report. AI Configuration sits here for its prompt library, though the
+      // same page also holds provider and API key settings — splitting the page to match this
+      // grouping exactly would be a bigger change than the menu warrants.
+      { name: 'Content & Reporting', icon: FileText, heading: true },
       { name: 'Default Vulnerabilities', path: '/default-vulnerabilities', icon: BookOpen },
       { name: 'Content Templates', path: '/content-templates', icon: ClipboardList },
       { name: 'Report Designer', path: '/report-designer', icon: FileText },
-      { name: 'Organization Config', path: '/org-config', icon: DatabaseZap },
-      { name: 'SSO Config', path: '/sso-config', icon: Shield, feature: 'sso' },
+      { name: 'AI Configuration', path: '/ai-config', icon: Sparkles },
+
+      // Mail in and mail out.
+      { name: 'Email', icon: Mail, heading: true },
       { name: 'Email Config', path: '/email-config', icon: Mail },
-      { name: 'Branding', path: '/branding', icon: Palette, feature: 'branding' },
       { name: 'Email Notifications', path: '/email-notifications', icon: BellRing },
       { name: 'Inbound Email', path: '/inbound-email-config', icon: Inbox, feature: 'inbound_email' },
-      { name: 'AI Configuration', path: '/ai-config', icon: Sparkles },
+
+      // Everything that configures the installation itself.
+      { name: 'System', icon: Sliders, heading: true },
+      { name: 'Assessment Config', path: '/assessment-config', icon: Sliders },
+      { name: 'Application IDs', path: '/application-id-config', icon: Hash },
+      { name: 'Branding', path: '/branding', icon: Palette, feature: 'branding' },
       { name: 'App Store', path: '/app-store', icon: Blocks },
       { name: 'Logs', path: '/logs', icon: ScrollText },
-      { name: 'Application IDs', path: '/application-id-config', icon: Hash },
     ],
   },
 ];
@@ -463,9 +485,19 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
     .map((item) => {
       // If item has subitems, filter them
       if (item.subItems) {
-        const visibleSubItems = item.subItems.filter((subItem) =>
-          hasPermission(subItem.name) && (!subItem.feature || hasFeature(subItem.feature))
+        const permitted = item.subItems.filter((subItem) =>
+          // A heading is a label, so it is never permission-checked on its own — it survives or
+          // not on whether anything under it did.
+          subItem.heading
+            || (hasPermission(subItem.name) && (!subItem.feature || hasFeature(subItem.feature)))
         );
+        // Drop a heading with nothing beneath it. A section title over an empty gap reads as a
+        // broken menu, and feature flags routinely empty a whole group (SSO, inbound email).
+        const visibleSubItems = permitted.filter((subItem, index) => {
+          if (!subItem.heading) return true;
+          const next = permitted[index + 1];
+          return next !== undefined && !next.heading;
+        });
         // Only show parent if it has visible subitems
         return visibleSubItems.length > 0
           ? { ...item, subItems: visibleSubItems }
@@ -544,6 +576,13 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                     <div className="nav-submenu">
                       {item.subItems.map((subItem) => {
                         const SubIcon = subItem.icon;
+                        if (subItem.heading) {
+                          return (
+                            <div key={`heading-${subItem.name}`} className="nav-subheading">
+                              {subItem.name}
+                            </div>
+                          );
+                        }
                         return (
                           <button
                             key={subItem.path}
@@ -567,6 +606,13 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                       <div className="nav-flyout-title">{item.name}</div>
                       {item.subItems.map((subItem) => {
                         const SubIcon = subItem.icon;
+                        if (subItem.heading) {
+                          return (
+                            <div key={`heading-${subItem.name}`} className="nav-flyout-heading">
+                              {subItem.name}
+                            </div>
+                          );
+                        }
                         const subActive =
                           subItem.path &&
                           (location.pathname === subItem.path ||
