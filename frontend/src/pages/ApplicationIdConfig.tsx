@@ -8,7 +8,15 @@ import './ApplicationIdConfig.css';
 
 type ToastType = 'success' | 'error';
 
-export default function ApplicationIdConfig() {
+interface Props {
+  /**
+   * Rendered inside another routed page's tab rather than on its own route. Skips the {@code Page}
+   * wrapper, which owns width and padding and must not be nested.
+   */
+  embedded?: boolean;
+}
+
+export default function ApplicationIdConfig({ embedded = false }: Props) {
   const [config, setConfig] = useState<ApplicationIdConfig | null>(null);
   const [prefix, setPrefix] = useState('');
   const [nextNumber, setNextNumber] = useState(1);
@@ -72,11 +80,12 @@ export default function ApplicationIdConfig() {
   };
 
   if (loading) {
-    return <Page><div className="aic-loading">Loading...</div></Page>;
+    const loading = <div className="aic-loading">Loading...</div>;
+    return embedded ? loading : <Page>{loading}</Page>;
   }
 
-  return (
-    <Page>
+  const content = (
+    <>
       <h2>Application ID Configuration</h2>
       {toast && <Toast message={toast.message} onDone={() => setToast(null)} variant={toast.type === 'success' ? 'success' : 'danger'} />}
       <div className="aic-card">
@@ -126,6 +135,8 @@ export default function ApplicationIdConfig() {
           </div>
         )}
       </div>
-    </Page>
+    </>
   );
+
+  return embedded ? content : <Page>{content}</Page>;
 }

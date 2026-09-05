@@ -26,6 +26,7 @@ import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
 import { DEFAULT_VULN_STATUSES } from '../utils/vulnStatus';
 import { VULNERABILITY_SEVERITIES } from '../utils/vulnSeverity';
+import ApplicationIdConfig from './ApplicationIdConfig';
 import SurveyConfig from './SurveyConfig';
 import Campaigns from './Campaigns';
 import './AssessmentConfig.css';
@@ -118,7 +119,7 @@ export default function AssessmentConfig() {
   };
 
   // ── Tabs ────────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'types' | 'workflow' | 'checklists' | 'surveys' | 'campaigns'>('types');
+  const [activeTab, setActiveTab] = useState<'types' | 'workflow' | 'checklists' | 'surveys' | 'campaigns' | 'applicationIds'>('types');
   // ── Checklist Templates ─────────────────────────────────────────────────────
   const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplate[]>([]);
   const [checklistLoading, setChecklistLoading] = useState(true);
@@ -852,7 +853,19 @@ export default function AssessmentConfig() {
             Campaigns
           </button>
         )}
+        {/* Its own endpoints are super-admin only, so the tab follows — offering one that
+            answers 403 is worse than not offering it. */}
+        {permissions.canManageApplicationIdConfig && (
+          <button
+            className={`config-tab-btn${activeTab === 'applicationIds' ? ' active' : ''}`}
+            onClick={() => setActiveTab('applicationIds')}
+          >
+            Application IDs
+          </button>
+        )}
       </div>
+
+      {activeTab === 'applicationIds' && <ApplicationIdConfig embedded />}
 
       {activeTab === 'types' && (
       <div className="config-grid">
