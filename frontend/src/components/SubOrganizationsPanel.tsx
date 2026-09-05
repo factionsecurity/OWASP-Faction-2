@@ -5,6 +5,7 @@ import type { SubOrganization } from '../types';
 import { Button, IconButton, Input } from './index';
 import ConfirmDialog from './ConfirmDialog';
 import './SubOrganizationsPanel.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 export interface SubOrganizationsPanelProps {
   organizationId: string;
@@ -18,6 +19,7 @@ export interface SubOrganizationsPanelProps {
  * editing the organization itself.
  */
 export default function SubOrganizationsPanel({ organizationId, canWrite }: SubOrganizationsPanelProps) {
+  const { subOrganizationLower, subOrganizationPlural, subOrganizationSingular } = useTerminology();
   const [subs, setSubs] = useState<SubOrganization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +61,7 @@ export default function SubOrganizationsPanel({ organizationId, canWrite }: SubO
       setNewName('');
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to add sub-organization');
+      setError(err.response?.data?.message || `Failed to add ${subOrganizationLower}`);
     } finally {
       setAdding(false);
     }
@@ -75,7 +77,7 @@ export default function SubOrganizationsPanel({ organizationId, canWrite }: SubO
       setEditingId(null);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to rename sub-organization');
+      setError(err.response?.data?.message || `Failed to rename ${subOrganizationLower}`);
     } finally {
       setSavingEdit(false);
     }
@@ -91,7 +93,7 @@ export default function SubOrganizationsPanel({ organizationId, canWrite }: SubO
       await load();
     } catch (err: any) {
       // The server refuses while applications still point here, and says how many.
-      setError(err.response?.data?.message || 'Failed to delete sub-organization');
+      setError(err.response?.data?.message || `Failed to delete ${subOrganizationLower}`);
       setPendingDelete(null);
     } finally {
       setDeleting(false);
@@ -100,7 +102,7 @@ export default function SubOrganizationsPanel({ organizationId, canWrite }: SubO
 
   return (
     <div className="form-panel sub-orgs-panel">
-      <h3 className="form-section-title">Sub-Organizations</h3>
+      <h3 className="form-section-title">{subOrganizationPlural}</h3>
       <p className="sub-orgs-intro">
         Divisions within this organization — business units, subsidiaries or regions. Applications
         can be attributed to one. This does not change who can see the application.
@@ -156,7 +158,7 @@ export default function SubOrganizationsPanel({ organizationId, canWrite }: SubO
             value={newName}
             onChange={e => setNewName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
-            placeholder="New sub-organization name"
+            placeholder={`New ${subOrganizationLower} name`}
           />
           <Button type="button" variant="secondary" size="sm" onClick={handleAdd} disabled={adding || !newName.trim()}>
             <Plus size={14} />
@@ -169,7 +171,7 @@ export default function SubOrganizationsPanel({ organizationId, canWrite }: SubO
         isOpen={!!pendingDelete}
         onClose={() => setPendingDelete(null)}
         onConfirm={handleDelete}
-        title="Delete Sub-Organization"
+        title={`Delete ${subOrganizationSingular}`}
         message={pendingDelete?.applicationCount
           ? `"${pendingDelete.name}" still has ${pendingDelete.applicationCount} application`
             + `${pendingDelete.applicationCount === 1 ? '' : 's'} assigned to it. Reassign them first — `

@@ -1,2 +1,37 @@
 .org-config {
 }
+
+/* Terminology settings — a short list of label fields, so a simple stacked layout rather than
+   the drag-and-drop grid the field editors above use. */
+.orgconfig-terminology {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.orgconfig-terminology-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.orgconfig-terminology-row {
+  display: grid;
+  grid-template-columns: 16rem 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.orgconfig-terminology-row label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .orgconfig-terminology-row {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}

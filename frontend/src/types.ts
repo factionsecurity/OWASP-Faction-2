@@ -2038,3 +2038,11 @@ export interface PasswordPolicy {
   requireDigit: boolean;
   requireSymbol: boolean;
 }
+
+/** What this installation calls organizations and sub-organizations. */
+export interface TerminologyConfig {
+  organizationSingular: string;
+  organizationPlural: string;
+  subOrganizationSingular: string;
+  subOrganizationPlural: string;
+}

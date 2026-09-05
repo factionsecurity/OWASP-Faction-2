@@ -55,6 +55,7 @@ import { usePageTitle } from '../context/PageTitleContext';
 import { vulnStatusBadgeVariant } from '../utils/vulnStatus';
 import './Applications.css';
 import './ApplicationEdit.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 // Same palette as the main Vulnerabilities tab
 // Same fallback mapping as the main Assessments tab
@@ -219,6 +220,7 @@ interface AppFormSnapshot {
 }
 
 export default function ApplicationEdit() {
+  const { organizationArticle, organizationLower, organizationSingular, subOrganizationSingular, subOrganizationsLower } = useTerminology();
   const { id } = useParams<{ id: string }>();
   const { setBreadcrumbs } = usePageTitle();
 
@@ -895,7 +897,7 @@ export default function ApplicationEdit() {
                   )}
                 </div>
                 <div className="app-detail-field">
-                  <span className="app-detail-field-label">Organization</span>
+                  <span className="app-detail-field-label">{organizationSingular}</span>
                   <span className="app-detail-field-value">{orgName || '—'}</span>
                 </div>
                 <div className="app-detail-field">
@@ -1015,7 +1017,7 @@ export default function ApplicationEdit() {
                 </FormRow>
                 <FormRow columns={3}>
                   <FormGroup>
-                    <FormLabel>Organization</FormLabel>
+                    <FormLabel>{organizationSingular}</FormLabel>
                     <Select
                       value={formData.organizationId}
                       onChange={(e) => setFormData({
@@ -1032,7 +1034,7 @@ export default function ApplicationEdit() {
                     </Select>
                   </FormGroup>
                   <FormGroup>
-                    <FormLabel>Sub-Organization</FormLabel>
+                    <FormLabel>{subOrganizationSingular}</FormLabel>
                     <Select
                       value={formData.subOrganizationId}
                       onChange={(e) => setFormData({ ...formData, subOrganizationId: e.target.value })}
@@ -1045,10 +1047,10 @@ export default function ApplicationEdit() {
                     </Select>
                     <FormHint>
                       {!formData.organizationId
-                        ? 'Choose an organization first.'
+                        ? `Choose ${organizationArticle} ${organizationLower} first.`
                         : subOrganizations.length === 0
-                          ? 'This organization has no sub-organizations yet.'
-                          : 'Optional division within the organization.'}
+                          ? `This ${organizationLower} has no ${subOrganizationsLower} yet.`
+                          : `Optional division within the ${organizationLower}.`}
                     </FormHint>
                   </FormGroup>
                   <FormGroup>

@@ -24,6 +24,7 @@ import {
 } from '../components';
 import '../components/SearchableSelect.css';
 import './Applications.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 const APPLICATION_STATUS_COLORS: Record<ApplicationStatus, 'success' | 'warning' | 'info' | 'danger'> = {
   PRODUCTION: 'success',
@@ -48,6 +49,7 @@ const COMMON_TECHNOLOGIES = [
 type ApplicationsTab = 'applications' | 'assessments' | 'vulnerabilities';
 
 export default function Applications() {
+  const { organizationPlural, organizationSingular, subOrganizationPlural } = useTerminology();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
@@ -440,7 +442,7 @@ export default function Applications() {
       ),
     },
     {
-      header: 'Organization',
+      header: organizationSingular,
       render: (app) => (app.organizationId && orgNameById[app.organizationId]) || '—',
     },
     {
@@ -590,7 +592,7 @@ export default function Applications() {
                   setPagination((prev) => ({ ...prev, page: 0 }));
                 }}
                 options={organizations.map((org) => ({ value: org.id, label: org.name }))}
-                placeholder="All Organizations"
+                placeholder={`All ${organizationPlural}`}
               />
               <SearchableSelect
                 value={filterSubOrganization}
@@ -599,7 +601,7 @@ export default function Applications() {
                   setPagination((prev) => ({ ...prev, page: 0 }));
                 }}
                 options={subOrgOptions}
-                placeholder="All Sub-Organizations"
+                placeholder={`All ${subOrganizationPlural}`}
                 searchable={false}
               />
               <SearchableSelect
@@ -768,7 +770,7 @@ export default function Applications() {
             </FormRow>
             <FormRow columns={2}>
               <FormGroup>
-                <FormLabel>Organization</FormLabel>
+                <FormLabel>{organizationSingular}</FormLabel>
                 <Select
                   value={formData.organizationId}
                   onChange={(e) => setFormData({ ...formData, organizationId: e.target.value })}
