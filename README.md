@@ -2,6 +2,9 @@
 
 <img width="420" alt="OWASP Faction" src="frontend/public/owasp-faction-logo.png" />
 
+<center> ![GitHub last commit](https://img.shields.io/github/last-commit/factionsecurity/OWASP-Faction-2) ![GitHub Release Date - Published_At](https://img.shields.io/github/release-date/factionsecurity/OWASP-Faction-2) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14465/badge)](https://www.bestpractices.dev/projects/14465)
+</center>
+
 Penetration test management for teams that produce reports for a living:
 assessments, findings, peer review, retests, remediation tracking, and the
 report at the end of it.
