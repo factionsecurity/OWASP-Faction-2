@@ -63,4 +63,12 @@ including those interfaces.
 
 ## Reporting a vulnerability
 
-Please do not open a public issue. `SECURITY.md` has the disclosure process.
+Please do not open a public issue. [`SECURITY.md`](SECURITY.md) has the
+disclosure process: report privately through [GitHub Security
+Advisories](https://github.com/factionsecurity/OWASP-Faction-2/security/advisories/new).
+
+## Code of Conduct
+
+Taking part here means following the [Code of Conduct](CODE_OF_CONDUCT.md) —
+the OWASP one. Argue the technical point as hard as you like; that is what
+review is for.

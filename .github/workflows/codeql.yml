@@ -1,0 +1,57 @@
+name: CodeQL
+
+# Static analysis for the two languages this repository is written in. Results
+# land in the repository's Security > Code scanning tab, which is the URL the
+# OpenSSF Best Practices `static_analysis` criteria ask for.
+#
+# Both legs use build-mode: none. The Java extractor would otherwise need a
+# full Maven compile (and a Java 25 toolchain it does not always have), and a
+# buildless extraction finds the injection and authorization classes of bug we
+# care about here without that.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so a newly published query finds old code without waiting for
+    # someone to touch it.
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            path: backend
+          - language: javascript-typescript
+            path: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-and-quality
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}

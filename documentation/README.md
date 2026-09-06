@@ -17,6 +17,7 @@ Faction Client Portal is a Spring Boot REST API with a React frontend for managi
 | [Inline Images](./inline-images.md) | How images are uploaded, embedded in rich-text editors, served, and garbage collected |
 | [Server-Sent Events](./server-sent-events.md) | Real-time field locking and collaborative editing via SSE |
 | [Email Integration](./email-integration.md) | @mention notifications, SMTP/IMAP configuration, reply-by-email, thread membership, and notification preferences |
+| [OpenSSF Best Practices](./openssf-best-practices.md) | Every URL the OpenSSF Best Practices badge asks for, mapped to the criterion it answers |
 
 ---
 

@@ -464,8 +464,38 @@ docker compose -f docker-compose.test.yml build
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Commits need a DCO sign-off
 (`git commit -s`); there is no CLA. Security issues go through
-[SECURITY.md](SECURITY.md), not the public tracker.
+[SECURITY.md](SECURITY.md), not the public tracker. Everyone taking part is
+covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+## Project links
+
+| | |
+| --- | --- |
+| Home | https://owasp.org/www-project-faction/ |
+| Source | https://github.com/factionsecurity/OWASP-Faction-2 |
+| Issues and feature requests | https://github.com/factionsecurity/OWASP-Faction-2/issues |
+| Releases | https://github.com/factionsecurity/OWASP-Faction-2/releases |
+| Release notes | [CHANGELOG.md](CHANGELOG.md) |
+| Install and setup | [DOCKER_QUICK_START.md](DOCKER_QUICK_START.md), [SETUP.md](SETUP.md) |
+| Technical documentation | [documentation/](documentation/README.md) |
+| API reference | OpenAPI at `/v3/api-docs`, Swagger UI at `/swagger-ui/index.html` on a running instance |
+| Architecture | [documentation/ARCHITECTURE.md](documentation/ARCHITECTURE.md) |
+| Authorization model | [documentation/permissions.md](documentation/permissions.md) |
+| Running the tests | [TESTING.md](TESTING.md) |
+| Troubleshooting | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Code of Conduct | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
+| Report a vulnerability (private) | https://github.com/factionsecurity/OWASP-Faction-2/security/advisories/new, or develop@factionsecurity.com |
+| Security policy | [SECURITY.md](SECURITY.md) |
+| Published advisories | https://github.com/factionsecurity/OWASP-Faction-2/security/advisories |
+| CI status | https://github.com/factionsecurity/OWASP-Faction-2/actions/workflows/ci.yml |
+| Static analysis (CodeQL) | https://github.com/factionsecurity/OWASP-Faction-2/security/code-scanning |
+| Images | https://hub.docker.com/r/factionsecurityllc/faction-backend, https://hub.docker.com/r/factionsecurityllc/faction-frontend |
+| Mailing list | https://www.factionsecurity.com/signup |
+
+[documentation/openssf-best-practices.md](documentation/openssf-best-practices.md)
+maps each of these to the OpenSSF Best Practices criterion it answers.
