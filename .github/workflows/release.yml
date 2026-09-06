@@ -50,6 +50,13 @@ jobs:
             exit 1
           fi
 
+          # One string does double duty: it is the Docker Hub tag and the
+          # version the UI footer shows (via APP_VERSION -> /api/v1/status), so
+          # normalise it once, here. Releases get tagged v2.1.0 by convention
+          # but 2.0 is already published unprefixed, and a repository holding
+          # both 2.0 and v2.1.0 makes people guess which form their pin needs.
+          version="${version#v}"
+
           # A pre-release must not move latest — every existing install pulls
           # that tag, so tagging a beta with it upgrades everyone to the beta.
           # Branch in the shell, not the expression: `a && b || c` would fall
