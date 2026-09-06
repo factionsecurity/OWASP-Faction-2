@@ -56,6 +56,9 @@ Do **not** pass `height`, `initialEditType`, or `previewStyle` — those were To
 ## Git Commits
 
 - **Never add `Co-Authored-By` lines** to commit messages
+- **Always commit with `git commit -s`.** CI runs a DCO check on every pull request and
+  fails any commit without a `Signed-off-by` trailer. Fix a branch that already has
+  unsigned commits with `git rebase --signoff origin/main`.
 
 ---
 

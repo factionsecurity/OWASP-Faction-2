@@ -35,6 +35,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
 
@@ -309,7 +310,9 @@ class RemediationQueueListTest extends TestContainersConfig {
         // The point of the export: when a retest closed, how it went, and who signed off — none of
         // which the queue's union query (or the table) carries.
         var v = freshVuln("Retested");
-        LocalDateTime closed = LocalDateTime.now().minusDays(3);
+        // Truncated to microseconds: Postgres stores no finer, so an untruncated now() comes back
+        // rounded and the assertion below compares two different strings on a nanosecond clock.
+        LocalDateTime closed = LocalDateTime.now().minusDays(3).truncatedTo(ChronoUnit.MICROS);
         retestRepository.save(baseRetest(v, "PASSED", assessmentId, appId)
                 .closedDate(closed).result("PASS").completedBy("alice").build());
 
