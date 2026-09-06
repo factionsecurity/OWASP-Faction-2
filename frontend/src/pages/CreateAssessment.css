@@ -131,34 +131,42 @@
 
 
 /* Split View Layout */
-.split-view {
+.create-assessment-page .split-view {
   display: grid;
-  grid-template-columns: 1fr 500px;
+  /* Both columns are fr, so the calendar keeps a real share of whatever width there is
+     rather than a fixed pixel budget. It gets slightly more than the form because
+     FullCalendar runs height="auto" with aspectRatio 1.8 — the width is also what sets the
+     day-cell height, and at the old flat 500px (440px of calendar once the panel padding
+     came out) the rows landed around 40px tall, which is what read as cramped.
+
+     The minmax floors are what stop this crushing either side on the way down to the
+     1200px breakpoint where the two panels stack. */
+  grid-template-columns: minmax(460px, 0.9fr) minmax(560px, 1.35fr);
   gap: 2rem;
   align-items: start;
 }
 
 /* Form Panel (Left Side) */
-.form-panel {
+.create-assessment-page .form-panel {
   background-color: var(--secondary-bg, #ffffff);
   border: 1px solid var(--border-color, #dee2e6);
   border-radius: var(--radius-lg, 0.5rem);
   padding: 2rem;
 }
 
-.form-section {
+.create-assessment-page .form-section {
   margin-bottom: 2rem;
   padding-bottom: 2rem;
   border-bottom: 1px solid var(--border-color, #dee2e6);
 }
 
-.form-section:last-of-type {
+.create-assessment-page .form-section:last-of-type {
   border-bottom: none;
   margin-bottom: 0;
   padding-bottom: 0;
 }
 
-.section-title {
+.create-assessment-page .section-title {
   font-size: 1.125rem;
   font-weight: 600;
   margin-bottom: 1rem;
@@ -166,7 +174,7 @@
 }
 
 /* Calendar Panel (Right Side) */
-.calendar-panel {
+.create-assessment-page .calendar-panel {
   position: relative;
 }
 
@@ -176,7 +184,8 @@
   background-color: var(--secondary-bg, #ffffff);
   border: 1px solid var(--border-color, #dee2e6);
   border-radius: var(--radius-lg, 0.5rem);
-  padding: 1.5rem;
+  /* Every pixel here comes off the calendar's own width, and therefore off its height. */
+  padding: 1.25rem;
 }
 
 .preview-info {
@@ -185,32 +194,44 @@
 }
 
 /* Calendar container within preview */
-.calendar-panel .assessment-calendar {
+.create-assessment-page .calendar-panel .assessment-calendar {
   border: none;
   padding: 0;
   background-color: transparent;
 }
 
 /* Make the calendar smaller and more compact for preview */
-.calendar-panel .fc-toolbar {
+.create-assessment-page .calendar-panel .fc-toolbar {
   font-size: 0.875rem;
 }
 
-.calendar-panel .fc-toolbar-title {
-  font-size: 1rem;
+.create-assessment-page .calendar-panel .fc-toolbar-title {
+  font-size: 1.0625rem;
+  /* The calendar is forced light by .calendar-frame while the app around it is dark, so the
+     title inherits a near-white theme colour and lands white-on-white — rgb(249,250,251) on
+     rgb(255,255,255). Everything else in the calendar carries its own light-mode colour;
+     only the month name falls through. */
+  color: #111827;
 }
 
-.calendar-panel .fc-button {
+.create-assessment-page .calendar-panel .fc-button {
   padding: 0.25rem 0.5rem;
   font-size: 0.875rem;
 }
 
-.calendar-panel .fc-daygrid-day-number {
-  font-size: 0.75rem;
+.create-assessment-page .calendar-panel .fc-daygrid-day-number {
+  font-size: 0.8125rem;
 }
 
-.calendar-panel .fc-event {
-  font-size: 0.75rem;
+.create-assessment-page .calendar-panel .fc-event {
+  font-size: 0.8125rem;
+  padding: 0.125rem 0.25rem;
+}
+
+/* A floor under the day cells, so a short month with five rows does not collapse them
+   back to the height the fixed-width version had. */
+.create-assessment-page .calendar-panel .fc-daygrid-day-frame {
+  min-height: 3.5rem;
 }
 
 /* Form Actions */
@@ -267,7 +288,7 @@
 }
 
 /* List Item Styling (for URLs and Stakeholders) */
-.form-panel .list-item {
+.create-assessment-page .form-panel .list-item {
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -278,29 +299,23 @@
   margin-bottom: 0.5rem;
 }
 
-.form-panel .list-item-content {
+.create-assessment-page .form-panel .list-item-content {
   flex: 1;
   min-width: 0;
 }
 
 /* Empty State */
-.calendar-panel .text-center p {
+.create-assessment-page .calendar-panel .text-center p {
   font-size: 0.875rem;
 }
 
 /* Responsive Layout */
-@media (max-width: 1400px) {
-  .split-view {
-    grid-template-columns: 1fr 450px;
-  }
-}
-
 @media (max-width: 1200px) {
-  .split-view {
+  .create-assessment-page .split-view {
     grid-template-columns: 1fr;
   }
 
-  .calendar-panel {
+  .create-assessment-page .calendar-panel {
     order: -1;
   }
 
@@ -320,7 +335,7 @@
     gap: 1rem;
   }
 
-  .form-panel {
+  .create-assessment-page .form-panel {
     padding: 1rem;
   }
 
