@@ -479,6 +479,36 @@ public class AssessmentController {
         return ResponseUtil.success("Conflict check completed", conflicts);
     }
 
+    @PostMapping("/assessor-availability")
+    @RequiresPermission({Permission.ASSESSMENTS_CREATE_ALL, Permission.ASSESSMENTS_CREATE_TEAM})
+    @Operation(
+        summary = "Check which candidate assessors are free",
+        description = "Given a proposed window and a set of candidate assessors, reports which of "
+                + "them are already booked on an overlapping assessment, and on what. Answers for "
+                + "every candidate rather than only the ones already chosen, so a scheduler can "
+                + "see who is available before assigning.",
+        responses = {
+            @ApiResponse(
+                responseCode = "200",
+                description = "Availability determined for every candidate",
+                content = @Content(schema = @Schema(implementation = ApiResponse.class))
+            ),
+            @ApiResponse(responseCode = "403", description = "Forbidden - User does not have required permission"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Invalid or missing JWT token")
+        }
+    )
+    public ResponseEntity<JsonApiResponse<List<AssessorAvailabilityDto>>> assessorAvailability(
+        @RequestBody AssessorAvailabilityRequest request
+    ) {
+        List<AssessorAvailabilityDto> availability = assessmentService.getAssessorAvailability(
+            request.getAssessmentId(),
+            request.getAssessorIds(),
+            request.getStartDate(),
+            request.getEndDate()
+        );
+        return ResponseUtil.success("Assessor availability retrieved", availability);
+    }
+
     @GetMapping(value = "/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @RequiresPermission({Permission.ASSESSMENTS_READ_ALL, Permission.ASSESSMENTS_READ_TEAM, Permission.ASSESSMENTS_EDIT_ASSIGNED})
     @Operation(summary = "Subscribe to assessment events",

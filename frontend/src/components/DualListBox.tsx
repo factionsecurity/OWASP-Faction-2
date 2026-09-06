@@ -53,6 +53,7 @@
  * ```
  */
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from './FormControls';
 import './DualListBox.css';
@@ -62,6 +63,12 @@ export interface DualListBoxItem {
   name: string;
   email?: string;
   secondaryText?: string;  // Generic secondary text (description, role, etc.)
+  /**
+   * Optional annotation rendered beside the name in both panels — a badge, a status
+   * pill, anything small. Used by assessment scheduling to mark who is free across the
+   * proposed dates; ignored by callers that do not set it.
+   */
+  badge?: ReactNode;
 }
 
 export interface DualListBoxProps {
@@ -159,7 +166,10 @@ export default function DualListBox({
                     disabled={disabled}
                   />
                   <div className="dual-list-box-item-content">
-                    <div className="dual-list-box-item-name">{item.name}</div>
+                    <div className="dual-list-box-item-name">
+                      <span className="dual-list-box-item-label">{item.name}</span>
+                      {item.badge}
+                    </div>
                     {secondaryText && <div className="dual-list-box-item-email">{secondaryText}</div>}
                   </div>
                 </label>
@@ -205,7 +215,10 @@ export default function DualListBox({
                     disabled={disabled}
                   />
                   <div className="dual-list-box-item-content">
-                    <div className="dual-list-box-item-name">{item.name}</div>
+                    <div className="dual-list-box-item-name">
+                      <span className="dual-list-box-item-label">{item.name}</span>
+                      {item.badge}
+                    </div>
                     {secondaryText && <div className="dual-list-box-item-email">{secondaryText}</div>}
                   </div>
                 </label>

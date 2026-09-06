@@ -1319,6 +1319,79 @@ public class AssessmentService {
     }
 
     /**
+     * Report, for each candidate assessor, whether they are already booked across a proposed
+     * window — the question a scheduler asks before choosing, rather than after.
+     *
+     * <p>One query for everyone rather than one per user: the overlap predicate is the same
+     * for all of them, so the work is in finding the assessments in the window, not in
+     * attributing them. Assessors are then matched in memory against the candidate list.
+     *
+     * @param assessmentId the assessment being scheduled, excluded from its own conflicts;
+     *                     null when creating
+     * @param assessorIds  the candidates to report on
+     * @param startDate    start of the proposed window
+     * @param endDate      planned end of the proposed window
+     * @return one entry per candidate, in the order asked, free ones included
+     */
+    public List<AssessorAvailabilityDto> getAssessorAvailability(
+        String assessmentId,
+        List<String> assessorIds,
+        LocalDateTime startDate,
+        LocalDateTime endDate
+    ) {
+        if (assessorIds == null || assessorIds.isEmpty() || startDate == null || endDate == null) {
+            return Collections.emptyList();
+        }
+
+        List<Assessment> overlapping;
+        try {
+            String assessorIdsJson = objectMapper.writeValueAsString(assessorIds);
+            overlapping = assessmentRepository.findConflictingByAssessors(
+                assessorIdsJson, startDate, endDate
+            );
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize assessor IDs", e);
+            return Collections.emptyList();
+        }
+
+        Map<String, List<AssessorAvailabilityDto.ConflictingAssessment>> byAssessor = new HashMap<>();
+        for (Assessment a : overlapping) {
+            // An assessment never conflicts with itself, or the assessors already on it all
+            // read as busy the moment someone edits its dates.
+            if (assessmentId != null && assessmentId.equals(a.getId())) continue;
+            if (a.getAssessorIds() == null) continue;
+
+            AssessorAvailabilityDto.ConflictingAssessment clash =
+                AssessorAvailabilityDto.ConflictingAssessment.builder()
+                    .id(a.getId())
+                    .name(a.getName())
+                    .startDate(a.getStartDate())
+                    .plannedEndDate(a.getPlannedEndDate())
+                    .build();
+
+            // The query matches an assessment if ANY of its assessors was asked about, so its
+            // other assessors are in this list too and must not be attributed to this request.
+            for (String assessorId : a.getAssessorIds()) {
+                if (assessorIds.contains(assessorId)) {
+                    byAssessor.computeIfAbsent(assessorId, k -> new ArrayList<>()).add(clash);
+                }
+            }
+        }
+
+        return assessorIds.stream()
+            .map(userId -> {
+                List<AssessorAvailabilityDto.ConflictingAssessment> clashes =
+                    byAssessor.getOrDefault(userId, Collections.emptyList());
+                return AssessorAvailabilityDto.builder()
+                    .userId(userId)
+                    .busy(!clashes.isEmpty())
+                    .conflicts(clashes)
+                    .build();
+            })
+            .collect(Collectors.toList());
+    }
+
+    /**
      * Export assessments to CSV
      */
     public String exportToCsv(List<AssessmentDto> assessments) {

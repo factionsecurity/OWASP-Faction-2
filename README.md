@@ -144,6 +144,7 @@ The published images are a complete install — application, database and object
 storage — and need nothing on the host but Docker. They cover `linux/amd64` and
 `linux/arm64`, so the same tag runs on an Apple Silicon Mac and on a server.
 
+
 [**Install it**](#install-it) above is the one-command version of this.
 [**DOCKER_QUICK_START.md**](DOCKER_QUICK_START.md) covers it in full — choosing
 and upgrading versions, and what to do when something does not start. By hand:

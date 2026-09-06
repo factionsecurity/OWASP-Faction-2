@@ -31,6 +31,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -706,6 +707,114 @@ class AssessmentControllerTest extends TestContainersConfig {
     }
 
     // Helper methods
+    // ── Assessor availability ────────────────────────────────────────────────────
+
+    /** A booked assessment across the given window, assigned to the given assessors. */
+    private Assessment booking(String name, LocalDateTime start, LocalDateTime end, List<String> assessorIds) {
+        return assessmentRepository.save(Assessment.builder()
+                .name(name)
+                .applicationId(testApplication.getId())
+                .assessmentTypeId(testAssessmentType.getId())
+                .organizationId(testOrganization.getId())
+                .reportTemplateId(testTemplate.getId())
+                .reportTemplateVersion(testTemplate.getVersion())
+                .templateName(testTemplate.getName())
+                .fieldDefinitions(new ArrayList<>())
+                .fieldValues(new HashMap<>())
+                .status("IN_PROGRESS")
+                .assessorIds(assessorIds)
+                .startDate(start)
+                .plannedEndDate(end)
+                .createdBy(testUser.getUsername())
+                .createdAt(LocalDateTime.now())
+                .build());
+    }
+
+    private String availabilityRequest(String assessmentId, List<String> assessorIds,
+                                       LocalDateTime start, LocalDateTime end) throws Exception {
+        Map<String, Object> body = new HashMap<>();
+        body.put("assessmentId", assessmentId);
+        body.put("assessorIds", assessorIds);
+        body.put("startDate", start.toString());
+        body.put("endDate", end.toString());
+        return objectMapper.writeValueAsString(body);
+    }
+
+    @Test
+    void assessorAvailability_marksTheBookedOneBusyAndStillReportsTheFreeOne() throws Exception {
+        LocalDateTime start = LocalDateTime.now().plusDays(1);
+        LocalDateTime end = start.plusDays(7);
+
+        // Overlaps the middle of the proposed window.
+        booking("Acme Q3", start.plusDays(2), start.plusDays(4), List.of("busy-user"));
+
+        mockMvc.perform(post("/api/v1/assessments/assessor-availability")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(availabilityRequest(null, List.of("busy-user", "free-user"), start, end)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].userId").value("busy-user"))
+                .andExpect(jsonPath("$.data[0].busy").value(true))
+                .andExpect(jsonPath("$.data[0].conflicts[0].name").value("Acme Q3"))
+                // The free candidate is the point of the endpoint: an answer that lists only
+                // busy people cannot annotate a picker.
+                .andExpect(jsonPath("$.data[1].userId").value("free-user"))
+                .andExpect(jsonPath("$.data[1].busy").value(false))
+                .andExpect(jsonPath("$.data[1].conflicts.length()").value(0));
+    }
+
+    @Test
+    void assessorAvailability_ignoresAnAssessmentOutsideTheWindow() throws Exception {
+        LocalDateTime start = LocalDateTime.now().plusDays(1);
+        LocalDateTime end = start.plusDays(7);
+
+        booking("Long finished", start.minusDays(30), start.minusDays(20), List.of("busy-user"));
+
+        mockMvc.perform(post("/api/v1/assessments/assessor-availability")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(availabilityRequest(null, List.of("busy-user"), start, end)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].busy").value(false));
+    }
+
+    @Test
+    void assessorAvailability_doesNotCountTheAssessmentBeingEdited() throws Exception {
+        LocalDateTime start = LocalDateTime.now().plusDays(1);
+        LocalDateTime end = start.plusDays(7);
+
+        Assessment editing = booking("Being rescheduled", start, end, List.of("busy-user"));
+
+        mockMvc.perform(post("/api/v1/assessments/assessor-availability")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(availabilityRequest(editing.getId(), List.of("busy-user"), start, end)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].busy").value(false));
+    }
+
+    @Test
+    void assessorAvailability_isReachableByATeamScopedScheduler() throws Exception {
+        // Whoever can reach the create screen must be able to ask this. check-conflicts is
+        // gated on assessments:create:all alone, so a team-scoped scheduler gets a 403 there
+        // and the conflict banner silently never appears for them.
+        LocalDateTime start = LocalDateTime.now().plusDays(1);
+        LocalDateTime end = start.plusDays(7);
+
+        String teamToken = jwtService.generateToken(
+                testUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("assessments:create:team"))
+        );
+
+        mockMvc.perform(post("/api/v1/assessments/assessor-availability")
+                        .header("Authorization", "Bearer " + teamToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(availabilityRequest(null, List.of("free-user"), start, end)))
+                .andExpect(status().isOk());
+    }
+
     private Assessment createTestAssessment(String name, String status) {
         Assessment assessment = Assessment.builder()
                 .name(name)
