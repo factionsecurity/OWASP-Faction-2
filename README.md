@@ -83,7 +83,12 @@ which is where the capabilities listed above live.
 ## Running a release
 
 The published images are a complete install — application, database and object
-storage — and need nothing on the host but Docker.
+storage — and need nothing on the host but Docker. They cover `linux/amd64` and
+`linux/arm64`, so the same tag runs on an Apple Silicon Mac and on a server.
+
+[**DOCKER_QUICK_START.md**](DOCKER_QUICK_START.md) covers this in full —
+choosing and upgrading versions, and what to do when something does not start.
+The short version:
 
 ```bash
 curl -LO https://raw.githubusercontent.com/factionsecurity/OWASP-Faction-2/main/docker-compose.yml
@@ -109,7 +114,11 @@ A plain `docker compose restart` will not upgrade anything — it reuses the
 images already on disk. `pull` is the step that fetches the new release.
 
 `.env` pins `FACTION_VERSION=latest`, which tracks the newest full release
-(never a pre-release). Set it to a version tag to control when you move.
+(never a pre-release). Set it to a version to control when you move — published
+tags carry no `v`, so the release tagged `v2.1.0` is `FACTION_VERSION=2.1.0`.
+
+Check what you are actually running with `curl http://localhost:8080/api/v1/status`,
+or read it from the bottom right of the UI.
 
 The application is served over plain HTTP. Put it behind a reverse proxy that
 terminates TLS before exposing it beyond a private network.
