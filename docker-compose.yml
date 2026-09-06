@@ -1,0 +1,136 @@
+# OWASP Faction 2 — a complete install.
+#
+#   cp .env.example .env     # then set JWT_SECRET and the passwords
+#   docker compose up -d
+#
+# Then open http://localhost:8080 and sign in as admin / admin123. Change that
+# password immediately: it is seeded on first start, and it is in this file.
+#
+# To upgrade, pull the new images and recreate — a plain restart reuses the
+# images already on disk and changes nothing:
+#
+#   docker compose pull && docker compose up -d
+#
+# Pin FACTION_VERSION in .env to a release tag if you would rather choose when
+# that happens.
+
+# Not "faction": that name is already taken on any machine that ran the
+# Faction 1 migration compose, and a shared project name means `docker compose
+# down -v` in one directory can remove the other install's volumes.
+name: owasp-faction-2
+
+services:
+  # TimescaleDB, not plain Postgres. The first migrations create the timescaledb
+  # extension, a hypertable and a continuous aggregate; on stock Postgres Flyway
+  # fails and the backend never starts.
+  db:
+    image: timescale/timescaledb:2.29.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-clientportal}
+      POSTGRES_USER: ${DATABASE_USERNAME:-admin}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?set DATABASE_PASSWORD in .env}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks: [faction]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-admin} -d ${DATABASE_NAME:-clientportal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Object storage for every uploaded file: report templates, evidence,
+  # screenshots, inline images. No port is published — the browser never talks
+  # to it. Reads and writes are streamed through authenticated backend
+  # endpoints so per-request permission checks apply.
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:?set STORAGE_SECRET_KEY in .env}
+    volumes:
+      - minio_data:/data
+    networks: [faction]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Must stay named "backend": the frontend image's nginx proxies /api to
+  # http://backend:8080 by that hostname.
+  backend:
+    image: factionsecurityllc/owasp-faction-2-backend:${FACTION_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${DATABASE_NAME:-clientportal}
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-admin}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?set DATABASE_PASSWORD in .env}
+
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?set STORAGE_SECRET_KEY in .env}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-assessments}
+      # Keep at or below the frontend nginx's client_max_body_size (500m), or
+      # oversized uploads get nginx's HTML error page instead of a JSON one.
+      STORAGE_MAX_UPLOAD_BYTES: ${STORAGE_MAX_UPLOAD_BYTES:-524288000}
+
+      # Signs every session token. A default here would be a published signing
+      # key, so there is none: see .env.example for how to generate one.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env — see .env.example}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+
+      # Where this install is reachable. Emailed links are built from these, so
+      # they must be the URL a recipient can actually open, not localhost.
+      FRONTEND_URL: ${PUBLIC_URL:-http://localhost:8080}
+      BACKEND_URL: ${PUBLIC_URL:-http://localhost:8080}
+
+      MAX_FAILED_LOGIN_ATTEMPTS: ${MAX_FAILED_LOGIN_ATTEMPTS:-5}
+      VULNERABILITY_DIGEST_CRON: ${VULNERABILITY_DIGEST_CRON:-0 0 8 * * *}
+
+      # The shipped application.yml logs at DEBUG, which is a development
+      # default: it prints a line per security filter decision.
+      LOGGING_LEVEL_COM_FACTION_CLIENTPORTAL: ${LOG_LEVEL:-INFO}
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: ${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+      # The bucket is created at startup and a failure there is only logged, so
+      # a backend that starts first would come up and then fail every upload.
+      minio:
+        condition: service_healthy
+    networks: [faction]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      # Generous: the first start runs every migration and seeds the default
+      # roles, users and vulnerability categories.
+      start_period: 120s
+      retries: 20
+
+  frontend:
+    image: factionsecurityllc/owasp-faction-2-frontend:${FACTION_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [faction]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db_data:
+  minio_data:
+
+networks:
+  faction:

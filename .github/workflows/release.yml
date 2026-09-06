@@ -1,0 +1,159 @@
+name: Release
+
+# Publishes the two images a release is made of to Docker Hub, tagged with the
+# release version and (for a full release) latest. An install upgrades by
+# pulling latest and recreating — see docker-compose.yml.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to tag the images as (e.g. v2.1.0).'
+        required: true
+        type: string
+      latest:
+        description: 'Also move the latest tag to this build.'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  NAMESPACE: factionsecurityllc
+
+jobs:
+  build-and-push:
+    name: Build & push ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            image: owasp-faction-2-backend
+          - component: frontend
+            image: owasp-faction-2-frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute tags
+        id: tags
+        run: |
+          version="${{ github.event.release.tag_name || inputs.version }}"
+          if [ -z "$version" ]; then
+            echo "::error::No release tag or version input available."
+            exit 1
+          fi
+
+          # A pre-release must not move latest — every existing install pulls
+          # that tag, so tagging a beta with it upgrades everyone to the beta.
+          # Branch in the shell, not the expression: `a && b || c` would fall
+          # through to c when b is false, and github.event.release is null on a
+          # manual run, where null == false compares true.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            latest="${{ inputs.latest }}"
+          else
+            latest="${{ github.event.release.prerelease == false }}"
+          fi
+
+          repo="${{ env.NAMESPACE }}/${{ matrix.image }}"
+          tags="${repo}:${version}"
+          if [ "$latest" = "true" ]; then
+            tags="${tags},${repo}:latest"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${tags}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Built and verified before anything is pushed. A bad image that reaches
+      # Docker Hub gets pulled by every install on its next restart, so the
+      # check has to sit between the build and the push rather than after both.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.component }}
+          file: ${{ matrix.component }}/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          # Stamped into the image; the backend surfaces it at /api/v1/status.
+          build-args: |
+            APP_VERSION=${{ steps.tags.outputs.version }}
+          tags: ${{ matrix.image }}:verify
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+      # The mirror image of the enterprise pipeline's check. There, the risk is
+      # shipping the open source build as the paid one; here it is shipping the
+      # paid build — from a stale checkout, or a context that picked up an
+      # overlay — under the OWASP name. Both start cleanly and pass a health
+      # check, so nothing else in the pipeline would notice.
+      - name: Verify backend image is the open source build
+        if: matrix.component == 'backend'
+        run: |
+          cid=$(docker create ${{ matrix.image }}:verify)
+          docker cp "$cid":/app/app.jar ./verify.jar
+          docker rm -f "$cid" > /dev/null
+
+          # A plain library jar has no Start-Class and dies with
+          # "no main manifest attribute" on first run.
+          if ! unzip -p verify.jar META-INF/MANIFEST.MF | grep -q '^Start-Class:'; then
+            echo "::error::app.jar has no Start-Class — the library jar was copied instead of the runnable one"
+            exit 1
+          fi
+
+          overlay=$(unzip -l verify.jar | grep -c 'clientportal/enterprise/' || true)
+          if [ "${overlay}" -ne 0 ]; then
+            echo "::error::${overlay} overlay classes in the jar — this is the enterprise build under the OWASP name"
+            exit 1
+          fi
+          echo "No overlay classes. This is the open source build."
+
+      - name: Verify frontend image is the open source build
+        if: matrix.component == 'frontend'
+        run: |
+          # __FACTION_EDITION__ is a build-time define, so the losing branch of
+          # the marks ternary in BrandingContext is folded away entirely. Which
+          # mark survives in the bundle is therefore the cheapest reliable
+          # signal for which edition this is.
+          assets=$(docker run --rm --entrypoint sh ${{ matrix.image }}:verify \
+            -c 'cat /usr/share/nginx/html/assets/*.js')
+
+          if ! printf '%s' "$assets" | grep -q 'owasp-faction-logo'; then
+            echo "::error::OWASP mark absent from the bundle — this is not the open source build"
+            exit 1
+          fi
+          if printf '%s' "$assets" | grep -q 'faction-white-logo'; then
+            echo "::error::Enterprise mark present — built with FACTION_ENTERPRISE_UI set"
+            exit 1
+          fi
+          echo "OWASP mark present, enterprise mark absent. This is the open source build."
+
+      - name: Push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.component }}
+          file: ${{ matrix.component }}/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.tags.outputs.version }}
+          tags: ${{ steps.tags.outputs.tags }}
+          # Everything is in the layer cache from the build above, so this
+          # republishes rather than rebuilds.
+          cache-from: type=gha,scope=${{ matrix.image }}
