@@ -664,6 +664,22 @@ export interface VulnerabilitySummary {
   informational: number;
 }
 
+/**
+ * Whether one candidate assessor is already booked across a proposed assessment window.
+ * Asked about everyone who could be assigned, so the picker can show availability before
+ * a choice is made rather than warning about it afterwards.
+ */
+export interface AssessorAvailability {
+  userId: string;
+  busy: boolean;
+  conflicts: {
+    id: string;
+    name: string;
+    startDate: string;
+    plannedEndDate: string;
+  }[];
+}
+
 export interface Assessment {
   id: string;
   name: string;

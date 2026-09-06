@@ -113,14 +113,28 @@
   min-width: 0;
 }
 
+/* A row rather than a block: an optional badge sits beside the name, and the truncation
+   moved onto the label so a long name ellipsises without taking the badge with it. */
 .dual-list-box-item-name {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
   font-weight: 500;
   font-size: 0.875rem;
   color: var(--text-primary, #212529);
   margin-bottom: 0.125rem;
+  min-width: 0;
+}
+
+.dual-list-box-item-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Whatever the caller passed as a badge keeps its size while the name gives way. */
+.dual-list-box-item-name > :not(.dual-list-box-item-label) {
+  flex: 0 0 auto;
 }
 
 .dual-list-box-item-email {

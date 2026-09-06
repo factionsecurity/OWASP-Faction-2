@@ -756,6 +756,141 @@ class AssessmentServiceTest {
         assertThat(conflicts).isEmpty();
     }
 
+    // ── Assessor availability ────────────────────────────────────────────────────
+    //
+    // detectConflicts answers "do the assessors I already picked clash?". These cover the
+    // question asked before picking: of everyone who could be assigned, who is free? The
+    // difference that matters is that a free candidate must still come back — an answer
+    // that only lists busy people cannot annotate a picker.
+
+    /** An assessment in the window, with whichever assessors the test needs on it. */
+    private Assessment booking(String id, String name, LocalDateTime start, List<String> assessorIds) {
+        return Assessment.builder()
+                .id(id)
+                .name(name)
+                .applicationId(testApplication.getId())
+                .assessmentTypeId(testAssessmentType.getId())
+                .organizationId(testOrganization.getId())
+                .reportTemplateId(testTemplate.getId())
+                .status("IN_PROGRESS")
+                .assessorIds(assessorIds)
+                .startDate(start.plusDays(2))
+                .plannedEndDate(start.plusDays(5))
+                .fieldDefinitions(new ArrayList<>())
+                .fieldValues(new HashMap<>())
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    @Test
+    void availability_reportsAFreeCandidateRatherThanOmittingThem() {
+        LocalDateTime start = LocalDateTime.now();
+        LocalDateTime end = start.plusDays(7);
+
+        when(assessmentRepository.findConflictingByAssessors(anyString(), eq(start), eq(end)))
+                .thenReturn(List.of());
+
+        List<AssessorAvailabilityDto> availability = assessmentService.getAssessorAvailability(
+                null, List.of("alice", "bob"), start, end);
+
+        assertThat(availability).extracting(AssessorAvailabilityDto::getUserId)
+                .containsExactly("alice", "bob");
+        assertThat(availability).allSatisfy(a -> {
+            assertThat(a.isBusy()).isFalse();
+            assertThat(a.getConflicts()).isEmpty();
+        });
+    }
+
+    @Test
+    void availability_saysWhatABusyCandidateIsBusyWith() {
+        LocalDateTime start = LocalDateTime.now();
+        LocalDateTime end = start.plusDays(7);
+
+        when(assessmentRepository.findConflictingByAssessors(anyString(), eq(start), eq(end)))
+                .thenReturn(List.of(booking("a-1", "Acme Q3 Retest", start, List.of("alice"))));
+
+        List<AssessorAvailabilityDto> availability = assessmentService.getAssessorAvailability(
+                null, List.of("alice"), start, end);
+
+        assertThat(availability).hasSize(1);
+        assertThat(availability.get(0).isBusy()).isTrue();
+        assertThat(availability.get(0).getConflicts())
+                .extracting(AssessorAvailabilityDto.ConflictingAssessment::getName)
+                .containsExactly("Acme Q3 Retest");
+        assertThat(availability.get(0).getConflicts().get(0).getStartDate())
+                .isEqualTo(start.plusDays(2));
+    }
+
+    @Test
+    void availability_doesNotAttributeAnAssessmentToAssessorsNobodyAskedAbout() {
+        // The query matches an assessment if ANY of its assessors was asked about, so a
+        // returned assessment carries assessors outside the candidate list. Attributing it to
+        // them would mark people busy who were never part of the question — and, because the
+        // frontend keys the annotation by user id, would annotate whoever that id belongs to.
+        LocalDateTime start = LocalDateTime.now();
+        LocalDateTime end = start.plusDays(7);
+
+        when(assessmentRepository.findConflictingByAssessors(anyString(), eq(start), eq(end)))
+                .thenReturn(List.of(booking("a-1", "Shared", start, List.of("alice", "bob"))));
+
+        List<AssessorAvailabilityDto> availability = assessmentService.getAssessorAvailability(
+                null, List.of("alice", "carol"), start, end);
+
+        assertThat(availability).extracting(AssessorAvailabilityDto::getUserId)
+                .containsExactly("alice", "carol");
+        assertThat(availability.get(0).isBusy()).isTrue();
+        assertThat(availability.get(1).isBusy()).isFalse();
+    }
+
+    @Test
+    void availability_doesNotMakeAnAssessmentsOwnAssessorsBusyWhenEditingIt() {
+        // Otherwise moving the dates of an existing assessment reports everyone already on it
+        // as unavailable for it.
+        LocalDateTime start = LocalDateTime.now();
+        LocalDateTime end = start.plusDays(7);
+
+        when(assessmentRepository.findConflictingByAssessors(anyString(), eq(start), eq(end)))
+                .thenReturn(List.of(booking("being-edited", "This one", start, List.of("alice"))));
+
+        List<AssessorAvailabilityDto> availability = assessmentService.getAssessorAvailability(
+                "being-edited", List.of("alice"), start, end);
+
+        assertThat(availability).hasSize(1);
+        assertThat(availability.get(0).isBusy()).isFalse();
+    }
+
+    @Test
+    void availability_collectsEveryClashNotJustTheFirst() {
+        LocalDateTime start = LocalDateTime.now();
+        LocalDateTime end = start.plusDays(7);
+
+        when(assessmentRepository.findConflictingByAssessors(anyString(), eq(start), eq(end)))
+                .thenReturn(List.of(
+                        booking("a-1", "First", start, List.of("alice")),
+                        booking("a-2", "Second", start, List.of("alice"))));
+
+        List<AssessorAvailabilityDto> availability = assessmentService.getAssessorAvailability(
+                null, List.of("alice"), start, end);
+
+        assertThat(availability.get(0).getConflicts())
+                .extracting(AssessorAvailabilityDto.ConflictingAssessment::getName)
+                .containsExactly("First", "Second");
+    }
+
+    @Test
+    void availability_isEmptyWithoutBothDatesOrAnyCandidate() {
+        // The screen asks on every date edit, including the half-filled states on the way to a
+        // complete range. None of those should reach the database.
+        LocalDateTime start = LocalDateTime.now();
+
+        assertThat(assessmentService.getAssessorAvailability(null, List.of("alice"), start, null)).isEmpty();
+        assertThat(assessmentService.getAssessorAvailability(null, List.of("alice"), null, start)).isEmpty();
+        assertThat(assessmentService.getAssessorAvailability(null, List.of(), start, start.plusDays(1))).isEmpty();
+        assertThat(assessmentService.getAssessorAvailability(null, null, start, start.plusDays(1))).isEmpty();
+
+        verify(assessmentRepository, never()).findConflictingByAssessors(anyString(), any(), any());
+    }
+
     @Test
     void testGetAssessmentsByDateRange_Success() {
         // Given

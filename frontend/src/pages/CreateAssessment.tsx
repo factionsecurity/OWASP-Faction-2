@@ -18,6 +18,7 @@ import {
 import type {
   Assessment,
   AssessmentType,
+  AssessorAvailability,
   AssessmentFile,
   AssessmentWorkflowConfig,
   Campaign,
@@ -172,6 +173,9 @@ export default function CreateAssessment() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [reportTemplates, setReportTemplates] = useState<any[]>([]);
   const [conflicts, setConflicts] = useState<Assessment[]>([]);
+  // Keyed by user id. Empty until both dates are set — with no window there is nothing to
+  // be free or busy across.
+  const [assessorAvailability, setAssessorAvailability] = useState<Record<string, AssessorAvailability>>({});
   const [teamAssessments, setTeamAssessments] = useState<Assessment[]>([]);
   const [attachments, setAttachments] = useState<AssessmentFile[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -327,6 +331,41 @@ export default function CreateAssessment() {
       setConflicts([]);
     }
   }, [formData.assessorIds, formData.startDate, formData.plannedEndDate]);
+
+  // Availability of everyone who *could* be assigned, refreshed on every date change.
+  // Keyed on the candidate ids rather than the array, which is rebuilt each render.
+  const assessorCandidateKey = availableAssessorUsers.map((u) => u.id).join(',');
+
+  useEffect(() => {
+    const candidateIds = assessorCandidateKey ? assessorCandidateKey.split(',') : [];
+    if (!formData.startDate || !formData.plannedEndDate || candidateIds.length === 0) {
+      setAssessorAvailability({});
+      return;
+    }
+
+    // Dates change faster than the request completes — dragging a duration preset fires
+    // several. Without this, a slow early response can land last and paint stale badges.
+    let cancelled = false;
+    assessmentsApi
+      .getAssessorAvailability(
+        id || null,
+        candidateIds,
+        toApiDate(formData.startDate),
+        toApiDate(formData.plannedEndDate)
+      )
+      .then((res) => {
+        if (cancelled || !res.success || !res.data) return;
+        setAssessorAvailability(
+          Object.fromEntries(res.data.map((a) => [a.userId, a]))
+        );
+      })
+      .catch(() => {
+        // A failed lookup must not claim everyone is free; show no annotation instead.
+        if (!cancelled) setAssessorAvailability({});
+      });
+
+    return () => { cancelled = true; };
+  }, [assessorCandidateKey, formData.startDate, formData.plannedEndDate, id]);
 
   // Track form changes for unsaved warning
   useEffect(() => {
@@ -917,6 +956,34 @@ export default function CreateAssessment() {
     );
   }
 
+  /**
+   * Free/busy mark for one candidate. Nothing until both dates are set: with no window
+   * chosen, an "Available" badge would be an answer to a question nobody asked.
+   */
+  const assessorBadge = (userId: string) => {
+    if (!formData.startDate || !formData.plannedEndDate) return null;
+    const availability = assessorAvailability[userId];
+    if (!availability) return null;
+
+    if (!availability.busy) {
+      return <Badge variant="success" size="sm">Free</Badge>;
+    }
+
+    const clashes = availability.conflicts;
+    // The names go in a title rather than the badge: the picker is a narrow column, and
+    // "why" is a follow-up question, not the thing being scanned for.
+    const summary = clashes
+      .map((c) => `${c.name} (${new Date(c.startDate).toLocaleDateString()} – ${new Date(c.plannedEndDate).toLocaleDateString()})`)
+      .join('\n');
+    return (
+      <span title={`Already booked:\n${summary}`}>
+        <Badge variant="danger" size="sm">
+          Busy{clashes.length > 1 ? ` (${clashes.length})` : ''}
+        </Badge>
+      </span>
+    );
+  };
+
   return (
     <Page variant="flush" fill className="create-assessment-page">
       {/* Workflow Timeline */}
@@ -1249,6 +1316,7 @@ export default function CreateAssessment() {
                     id: user.id,
                     name: `${user.firstName} ${user.lastName}`,
                     email: user.email,
+                    badge: assessorBadge(user.id),
                   }))}
                   selectedIds={formData.assessorIds}
                   onChange={(ids) => setFormData({ ...formData, assessorIds: ids })}
