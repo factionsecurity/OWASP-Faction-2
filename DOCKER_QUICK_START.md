@@ -27,6 +27,17 @@ standalone tool. The v1 tool does not understand this file.
 
 ### Start it
 
+The installer does everything in this section for you — prerequisites, images,
+and a `.env` with generated secrets:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/factionsecurity/OWASP-Faction-2/main/install.sh | bash
+```
+
+It respects `FACTION_DIR`, `FACTION_VERSION`, `HTTP_PORT` and `PUBLIC_URL`,
+starts nothing, and will not overwrite an existing `.env`. To do it by hand
+instead:
+
 ```bash
 curl -LO https://raw.githubusercontent.com/factionsecurity/OWASP-Faction-2/main/docker-compose.yml
 curl -LO https://raw.githubusercontent.com/factionsecurity/OWASP-Faction-2/main/.env.example
