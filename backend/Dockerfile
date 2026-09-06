@@ -17,7 +17,7 @@ RUN mvn clean package -DskipTests
 
 FROM eclipse-temurin:25-jre-jammy
 
-# Release version stamped by the CI build (see .github/workflows/release-deploy.yml);
+# Release version stamped by the CI build (see .github/workflows/release.yml);
 # surfaced by the public /api/v1/status endpoint.
 ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
