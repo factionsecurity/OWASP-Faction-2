@@ -153,6 +153,12 @@
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Object storage for the suites that exercise StorageService for real. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>minio</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Pin commons-compress to the version docx4j-core 11.4.11 was compiled against.
              Without this, Maven resolves 1.24.0 from testcontainers (nearest-wins), which
