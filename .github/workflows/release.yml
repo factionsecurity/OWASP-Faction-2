@@ -3,6 +3,12 @@ name: Release
 # Publishes the two images a release is made of to Docker Hub, tagged with the
 # release version and (for a full release) latest. An install upgrades by
 # pulling latest and recreating — see docker-compose.yml.
+#
+# Each image is a manifest list covering linux/amd64 and linux/arm64, so one
+# tag serves an Intel server and an Apple Silicon laptop alike. The two halves
+# are built on native runners rather than under QEMU: the backend build runs a
+# full Maven compile and an apt install of LibreOffice, and emulating either
+# turns a three minute job into most of an hour.
 
 on:
   release:
@@ -23,26 +29,16 @@ env:
   NAMESPACE: factionsecurityllc
 
 jobs:
-  build-and-push:
-    name: Build & push ${{ matrix.component }}
+  # Computed once, in one place: the build and merge jobs must agree on the
+  # version, and recomputing it per matrix leg invites them to drift.
+  version:
+    name: Resolve version
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - component: backend
-            image: owasp-faction-2-backend
-          - component: frontend
-            image: owasp-faction-2-frontend
-
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      latest: ${{ steps.v.outputs.latest }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Compute tags
-        id: tags
+      - id: v
         run: |
           version="${{ github.event.release.tag_name || inputs.version }}"
           if [ -z "$version" ]; then
@@ -68,15 +64,36 @@ jobs:
             latest="${{ github.event.release.prerelease == false }}"
           fi
 
-          repo="${{ env.NAMESPACE }}/${{ matrix.image }}"
-          tags="${repo}:${version}"
-          if [ "$latest" = "true" ]; then
-            tags="${tags},${repo}:latest"
-          fi
-
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
-          echo "Publishing ${tags}"
+          echo "latest=${latest}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${version} (latest=${latest})"
+
+  # Pushes each platform by digest only — no tag. A tag pushed here would be
+  # overwritten by the other architecture as it finished, leaving whichever
+  # lost the race as the only thing under the tag. The merge job is what
+  # attaches the tags, once both digests exist.
+  build:
+    name: Build ${{ matrix.component }} (${{ matrix.arch }})
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend]
+        arch: [amd64, arm64]
+        # Adds `runner` to every combination sharing that arch, rather than
+        # adding combinations of its own.
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -95,15 +112,18 @@ jobs:
         with:
           context: ${{ matrix.component }}
           file: ${{ matrix.component }}/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/${{ matrix.arch }}
           load: true
           push: false
           # Stamped into the image; the backend surfaces it at /api/v1/status.
           build-args: |
-            APP_VERSION=${{ steps.tags.outputs.version }}
-          tags: ${{ matrix.image }}:verify
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+            APP_VERSION=${{ needs.version.outputs.version }}
+          tags: owasp-faction-2-${{ matrix.component }}:verify
+          # Scoped per architecture. A shared scope would serve amd64 layers to
+          # the arm64 build, which then either rebuilds them anyway or, worse,
+          # caches a cross-architecture result.
+          cache-from: type=gha,scope=${{ matrix.component }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.component }}-${{ matrix.arch }},mode=max
 
       # The mirror image of the enterprise pipeline's check. There, the risk is
       # shipping the open source build as the paid one; here it is shipping the
@@ -113,7 +133,8 @@ jobs:
       - name: Verify backend image is the open source build
         if: matrix.component == 'backend'
         run: |
-          cid=$(docker create ${{ matrix.image }}:verify)
+          image=owasp-faction-2-backend:verify
+          cid=$(docker create "$image")
           docker cp "$cid":/app/app.jar ./verify.jar
           docker rm -f "$cid" > /dev/null
 
@@ -138,7 +159,7 @@ jobs:
           # the marks ternary in BrandingContext is folded away entirely. Which
           # mark survives in the bundle is therefore the cheapest reliable
           # signal for which edition this is.
-          assets=$(docker run --rm --entrypoint sh ${{ matrix.image }}:verify \
+          assets=$(docker run --rm --entrypoint sh owasp-faction-2-frontend:verify \
             -c 'cat /usr/share/nginx/html/assets/*.js')
 
           if ! printf '%s' "$assets" | grep -q 'owasp-faction-logo'; then
@@ -151,16 +172,121 @@ jobs:
           fi
           echo "OWASP mark present, enterprise mark absent. This is the open source build."
 
-      - name: Push image
+      # The version the footer shows is the one thing here that no test covers
+      # and that only surfaces once someone is running the release, so confirm
+      # the stamp actually landed rather than trusting the build arg reached it.
+      - name: Verify the version was stamped
+        if: matrix.component == 'backend'
+        run: |
+          want="${{ needs.version.outputs.version }}"
+          got=$(docker image inspect owasp-faction-2-backend:verify \
+            --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | sed -n 's/^APP_VERSION=//p')
+          if [ "$got" != "$want" ]; then
+            echo "::error::image reports APP_VERSION=${got:-<unset>}, expected ${want} — the footer would show the wrong version"
+            exit 1
+          fi
+          echo "APP_VERSION=${got}"
+
+      - name: Push image by digest
+        id: push
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.component }}
           file: ${{ matrix.component }}/Dockerfile
-          platforms: linux/amd64
-          push: true
+          platforms: linux/${{ matrix.arch }}
           build-args: |
-            APP_VERSION=${{ steps.tags.outputs.version }}
-          tags: ${{ steps.tags.outputs.tags }}
+            APP_VERSION=${{ needs.version.outputs.version }}
+          outputs: type=image,name=${{ env.NAMESPACE }}/owasp-faction-2-${{ matrix.component }},push-by-digest=true,name-canonical=true,push=true
+          # Attestations ride along as extra manifests with an unknown/unknown
+          # platform. Harmless on a single-platform push, but they confuse the
+          # digest set this job hands to `imagetools create`.
+          provenance: false
           # Everything is in the layer cache from the build above, so this
           # republishes rather than rebuilds.
-          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=${{ matrix.component }}-${{ matrix.arch }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          # Strip the algorithm prefix: upload-artifact rejects a colon in a
+          # file name. The merge job puts it back.
+          digest="${{ steps.push.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.component }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Where the tag people actually pull gets created: one manifest list per
+  # image, pointing at both architectures' digests.
+  merge:
+    name: Publish ${{ matrix.component }}
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend]
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.component }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Create and push manifest list
+        working-directory: /tmp/digests
+        run: |
+          repo="${{ env.NAMESPACE }}/owasp-faction-2-${{ matrix.component }}"
+          version="${{ needs.version.outputs.version }}"
+
+          tags="-t ${repo}:${version}"
+          if [ "${{ needs.version.outputs.latest }}" = "true" ]; then
+            tags="${tags} -t ${repo}:latest"
+          fi
+
+          # One file per architecture, each named for its digest.
+          count=$(ls -1 | wc -l)
+          if [ "$count" -ne 2 ]; then
+            echo "::error::expected 2 platform digests, found ${count}"
+            exit 1
+          fi
+
+          # shellcheck disable=SC2046,SC2086
+          docker buildx imagetools create ${tags} $(printf "${repo}@sha256:%s " *)
+
+      # The failure this guards against is silent: a manifest list missing an
+      # architecture pushes and tags cleanly, and only fails later, on the
+      # machine that cannot find itself in it.
+      - name: Verify both architectures are published
+        run: |
+          repo="${{ env.NAMESPACE }}/owasp-faction-2-${{ matrix.component }}"
+          version="${{ needs.version.outputs.version }}"
+
+          platforms=$(docker buildx imagetools inspect "${repo}:${version}" --raw \
+            | jq -r '.manifests[].platform | select(.os != "unknown") | .os + "/" + .architecture')
+          echo "$platforms"
+
+          for want in linux/amd64 linux/arm64; do
+            printf '%s\n' "$platforms" | grep -qx "$want" || {
+              echo "::error::${repo}:${version} has no ${want} — that platform cannot pull this release"
+              exit 1
+            }
+          done
+          echo "Both architectures published."
