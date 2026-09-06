@@ -80,6 +80,42 @@ this repository is available to everyone on the same terms.
 Faction Security separately offers a commercial edition built on this codebase,
 which is where the capabilities listed above live.
 
+## Running a release
+
+The published images are a complete install — application, database and object
+storage — and need nothing on the host but Docker.
+
+```bash
+curl -LO https://raw.githubusercontent.com/factionsecurity/OWASP-Faction-2/main/docker-compose.yml
+curl -LO https://raw.githubusercontent.com/factionsecurity/OWASP-Faction-2/main/.env.example
+cp .env.example .env      # set JWT_SECRET, DATABASE_PASSWORD, STORAGE_SECRET_KEY
+docker compose up -d
+```
+
+Then open `http://localhost:8080` and sign in with the default credentials
+below. **Change the admin password before anyone else can reach the install** —
+it is seeded on first start and documented in this file.
+
+First start takes a few minutes: it pulls the images, runs every migration and
+seeds the default roles, users and vulnerability categories.
+
+To upgrade:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+A plain `docker compose restart` will not upgrade anything — it reuses the
+images already on disk. `pull` is the step that fetches the new release.
+
+`.env` pins `FACTION_VERSION=latest`, which tracks the newest full release
+(never a pre-release). Set it to a version tag to control when you move.
+
+The application is served over plain HTTP. Put it behind a reverse proxy that
+terminates TLS before exposing it beyond a private network.
+
+The sections below are for building from source instead.
+
 ## Getting Started
 
 ### Prerequisites
