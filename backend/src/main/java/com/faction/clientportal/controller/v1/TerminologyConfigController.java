@@ -1,5 +1,6 @@
 package com.faction.clientportal.controller.v1;
 
+import com.faction.clientportal.dto.TerminologyConfigRequest;
 import com.faction.clientportal.dto.common.JsonApiResponse;
 import com.faction.clientportal.model.TerminologyConfig;
 import com.faction.clientportal.security.AuthenticatedOnly;
@@ -16,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/config/terminology")
 @RequiredArgsConstructor
-@Tag(name = "Terminology", description = "What this installation calls organizations")
+@Tag(name = "Terminology", description = "What this installation calls organizations and severities")
 @SecurityRequirement(name = "bearerAuth")
 public class TerminologyConfigController {
 
@@ -34,11 +35,13 @@ public class TerminologyConfigController {
     @PutMapping
     @PreAuthorize("hasAuthority('super_admin')")
     @Operation(summary = "Update the terminology",
-               description = "Renames organizations and sub-organizations throughout the interface. "
-                       + "Only the wording changes; nothing about how they behave. An empty value "
-                       + "leaves that label as it was.")
+               description = "Renames organizations, sub-organizations and severities throughout "
+                       + "the interface. Only the wording changes: findings keep the severity they "
+                       + "were recorded at, and every filter, report token and export still uses "
+                       + "CRITICAL..INFORMATIONAL. A field that is omitted or empty keeps the "
+                       + "label it already had.")
     public ResponseEntity<JsonApiResponse<TerminologyConfig>> updateConfig(
-            @RequestBody TerminologyConfig config) {
-        return ResponseUtil.success("Terminology updated successfully", service.updateConfig(config));
+            @RequestBody TerminologyConfigRequest request) {
+        return ResponseUtil.success("Terminology updated successfully", service.updateConfig(request));
     }
 }

@@ -291,6 +291,11 @@ export const permissions = {
   canManageApplicationIdConfig: (authorities: string[]): boolean =>
     isSuperAdmin(authorities),
 
+  // Renaming severities writes the terminology config, which is super_admin only. Reading it is
+  // open to every signed-in user — the labels are on nearly every screen.
+  canManageSeverityNames: (authorities: string[]): boolean =>
+    isSuperAdmin(authorities),
+
   canManageSurveys: (authorities: string[]): boolean =>
     isSuperAdmin(authorities) || hasAnyPermission(authorities, ['survey:create', 'survey:edit', 'survey:delete']),
 

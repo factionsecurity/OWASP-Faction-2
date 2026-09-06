@@ -16,6 +16,7 @@ import { peerReviewerNames } from '../utils/peerReview';
 import { createSseParser } from '../utils/sse';
 import { SEVERITY_COLORS } from '../utils/vulnSeverity';
 import './PeerReviewEditor.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 function ratingVariant(value: string): 'danger' | 'warning' | 'info' | 'success' | 'secondary' {
   switch (value.toLowerCase()) {
@@ -30,8 +31,9 @@ function ratingVariant(value: string): 'danger' | 'warning' | 'info' | 'success'
 }
 
 function PrCvssScoreBadge({ score, severity }: { score?: number; severity: VulnerabilitySeverity }) {
+  const { severityLabel } = useTerminology();
   const color = SEVERITY_COLORS[severity] ?? '#9ca3af';
-  const label = severity.charAt(0) + severity.slice(1).toLowerCase();
+  const label = severityLabel(severity);
   return (
     <div className="pr-cvss-badge">
       <div className="pr-cvss-badge-value" style={{ color }}>

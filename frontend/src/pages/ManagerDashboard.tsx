@@ -37,12 +37,13 @@ import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } f
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import { Button, FormLabel, Input, Select, IconButton } from '../components';
 import Page from '../components/Page';
-import { VULNERABILITY_SEVERITIES, SEVERITY_COLORS, SEVERITY_OPTIONS } from '../utils/vulnSeverity';
+import { VULNERABILITY_SEVERITIES, SEVERITY_COLORS } from '../utils/vulnSeverity';
 import '../components/SearchableSelect.css';
 // Abbreviates 6-figure totals (e.g. 260,750 -> "261K") so they don't overflow the stat tiles;
 // the exact value stays in each tile's title tooltip.
 import { formatCompact as fmtStat } from '../utils/formatNumber';
 import './ManagerDashboard.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 // Dashboard severity chips: lowercase keys + single-letter labels are presentational
 // and dashboard-specific; the color comes from the canonical palette.
@@ -149,6 +150,7 @@ function toApiFilters(form: FilterFormState): ManagerDashboardFilters {
 export default function ManagerDashboard() {
   const navigate = useNavigate();
   const { setPageTitle } = usePageTitle();
+  const { severityLabel, severityOptions } = useTerminology();
 
   const [summary, setSummary] = useState<ManagerDashboardSummary | null>(null);
   const [stats, setStats] = useState<ManagerDashboardStats | null>(null);
@@ -524,7 +526,7 @@ export default function ManagerDashboard() {
                 )}
                 {VULNERABILITY_SEVERITIES.filter((s) => (stats.severityBreakdown[s] ?? 0) > 0).map((severity) => (
                   <tr key={severity}>
-                    <td>{severity.charAt(0) + severity.slice(1).toLowerCase()}</td>
+                    <td>{severityLabel(severity)}</td>
                     <td className="md-breakdown-count">
                       <span
                         className="md-breakdown-badge"
@@ -626,7 +628,7 @@ export default function ManagerDashboard() {
             <MultiSelect
               selected={applied.severities}
               onChange={(vals) => applyInline({ severities: vals })}
-              options={SEVERITY_OPTIONS}
+              options={severityOptions}
               searchable={false}
               placeholder="All Severities"
             />

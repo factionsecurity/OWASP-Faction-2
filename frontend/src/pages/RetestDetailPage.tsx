@@ -8,8 +8,7 @@ import { usePageTitle } from '../context/PageTitleContext';
 import RichTextEditor from '../components/RichTextEditor';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Page from '../components/Page';
-import { SeverityBadge, Select } from '../components';
-import { SEVERITY_OPTIONS } from '../utils/vulnSeverity';
+import { SeverityBadge } from '../components';
 import { usePermissions } from '../utils/permissions';
 import './RetestDetailPage.css';
 
@@ -47,6 +46,7 @@ function closureOptions(stages: RemediationStage[]): { value: RetestClosure; lab
 }
 
 import '../components/VulnerabilityDetailDrawer.css';
+import SeverityLevelSelect from '../components/SeverityLevelSelect';
 
 const STATUS_COLORS: Record<string, string> = {
   REQUESTED: '#f59e0b',
@@ -173,16 +173,12 @@ export default function RetestDetailPage() {
     }
     const field = RATING_FIELDS.find(f => f.key === key)!;
     return (
-      <Select
+      <SeverityLevelSelect
         className="retest-rating-select"
         value={ratingDrafts[key]}
-        onChange={(e) => handleRatingChange(key, e.target.value)}
-      >
-        {(field.clearable || !ratingDrafts[key]) && <option value="">—</option>}
-        {SEVERITY_OPTIONS.map(o => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </Select>
+        onChange={(v) => handleRatingChange(key, v)}
+        allowEmpty={field.clearable}
+      />
     );
   };
 

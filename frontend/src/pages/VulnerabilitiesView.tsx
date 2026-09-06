@@ -10,7 +10,6 @@ import VulnerabilityDetailDrawer from '../components/VulnerabilityDetailDrawer';
 import type { VulnSummaryFilters } from '../components/VulnSummaryPanel';
 import { DEFAULT_VULN_STATUSES, vulnStatusBadgeVariant } from '../utils/vulnStatus';
 import { usePermissions } from '../utils/permissions';
-import { SEVERITY_OPTIONS } from '../utils/vulnSeverity';
 import './Applications.css';
 import { useTerminology } from '../context/TerminologyContext';
 
@@ -37,7 +36,7 @@ interface VulnerabilitiesViewProps {
 }
 
 export default function VulnerabilitiesView({ onFiltersChange }: VulnerabilitiesViewProps = {}) {
-  const { organizationPlural, organizationSingular } = useTerminology();
+  const { severityOptions, organizationPlural, organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
   // External users (app owners, org users) reach this page on their read permission but
@@ -463,7 +462,7 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
       <MultiSelect
         selected={filterSeverities}
         onChange={(vals) => { setFilterSeverities(vals); setTablePage(0); }}
-        options={SEVERITY_OPTIONS}
+        options={severityOptions}
         searchable={false}
         placeholder="All Severities"
       />

@@ -27,12 +27,15 @@ import Page from '../components/Page';
 import { DEFAULT_VULN_STATUSES } from '../utils/vulnStatus';
 import { VULNERABILITY_SEVERITIES } from '../utils/vulnSeverity';
 import ApplicationIdConfig from './ApplicationIdConfig';
+import SeverityNamesConfig from './SeverityNamesConfig';
 import SurveyConfig from './SurveyConfig';
 import Campaigns from './Campaigns';
 import './AssessmentConfig.css';
+import { useTerminology } from '../context/TerminologyContext';
 
 export default function AssessmentConfig() {
   const { permissions } = usePermissions();
+  const { severityLabel } = useTerminology();
 
   // ── Assessment Types ────────────────────────────────────────────────────────
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
@@ -119,7 +122,7 @@ export default function AssessmentConfig() {
   };
 
   // ── Tabs ────────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'types' | 'workflow' | 'checklists' | 'surveys' | 'campaigns' | 'applicationIds'>('types');
+  const [activeTab, setActiveTab] = useState<'types' | 'workflow' | 'checklists' | 'surveys' | 'campaigns' | 'applicationIds' | 'severityNames'>('types');
   // ── Checklist Templates ─────────────────────────────────────────────────────
   const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplate[]>([]);
   const [checklistLoading, setChecklistLoading] = useState(true);
@@ -863,9 +866,19 @@ export default function AssessmentConfig() {
             Application IDs
           </button>
         )}
+        {/* Same reasoning: the terminology endpoint writes as super_admin only. */}
+        {permissions.canManageSeverityNames && (
+          <button
+            className={`config-tab-btn${activeTab === 'severityNames' ? ' active' : ''}`}
+            onClick={() => setActiveTab('severityNames')}
+          >
+            Severity Names
+          </button>
+        )}
       </div>
 
       {activeTab === 'applicationIds' && <ApplicationIdConfig embedded />}
+      {activeTab === 'severityNames' && <SeverityNamesConfig embedded />}
 
       {activeTab === 'types' && (
       <div className="config-grid">
@@ -1116,7 +1129,7 @@ export default function AssessmentConfig() {
                   <tbody>
                     {wfVulnSlas.map(sla => (
                       <tr key={sla.severity}>
-                        <td><span className={`sla-severity sla-severity--${sla.severity.toLowerCase()}`}>{sla.severity}</span></td>
+                        <td><span className={`sla-severity sla-severity--${sla.severity.toLowerCase()}`}>{severityLabel(sla.severity)}</span></td>
                         <td>{sla.warningDays}</td>
                         <td>{sla.pastDueDays}</td>
                         <td>
