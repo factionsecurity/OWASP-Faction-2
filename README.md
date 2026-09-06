@@ -4,6 +4,9 @@
 
 ![GitHub last commit](https://img.shields.io/github/last-commit/factionsecurity/OWASP-Faction-2) ![GitHub Release Date - Published_At](https://img.shields.io/github/release-date/factionsecurity/OWASP-Faction-2) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14465/badge)](https://www.bestpractices.dev/projects/14465)
 
+[![](https://img.shields.io/badge/null0perat0r-it?style=flat-square&logo=mastodon&labelColor=white&color=white&link=https%3A%2F%2Finfosec.exchange%2F%40null0perat0r)](https://infosec.exchange/@null0perat0r)
+[![Bluesky](https://img.shields.io/badge/Bluesky-0285FF?logo=bluesky&logoColor=fff)](https://bsky.app/profile/factionsecurity.com)
+
 
 Penetration test management for teams that produce reports for a living:
 assessments, findings, peer review, retests, remediation tracking, and the
