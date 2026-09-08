@@ -13,6 +13,14 @@ spring:
          jdbc:
            time_zone: UTC
 
+faction:
+  default-report-template:
+    # Blank, so the suite never reaches out to GitHub. BootstrapService is an ApplicationRunner
+    # and runs in every @SpringBootTest context, so inheriting the real URL would download the
+    # template once per context — slow, and it makes the whole suite need network access.
+    # DefaultReportTemplateServiceTest points the service at a local server instead.
+    url: ""
+
 jwt:
   secret: test-secret-key-for-testing-purposes-only-must-be-at-least-256-bits-long
   expiration: 3600000

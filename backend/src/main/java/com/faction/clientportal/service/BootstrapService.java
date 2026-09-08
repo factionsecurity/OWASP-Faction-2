@@ -34,6 +34,7 @@ public class BootstrapService implements ApplicationRunner {
     private final VulnerabilityCategoryRepository vulnerabilityCategoryRepository;
     private final CampaignRepository campaignRepository;
     private final EditionPolicy editionPolicy;
+    private final DefaultReportTemplateService defaultReportTemplateService;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -71,6 +72,10 @@ public class BootstrapService implements ApplicationRunner {
         } else {
             log.info("Assessment types already exist. Skipping assessment type bootstrap.");
         }
+
+        // After the assessment types above: a report template belongs to one, so there is
+        // nothing to attach it to before they exist.
+        defaultReportTemplateService.ensureDefaultTemplate();
 
         if (vulnerabilityCategoryRepository.countByDeletedAtIsNull() == 0) {
             log.info("No vulnerability categories found. Initializing OWASP Top 10 categories...");

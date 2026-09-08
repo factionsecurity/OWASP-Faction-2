@@ -19,7 +19,12 @@ export interface CvssCalculatorProps {
   onClose: () => void;
   onApply: (result: CvssApplyResult) => void;
   lockedVersion?: '3.1' | '4.0';
-  initialVector?: string;
+  /**
+   * Vector(s) to reopen on, so a second visit shows the metrics behind the current score
+   * rather than an empty form. Each is matched to its version by its own prefix, so a
+   * caller holding both a 3.1 and a 4.0 vector can pass both and have either tab restore.
+   */
+  initialVector?: string | string[];
   initialVersion?: '3.1' | '4.0';
 }
 
@@ -287,25 +292,37 @@ function parseVector40(vector: string): Cvss40Metrics {
   return m;
 }
 
+/** The supplied vector for one version, by prefix, or undefined if none was given for it. */
+function vectorFor(initial: string | string[] | undefined, prefix: string): string | undefined {
+  if (!initial) return undefined;
+  const all = Array.isArray(initial) ? initial : [initial];
+  return all.find(v => v?.startsWith(prefix));
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function CvssCalculator({ isOpen, onClose, onApply, lockedVersion, initialVector, initialVersion }: CvssCalculatorProps) {
-  const detectedVersion: CvssVersion = initialVector?.startsWith('CVSS:4.0') ? '4.0' : '3.1';
+  const vector31 = vectorFor(initialVector, 'CVSS:3.1');
+  const vector40 = vectorFor(initialVector, 'CVSS:4.0');
+  // With only a 4.0 vector to go on, open on 4.0 — otherwise 3.1, which is also the
+  // right default when both were supplied and neither version was asked for.
+  const detectedVersion: CvssVersion = vector40 && !vector31 ? '4.0' : '3.1';
   const startVersion: CvssVersion = lockedVersion ?? initialVersion ?? detectedVersion;
 
   const [activeVersion, setActiveVersion] = useState<CvssVersion>(startVersion);
   const [metrics31, setMetrics31] = useState<Cvss31Metrics>(() =>
-    initialVector?.startsWith('CVSS:3.1') ? parseVector31(initialVector) : { ...DEFAULT_31 }
+    vector31 ? parseVector31(vector31) : { ...DEFAULT_31 }
   );
   const [metrics40, setMetrics40] = useState<Cvss40Metrics>(() =>
-    initialVector?.startsWith('CVSS:4.0') ? parseVector40(initialVector) : { ...DEFAULT_40 }
+    vector40 ? parseVector40(vector40) : { ...DEFAULT_40 }
   );
 
+  // Re-seed on every open rather than only on mount: the dialog stays mounted between
+  // visits, so without this a second open shows whatever was left from the first.
   useEffect(() => {
     if (!isOpen) return;
-    const v: CvssVersion = lockedVersion ?? (initialVector?.startsWith('CVSS:4.0') ? '4.0' : '3.1');
-    setActiveVersion(v);
-    setMetrics31(initialVector?.startsWith('CVSS:3.1') ? parseVector31(initialVector) : { ...DEFAULT_31 });
-    setMetrics40(initialVector?.startsWith('CVSS:4.0') ? parseVector40(initialVector) : { ...DEFAULT_40 });
+    setActiveVersion(lockedVersion ?? initialVersion ?? detectedVersion);
+    setMetrics31(vector31 ? parseVector31(vector31) : { ...DEFAULT_31 });
+    setMetrics40(vector40 ? parseVector40(vector40) : { ...DEFAULT_40 });
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const result31 = useMemo(() => {
