@@ -78,6 +78,13 @@ faction:
   default-vulnerabilities:
     import-url: ${DEFAULT_VULNERABILITIES_IMPORT_URL:https://codeload.github.com/factionsecurity/default-vulnerabilities/zip/refs/heads/main}
 
+  default-report-template:
+    # Installed on first start, and only when the install has no report template at all, so a
+    # new deployment can generate a report without first sourcing a DOCX from somewhere. A
+    # failed download is logged and skipped, never fatal. Set blank to not reach out at all.
+    url: ${DEFAULT_REPORT_TEMPLATE_URL:https://github.com/factionsecurity/report_templates/raw/refs/heads/main/default-report-template.docx}
+    name: ${DEFAULT_REPORT_TEMPLATE_NAME:Default Pentest Report}
+
   # Development override for exercising the open source edition from this build.
   # Set to "community" to suppress EnterpriseEditionPolicy, which caps every quota and
   # turns every paid feature off. It can only take capability away — in the open source

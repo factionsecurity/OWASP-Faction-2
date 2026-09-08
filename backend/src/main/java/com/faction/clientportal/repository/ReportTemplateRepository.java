@@ -65,4 +65,10 @@ public interface ReportTemplateRepository extends JpaRepository<ReportTemplate, 
      * Count templates by assessment type (active only)
      */
     long countByAssessmentTypeIdAndActiveTrueAndDeletedAtIsNull(String assessmentTypeId);
+
+    /**
+     * How many templates this install actually has. Excludes soft-deleted ones, so an install
+     * that deleted every template counts as having none.
+     */
+    long countByDeletedAtIsNull();
 }
