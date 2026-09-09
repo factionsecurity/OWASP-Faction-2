@@ -36,6 +36,17 @@ spring:
     # Migrations are timestamp-versioned (V<yyyyMMddHHmmss>__), so a branch merged
     # late can carry a version older than one already applied — apply it anyway.
     out-of-order: true
+    # A database the enterprise overlay has migrated carries migrations this build does not
+    # have — Flyway calls those "missing" and by default refuses to start. Ignore them, so the
+    # open source edition runs against such a database (an enterprise trial that ended, a
+    # database shared between the two editions while developing) instead of failing with
+    # "applied migration not resolved locally". Nothing is lost by it: an overlay migration
+    # only ever touches overlay tables, which this edition never reads. An overlay migration
+    # stamped later than anything here is "future" rather than "missing", so both are listed
+    # (future is Flyway's own default; naming a pattern replaces that default rather than
+    # adding to it). Every other check — a changed checksum, a failed migration — still
+    # fails validation as before.
+    ignore-migration-patterns: "*:missing,*:future"
 
 storage:
   # Internal address only — the browser never talks to object storage. Every
