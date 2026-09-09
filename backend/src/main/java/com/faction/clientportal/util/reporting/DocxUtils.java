@@ -1335,7 +1335,53 @@ public class DocxUtils {
         // Step 8: Center images and figures.
         html = centerImagesAndFigures(html);
 
+        // Step 9: A screenshot inside a list item gets its own centered line under its step.
+        html = wrapListItemImages(html);
+
         return html;
+    }
+
+    /**
+     * Gives a screenshot pasted inside a list item its own centered line.
+     *
+     * <p>The editor emits such an image as a bare child of the {@code <li>}, centered there by
+     * an inline {@code display:block; margin:auto} — which docx4j's importer ignores, so the
+     * report renders the image inline after the step text, left-aligned. Wrapping it in a
+     * centered {@code <p>} makes the importer emit a separate {@code jc=center} paragraph that
+     * carries <em>no</em> numbering: the screenshot sits centered beneath its step, and the next
+     * step keeps counting rather than the image taking a number of its own (pinned in
+     * DocxUtilsListImageTest). An image already inside a {@code <p>} or {@code <figure>} is left
+     * to {@link #centerImagesAndFigures}.
+     *
+     * <p>A single linear scan tracking {@code <li>} and {@code <p>}/{@code <figure>} depth, so
+     * nested lists resolve correctly and only a truly bare image is wrapped. Runs after
+     * sanitization, which guarantees lowercase tag names.
+     */
+    private static String wrapListItemImages(String html) {
+        if (!html.contains("<li") || !html.contains("<img")) return html;
+        StringBuilder out = new StringBuilder(html.length() + 64);
+        int liDepth = 0;
+        int pDepth = 0;
+        int pos = 0;
+        while (pos < html.length()) {
+            int lt = html.indexOf('<', pos);
+            if (lt < 0) { out.append(html, pos, html.length()); break; }
+            int gt = html.indexOf('>', lt);
+            if (gt < 0) { out.append(html, pos, html.length()); break; }
+            out.append(html, pos, lt);
+            String tag = html.substring(lt, gt + 1);
+            if (tag.startsWith("<li>") || tag.startsWith("<li ")) liDepth++;
+            else if (tag.startsWith("</li>")) liDepth = Math.max(0, liDepth - 1);
+            else if (tag.startsWith("<p>") || tag.startsWith("<p ") || tag.startsWith("<figure")) pDepth++;
+            else if (tag.startsWith("</p>") || tag.startsWith("</figure>")) pDepth = Math.max(0, pDepth - 1);
+            if (liDepth > 0 && pDepth == 0 && tag.startsWith("<img")) {
+                out.append("<p style=\"text-align:center\">").append(tag).append("</p>");
+            } else {
+                out.append(tag);
+            }
+            pos = gt + 1;
+        }
+        return out.toString();
     }
 
     /**
@@ -1351,14 +1397,21 @@ public class DocxUtils {
      * guarantees lowercase tag names — no catastrophic-backtracking risk.
      */
     private static String centerImagesAndFigures(String html) {
-        // <figure> with no existing attributes
-        html = html.replace("<figure>", "<figure style=\"text-align:center\">");
-
-        // <figure> with existing attributes — inject style before the closing >
-        // Only replaces if there is no style attribute already present.
-        if (html.contains("<figure ") && !html.contains("<figure style=")) {
-            html = html.replaceAll("<figure ([^>]*)>",
-                    "<figure style=\"text-align:center\" $1>");
+        // Every <figure> is forced to lay out as a block, via an inline style so it outranks
+        // the template stylesheet. The default template CSS ships figure{display:inline-block},
+        // and an inline-block figure makes the importer flow the image AND its caption into the
+        // surrounding line: the caption lands beside the picture instead of beneath it, and a
+        // numbered step containing one loses its number. Templates already saved with that rule
+        // are the reason this is done here rather than only in the default CSS.
+        //
+        // Order matters: existing style attributes are prefixed first, so the two branches that
+        // create a style attribute are not re-prefixed afterwards.
+        html = html.replace("<figure style=\"", "<figure style=\"display:block;");
+        html = html.replace("<figure>", "<figure style=\"display:block;text-align:center\">");
+        // <figure> with other attributes but no style attribute of its own.
+        if (html.contains("<figure ")) {
+            html = html.replaceAll("<figure (?![^>]*style=)([^>]*)>",
+                    "<figure style=\"display:block;text-align:center\" $1>");
         }
 
         // <p> whose first child is an <img>: make it centered.
@@ -1366,6 +1419,29 @@ public class DocxUtils {
         html = html.replace("<p><img ",     "<p style=\"text-align:center\"><img ");
         html = html.replace("<p> <img ",    "<p style=\"text-align:center\"><img ");
         html = html.replace("<p>\n<img ",   "<p style=\"text-align:center\"><img ");
+
+        // A caption becomes its own centered paragraph placed AFTER the figure, not inside it.
+        //
+        // Inside the figure it is doomed: the default template CSS centres images with
+        // img{display:block; margin:auto !important}, and with that rule in force the importer
+        // absorbs whatever block follows the image into the image's own paragraph — so LibreOffice
+        // lays the caption out beside the picture rather than beneath it. Being !important, the
+        // rule cannot be overridden inline, and templates already saved carry it. Moving the
+        // caption out past </figure> sidesteps the rule entirely; it stays within the enclosing
+        // list item, so a captioned screenshot in a numbered step still sits under its step and
+        // takes no number.
+        //
+        // This also drops the <figcaption> element, which the importer maps to a Word caption
+        // carrying an auto-numbered "Figure N" field — a caption already reading "Figure 2: …"
+        // came out as "Figure 1Figure 2: …", and the field never renumbered. Italic so the
+        // caption still reads as one. Closing inline tags between the caption and </figure>
+        // (the editor wraps both in <strong> when bold is active) are kept in their place.
+        html = html.replaceAll(
+                "(?s)<figcaption[^>]*>(.*?)</figcaption>((?:</(?:strong|b|em|i|u|s|span)>)*)\\s*</figure>",
+                "$2</figure><p style=\"text-align:center;font-style:italic\">$1</p>");
+        // A caption that is not the last thing in its figure: keep it as a centered paragraph in place.
+        html = html.replaceAll("<figcaption[^>]*>", "<p style=\"text-align:center;font-style:italic\">");
+        html = html.replace("</figcaption>", "</p>");
 
         return html;
     }
