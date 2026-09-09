@@ -77,22 +77,19 @@ public class DocxReportGenerationService implements ReportGenerationService {
     private final TerminologyConfigService      terminologyConfigService;
 
     /**
-     * The order findings appear in a report: most severe first, Informational last.
+     * The order findings appear in a report: the assessment's display order, exactly as the
+     * assessment screen shows it.
      *
-     * <p>Previously this was {@code display_order} alone. Nothing sets that but
-     * creation order — {@code VulnerabilityService.nextOrder} hands out max+1 and the
-     * UI never calls the reorder endpoint — so findings came out in whatever sequence
-     * the tester happened to enter them. An Informational noted first therefore led
-     * the report, ahead of every Critical, and the report disagreed with the
-     * assessment screen, which has always listed by severity.
-     *
-     * <p>{@code display_order} stays as the tie-break, so within one severity the
-     * tester's entry order is still what the reader sees.
+     * <p>Severity is not a sort key here because it is already built into the display order: a
+     * new finding is placed at the end of its severity group when it is created
+     * ({@code VulnerabilityService.placeInSeverityGroup}), and existing data was renumbered the
+     * same way by migration. That leaves the tester free to move a finding by hand — including,
+     * rarely, a High up among the Criticals — and have the report follow, which a severity-first
+     * sort here would silently undo. Id breaks the (now unexpected) tie so the order is stable.
      */
     private static final Comparator<Vulnerability> REPORT_ORDER =
-            Comparator.<Vulnerability>comparingInt(
-                            v -> VulnerabilitySeverity.reportRankOf(v.getSeverity()))
-                    .thenComparingInt(v -> v.getOrder() == null ? 0 : v.getOrder());
+            Comparator.<Vulnerability>comparingInt(v -> v.getOrder() == null ? 0 : v.getOrder())
+                    .thenComparing(Vulnerability::getId, Comparator.nullsLast(Comparator.naturalOrder()));
 
     private static final String REPORT_CONTENT_TYPE =
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

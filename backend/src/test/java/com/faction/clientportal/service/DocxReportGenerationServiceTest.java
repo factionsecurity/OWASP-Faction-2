@@ -150,6 +150,38 @@ class DocxReportGenerationServiceTest {
                 .isEqualTo("report-templates/tmpl-1/report.docx");
     }
 
+    /**
+     * The report follows the assessment's display order and nothing else. Severity is already
+     * baked into that order at insert time, so re-sorting by severity here would undo the one
+     * thing a tester rearranges by hand: a High deliberately placed above a Critical.
+     */
+    @Test
+    void reportOrder_isDisplayOrderEvenAcrossSeverities() throws Exception {
+        java.lang.reflect.Field f = DocxReportGenerationService.class.getDeclaredField("REPORT_ORDER");
+        f.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Comparator<com.faction.clientportal.model.Vulnerability> order =
+                (java.util.Comparator<com.faction.clientportal.model.Vulnerability>) f.get(null);
+
+        com.faction.clientportal.model.Vulnerability crit1 = com.faction.clientportal.model.Vulnerability.builder()
+                .id("crit-1").severity(com.faction.clientportal.model.VulnerabilitySeverity.CRITICAL).order(0).build();
+        com.faction.clientportal.model.Vulnerability high1 = com.faction.clientportal.model.Vulnerability.builder()
+                .id("high-1").severity(com.faction.clientportal.model.VulnerabilitySeverity.HIGH).order(1).build();
+        com.faction.clientportal.model.Vulnerability crit2 = com.faction.clientportal.model.Vulnerability.builder()
+                .id("crit-2").severity(com.faction.clientportal.model.VulnerabilitySeverity.CRITICAL).order(2).build();
+        com.faction.clientportal.model.Vulnerability unnumbered = com.faction.clientportal.model.Vulnerability.builder()
+                .id("legacy").severity(com.faction.clientportal.model.VulnerabilitySeverity.LOW).order(null).build();
+
+        List<com.faction.clientportal.model.Vulnerability> sorted = new java.util.ArrayList<>(
+                List.of(high1, unnumbered, crit2, crit1));
+        sorted.sort(order);
+
+        org.assertj.core.api.Assertions.assertThat(sorted)
+                .extracting(com.faction.clientportal.model.Vulnerability::getId)
+                // A null order reads as 0 and ties on id, so a legacy row is still placed deterministically.
+                .containsExactly("crit-1", "legacy", "high-1", "crit-2");
+    }
+
     @Test
     void generateReport_throwsIllegalStateWhenTemplateHasNoFileEither() {
         baseAssessment.setTemplateFileId(null);

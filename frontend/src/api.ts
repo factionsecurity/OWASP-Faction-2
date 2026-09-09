@@ -1153,6 +1153,12 @@ export const vulnerabilitiesApi = {
   getAll: (assessmentId: string, page = 0, size = 100, sort = 'order,asc') =>
     api.get(`/assessments/${assessmentId}/vulnerabilities`, { params: { page, size, sort } })
        .then(r => r.data as PagedApiResponse<Vulnerability[]>),
+  /** Persist a manual arrangement. Only the ids given are touched. */
+  reorder: (assessmentId: string, order: { id: string; order: number }[]) =>
+    api.patch<ApiResponse<Vulnerability[]>>(`/assessments/${assessmentId}/vulnerabilities/reorder`, { order }).then(r => r.data),
+  /** Put every finding back in severity order, keeping the current order within each severity. */
+  resetOrderBySeverity: (assessmentId: string) =>
+    api.post<ApiResponse<Vulnerability[]>>(`/assessments/${assessmentId}/vulnerabilities/reorder/by-severity`).then(r => r.data),
 
   /** SLA-aware per-severity summary across all vulnerabilities the caller may read (server-scoped).
    *  Takes the same narrowing filters as `searchGlobal` so a summary rendered above the list tracks

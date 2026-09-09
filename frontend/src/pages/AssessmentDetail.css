@@ -896,17 +896,50 @@
   padding: 1.25rem 1.5rem;
   overflow-y: auto;
   border-right: 1px solid var(--border-color);
+  /* Still scrolls with the wheel and keyboard; just no scrollbar drawn beside the form. */
+  scrollbar-width: none;
 }
+.vuln-form-panel::-webkit-scrollbar { display: none; }
 .vuln-list-panel {
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .vuln-list-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.75rem;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
+.vuln-list-search .field-input { flex: 1; min-width: 0; }
+/* Only shown once a finding sits above a more severe one, i.e. when there is something to reset. */
+.vuln-list-reset-order {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.vuln-list-reset-order:hover { color: var(--text-primary); background: var(--hover-bg); }
+.vuln-list-reset-order:disabled { opacity: 0.5; cursor: default; }
+/* Rows drag to reorder; the grip is the hint and shows with the other row actions on hover. */
+.vuln-list-item[draggable="true"] { cursor: grab; padding-left: 0.4rem; }
+.vuln-list-item.dragging { opacity: 0.4; cursor: grabbing; }
+.vuln-list-item-grip {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.vuln-list-item:hover .vuln-list-item-grip { opacity: 1; }
 .vuln-list-scroll {
   overflow-y: auto;
   flex: 1;
@@ -914,13 +947,16 @@
 .vuln-list-item {
   padding: 0.65rem 1rem;
   border-bottom: 1px solid var(--border-color);
+  /* Every finding row carries a left border in its severity colour (set inline); the selected
+     row swaps it for the accent. Always present so selecting never shifts the row's content. */
+  border-left: 5px solid transparent;
   cursor: pointer;
   transition: background 0.1s;
 }
 .vuln-list-item:hover { background: var(--hover-bg); }
 .vuln-list-item.selected {
   background: var(--selected-bg, rgba(99,102,241,0.08));
-  border-left: 3px solid var(--accent-color, #6366f1);
+  border-left: 5px solid var(--accent-color, #6366f1);
 }
 .vuln-list-item-header {
   display: flex;
@@ -1012,6 +1048,11 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+/* The grip in the header row is invisible until hover but still takes its width, so the meta
+   line is indented past it to sit under the checkbox rather than under the grip. */
+.vuln-list-item[draggable="true"] .vuln-list-item-meta {
+  padding-left: calc(13px + 0.4rem);
 }
 .vuln-empty-state {
   display: flex;
