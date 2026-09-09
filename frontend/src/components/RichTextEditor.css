@@ -29,7 +29,12 @@
   position: sticky;
   /* extra 4px bleed so no content seam shows above the bar while stuck */
   top: calc(-1 * var(--rte-sticky-offset, 0px) - 4px);
-  z-index: 20;
+  /* Deliberately low. The toolbar (and the mode tabs at the bottom) only need to clear
+     the editor's own content; they must stay UNDER the app's top bar, a sticky stacking
+     context at z-index 10 in DashboardLayout.css. Anything at or above 10 here paints
+     over the notifications dropdown, whose own z-index only counts inside that bar.
+     Drawer headers and overlays the editor sits in start at 6. */
+  z-index: 3;
   border-radius: 3px 3px 0 0;
 }
 
@@ -262,7 +267,7 @@
   position: sticky;
   /* extra 4px bleed so no content seam shows below the bar while stuck */
   bottom: calc(-1 * var(--rte-sticky-offset, 0px) - 4px);
-  z-index: 20;
+  z-index: 3;
   border-radius: 0 0 3px 3px;
 }
 
@@ -756,7 +761,7 @@
 .rte-lock-overlay {
   position: absolute;
   inset: 0;
-  z-index: 22;
+  z-index: 4;
   pointer-events: none;
   display: flex;
   align-items: flex-start;
@@ -804,7 +809,7 @@
   color: #4b5563;
   font-size: 0.85rem;
   font-weight: 500;
-  z-index: 20;
+  z-index: 3;
 }
 
 [data-theme='dark'] .rte-ai-overlay {
