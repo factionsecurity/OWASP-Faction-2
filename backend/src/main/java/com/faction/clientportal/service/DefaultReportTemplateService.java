@@ -104,6 +104,10 @@ public class DefaultReportTemplateService {
                 .name(templateName)
                 .description("The project's default pentest report template, installed on first start.")
                 .assessmentTypeId(assessmentType.getId())
+                // The same stylesheet a hand-created template starts with. Without it the
+                // installed template renders with no CSS at all — lists tab over, code has no
+                // background — which is exactly the first impression this bootstrap exists to avoid.
+                .css(ReportTemplateService.DEFAULT_TEMPLATE_CSS)
                 .version(1)
                 .sections(new ArrayList<>())
                 .userDefinedFields(defaultFields())
