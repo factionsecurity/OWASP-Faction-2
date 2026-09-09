@@ -16,6 +16,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.faction.clientportal.edition.EditionPolicy;
+import com.faction.clientportal.edition.Feature;
+
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -30,6 +33,7 @@ public class ReportTemplateService {
     private final AssessmentTypeRepository assessmentTypeRepository;
     private final AssessmentRepository assessmentRepository;
     private final StorageService storageService;
+    private final EditionPolicy editionPolicy;
 
     private static final long MAX_FILE_SIZE = 1073741824L; // 1GB
     private static final String DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -135,6 +139,8 @@ public class ReportTemplateService {
         if (fields.isEmpty()) {
             fields = defaultTemplateFields();
         }
+
+        requireSectionsAllowed(request.getSections());
 
         ReportTemplate template = ReportTemplate.builder()
             .name(request.getName())
@@ -354,6 +360,7 @@ public class ReportTemplateService {
 
         // Update sections
         if (request.getSections() != null) {
+            requireSectionsAllowed(request.getSections());
             template.setSections(new ArrayList<>(request.getSections()));
         }
 
@@ -603,6 +610,18 @@ public class ReportTemplateService {
         } catch (Exception e) {
             log.error("Error deleting storage file: {}", key, e);
             // Don't throw — continue with template deletion
+        }
+    }
+
+    /**
+     * Sections are a paid feature, and this is the one place they come into being: a
+     * template with sections is what gives its assessments sections, which is what gives a
+     * finding somewhere to be filed. Clearing sections is always allowed, so an installation
+     * that stops running the overlay can still tidy its templates.
+     */
+    private void requireSectionsAllowed(List<String> sections) {
+        if (sections != null && sections.stream().anyMatch(sec -> sec != null && !sec.isBlank())) {
+            editionPolicy.require(Feature.REPORT_SECTIONS);
         }
     }
 }

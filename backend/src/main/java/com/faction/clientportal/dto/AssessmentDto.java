@@ -110,6 +110,12 @@ public class AssessmentDto {
         private long medium;
         private long low;
         private long informational;
+        /**
+         * Findings not filed under any of the assessment's report sections. Zero when the
+         * assessment has no sections, where the question does not arise. Drives the
+         * Unassigned tab, which shows while this is above zero.
+         */
+        private long unsectioned;
     }
 
     /**

@@ -662,6 +662,8 @@ export interface VulnerabilitySummary {
   medium: number;
   low: number;
   informational: number;
+  /** Findings not filed under any of the assessment's report sections; 0 when it has none. */
+  unsectioned?: number;
 }
 
 /**
@@ -2028,7 +2030,8 @@ export type FeatureKey =
   | 'inbound_email'
   | 'ai_observability'
   | 'external_owners'
-  | 'custom_roles';
+  | 'custom_roles'
+  | 'report_sections';
 
 /** Quota keys from the backend `Quota` enum. Capabilities that ship, but capped. */
 export type QuotaKey = 'ai_providers' | 'ai_prompts' | 'extensions';

@@ -1724,6 +1724,26 @@ class AssessmentServiceTest {
         verify(vulnerabilityRepository, never()).saveAll(any());
     }
 
+    /**
+     * The Unassigned tab shows while some finding is not filed under one of the assessment's
+     * sections. Without sections the count is not even asked for — every finding is simply
+     * on the one list.
+     */
+    @Test
+    void vulnerabilitySummary_countsFindingsOutsideTheAssessmentsSections() {
+        String assessmentId = testAssessment.getId();
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(assessmentId))
+                .thenReturn(Optional.of(testAssessment));
+
+        testAssessment.setSections(new java.util.ArrayList<>());
+        assertThat(assessmentService.getAssessment(assessmentId).getVulnerabilitySummary().getUnsectioned()).isZero();
+        verify(vulnerabilityRepository, never()).countUnsectioned(any(), any());
+
+        testAssessment.setSections(new java.util.ArrayList<>(java.util.List.of("Web App", "Mobile")));
+        when(vulnerabilityRepository.countUnsectioned(assessmentId, testAssessment.getSections())).thenReturn(3L);
+        assertThat(assessmentService.getAssessment(assessmentId).getVulnerabilitySummary().getUnsectioned()).isEqualTo(3L);
+    }
+
     @Test
     void testGetAssessment_IncludesVulnerabilitySummary() {
         // Given
