@@ -225,6 +225,9 @@ function containsBlockElement(el: Element): boolean {
 // never touched.
 function normalizeBlocks(html: string): string {
   if (!html || !html.trim() || html === '<br>') return html;
+  // Rebuild a step sequence a code block broke apart before wrapping loose text, so a
+  // save writes back one clean <ol> with the code folded into its step.
+  html = rebuildStepSequences(html);
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   const out = document.createElement('div');
@@ -913,7 +916,138 @@ function isInternalTableClass(name: string): boolean {
     || name.startsWith('language-');
 }
 
+const liChildren = (el: Element) => Array.from(el.children).filter(c => c.tagName === 'LI');
+
+function isCodeBlockEl(el: Element): boolean {
+  return el.tagName === 'PRE'
+    || (el.tagName === 'TABLE' && el.classList.contains(CODE_BLOCK_CLASS));
+}
+
+/**
+ * Collapses the fragmented ordered lists the contenteditable list command emits —
+ *
+ *   <ul><li><ol><li>A</li></ol></li><li><ol start="2"><li>B</li></ol></li></ul>
+ *
+ * — where each step is wrapped in its own single-item <ol>. Each such wrapper becomes
+ * one <ol> whose items run in document order. Narrow by design: it only fires when
+ * EVERY item of a list is nothing but an <ol> with no text of its own, so a genuine
+ * nested list (an item with lead-in text above a sub-list) is left untouched.
+ */
+function collapseFragmentedLists(html: string): string {
+  if (!html || !html.includes('<ol')) return html;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  for (const list of Array.from(tpl.content.querySelectorAll('ul, ol')).reverse()) {
+    const items = liChildren(list);
+    if (items.length === 0) continue;
+    const fragmented = items.every(li => {
+      const kids = Array.from(li.children);
+      return kids.length === 1
+        && kids[0].tagName === 'OL'
+        && (li.textContent ?? '').trim() === (kids[0].textContent ?? '').trim();
+    });
+    if (!fragmented) continue;
+    const merged = document.createElement('ol');
+    for (const li of items) {
+      const innerOl = Array.from(li.children).find(c => c.tagName === 'OL')!;
+      for (const inner of liChildren(innerOl)) merged.appendChild(inner);
+    }
+    list.replaceWith(merged);
+  }
+  return tpl.innerHTML;
+}
+
+/** What a top-level block is, for rebuilding a broken step sequence. */
+type StepBlock = 'ol' | 'ul' | 'code' | 'numstep' | 'prose' | 'break' | 'other';
+function classifyStepBlock(node: Node): StepBlock {
+  if (node.nodeType !== Node.ELEMENT_NODE) return 'other';
+  const el = node as Element;
+  if (el.tagName === 'OL') return 'ol';
+  if (el.tagName === 'UL') return 'ul';
+  if (isCodeBlockEl(el)) return 'code';
+  if (/^H[1-6]$/.test(el.tagName) || el.tagName === 'HR') return 'break';
+  if (el.tagName === 'P') {
+    const text = (el.textContent ?? '').trim();
+    // "4. Escalate to script execution…" — a step typed as a paragraph, not a list item.
+    if (/^\d+[.)]\s/.test(text)) return 'numstep';
+    // A lone bold line ("Impact Demonstrated") is a section heading — it ends the steps.
+    const kids = Array.from(el.childNodes).filter(n => !(n.nodeType === Node.TEXT_NODE && !n.textContent?.trim()));
+    if (kids.length === 1 && (kids[0] as Element).tagName === 'STRONG') return 'break';
+    return 'prose';
+  }
+  return 'other';
+}
+
+/**
+ * Rebuilds a "Steps to Reproduce" sequence that a code block broke apart.
+ *
+ * <p>When a code block is inserted inside a numbered list, the contenteditable list
+ * command ends the list, drops the block as a sibling, and starts a fresh single-item
+ * list for the next step — so the report shows 1, 1, 1… with the code between them.
+ * This walks a run of step blocks (ordered-list fragments, code blocks, evidence
+ * paragraphs, and steps typed as "N." paragraphs) and folds it into one &lt;ol&gt;:
+ * every code block and its explanatory prose moves <em>inside</em> the step it follows,
+ * so the list is unbroken and numbers run 1..n.
+ *
+ * <p>Guarded twice against touching an ordinary finding: it starts only at an &lt;ol&gt;,
+ * and only when a further step (another &lt;ol&gt; or an "N." paragraph) actually appears
+ * before the run ends at a heading, a bullet list, or a bold section title. A lone list
+ * followed by a closing paragraph has no second step, so nothing is folded.
+ */
+function rebuildStepSequences(html: string): string {
+  html = collapseFragmentedLists(html);
+  if (!html || !html.includes('<ol')) return html;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+
+  const nodes = Array.from(tpl.content.childNodes);
+  const out = document.createElement('div');
+  const foldInto = (li: Element | null, node: Node) => { if (li) li.appendChild(node); else out.appendChild(node); };
+
+  let i = 0;
+  while (i < nodes.length) {
+    const node = nodes[i];
+    if (classifyStepBlock(node) !== 'ol') { out.appendChild(node); i++; continue; }
+
+    // Look ahead: is there a second step in this run? Only then is this a broken sequence.
+    let hasMore = false;
+    for (let j = i + 1; j < nodes.length; j++) {
+      const kind = classifyStepBlock(nodes[j]);
+      if (kind === 'other' && !(nodes[j].textContent ?? '').trim()) continue; // whitespace
+      if (kind === 'ol' || kind === 'numstep') { hasMore = true; break; }
+      if (kind === 'break' || kind === 'ul' || kind === 'other') break;
+      // 'code' / 'prose' keep scanning
+    }
+    if (!hasMore) { out.appendChild(node); i++; continue; }
+
+    const merged = document.createElement('ol');
+    for (const li of liChildren(node as Element)) merged.appendChild(li);
+    i++;
+    while (i < nodes.length) {
+      const b = nodes[i];
+      const kind = classifyStepBlock(b);
+      if (kind === 'break' || kind === 'ul') break;
+      if (kind === 'other') {
+        if (!(b.textContent ?? '').trim()) { i++; continue; } // drop inter-block whitespace
+        break;
+      }
+      if (kind === 'ol') { for (const li of liChildren(b as Element)) merged.appendChild(li); i++; continue; }
+      if (kind === 'numstep') {
+        const li = document.createElement('li');
+        // Strip the leading "N." — keeping a leading <strong> open if the number sat inside it.
+        li.innerHTML = (b as Element).innerHTML.replace(/^\s*(<strong>)?\s*\d+[.)]\s*/i, '$1');
+        merged.appendChild(li); i++; continue;
+      }
+      // code block or evidence paragraph — belongs to the step above it
+      foldInto(merged.lastElementChild, b); i++;
+    }
+    out.appendChild(merged);
+  }
+  return out.innerHTML;
+}
+
 function applyEditorPresentation(html: string): string {
+  html = rebuildStepSequences(html);
   if (!html.includes('<table') && !html.includes('<img')) return html;
   const container = document.createElement('div');
   container.innerHTML = html;
