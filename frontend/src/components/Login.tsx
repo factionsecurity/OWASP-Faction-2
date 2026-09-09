@@ -104,7 +104,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     window.location.href = '/api/v1/auth/oidc/initiate';
   };
 
-  const hasSsoOptions = ssoStatus?.saml2Enabled || ssoStatus?.oidcEnabled;
+  const handleGithubLogin = () => {
+    window.location.href = '/api/v1/auth/github/initiate';
+  };
+
+  const hasSsoOptions = ssoStatus?.saml2Enabled || ssoStatus?.oidcEnabled || ssoStatus?.githubEnabled;
 
   const { loginLogo, loginLogoHeight } = useBranding();
   const background = useRandomLoginBackground();
@@ -190,6 +194,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                   onClick={handleOidcLogin}
                 >
                   {ssoStatus.oidcButtonLabel || 'Login with OpenID Connect'}
+                </button>
+              )}
+              {ssoStatus?.githubEnabled && (
+                <button
+                  type="button"
+                  className="sso-login-btn"
+                  onClick={handleGithubLogin}
+                >
+                  {ssoStatus.githubButtonLabel || 'Login with GitHub'}
                 </button>
               )}
             </div>

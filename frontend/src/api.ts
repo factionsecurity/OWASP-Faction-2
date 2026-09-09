@@ -1676,6 +1676,8 @@ export const ssoConfigApi = {
     api.post<ApiResponse<{ success: boolean; message: string; details?: string }>>('/admin/sso-config/test-saml2', config || {}).then(r => r.data),
   testOidc: (config?: { issuerUri?: string }) =>
     api.post<ApiResponse<{ success: boolean; message: string; details?: string }>>('/admin/sso-config/test-oidc', config || {}).then(r => r.data),
+  testGithub: (config?: { baseUrl?: string }) =>
+    api.post<ApiResponse<{ success: boolean; message: string; details?: string }>>('/admin/sso-config/test-github', config || {}).then(r => r.data),
   getStatus: () =>
     api.get<ApiResponse<SsoStatus>>('/auth/sso/status').then(r => r.data),
 };

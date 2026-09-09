@@ -1266,9 +1266,20 @@ export interface SsoOidcConfig {
   buttonLabel?: string;
 }
 
+export interface SsoGithubConfig {
+  enabled: boolean;
+  clientId?: string;
+  clientSecret?: string; // "••••••••" if set, null if not
+  baseUrl?: string; // blank for github.com; a base URL for Enterprise Server
+  buttonLabel?: string;
+  allowedOrganizations?: string; // comma-separated org logins; blank = any account
+  callbackUrl?: string; // read-only, derived
+}
+
 export interface SsoConfig {
   saml2: SsoSaml2Config;
   oidc: SsoOidcConfig;
+  github: SsoGithubConfig;
 }
 
 export interface SsoStatus {
@@ -1276,6 +1287,8 @@ export interface SsoStatus {
   saml2ButtonLabel: string;
   oidcEnabled: boolean;
   oidcButtonLabel: string;
+  githubEnabled: boolean;
+  githubButtonLabel: string;
 }
 
 // Notebook Types
