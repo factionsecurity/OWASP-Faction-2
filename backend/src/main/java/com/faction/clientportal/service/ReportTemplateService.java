@@ -51,7 +51,7 @@ public class ReportTemplateService {
                 text-align: center;
                 padding: 0px;
                 margin: 10px 0px;
-                display: inline-block;
+                display: block;
                 border: none;
             }
             img{
@@ -67,8 +67,18 @@ public class ReportTemplateService {
                 margin-bottom: 0px !important;
                 margin: 10px 0 !important;
             }
+            ol {
+                margin-left: 0px !important;
+                padding-left: 0px !important;
+            }
+            ul {
+                margin-left: 0px !important;
+                padding-left: 0px !important;
+            }
             li{
                 margin-bottom: 10px !important;
+                margin-left: 0px !important;
+                padding-left: 0px !important;
             }
             code {
                 font-family: monospace !important;

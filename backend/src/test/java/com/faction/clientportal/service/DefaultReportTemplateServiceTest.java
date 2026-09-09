@@ -111,8 +111,26 @@ class DefaultReportTemplateServiceTest extends TestContainersConfig {
         assertThat(t.getUserDefinedFields()).extracting("variableName")
                 .containsExactly("summary1", "summary2");
 
+        // Installed with the default stylesheet, not none — see listResetRulesAreInTheDefaultCss
+        // for what that stylesheet must carry.
+        assertThat(t.getCss()).isEqualTo(ReportTemplateService.DEFAULT_TEMPLATE_CSS);
+
         // The row is only worth anything if the bytes really landed in storage.
         assertThat(storageService.downloadBytes(t.getTemplateFileId())).isEqualTo(docx);
+    }
+
+    @Test
+    void listResetRulesAreInTheDefaultCss() {
+        // Word indents every list item by a full tab stop unless the template says otherwise,
+        // which pushes numbered steps and their code blocks off to the right in the generated
+        // report. These zero that out for both list kinds and their items. They are the
+        // stylesheet every new template starts with, so a regression here reaches every install.
+        String css = ReportTemplateService.DEFAULT_TEMPLATE_CSS;
+        for (String selector : new String[]{"ol", "ul", "li"}) {
+            assertThat(css).as(selector + " block").matches("(?s).*\\b" + selector + "\\s*\\{[^}]*margin-left:\\s*0px\\s*!important[^}]*\\}.*");
+            assertThat(css).as(selector + " block").matches("(?s).*\\b" + selector + "\\s*\\{[^}]*padding-left:\\s*0px\\s*!important[^}]*\\}.*");
+        }
+        assertThat(css).matches("(?s).*\\bli\\s*\\{[^}]*margin-bottom:\\s*10px\\s*!important[^}]*\\}.*");
     }
 
     @Test
