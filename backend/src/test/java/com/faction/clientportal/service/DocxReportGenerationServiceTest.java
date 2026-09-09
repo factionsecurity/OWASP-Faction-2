@@ -182,6 +182,33 @@ class DocxReportGenerationServiceTest {
                 .containsExactly("crit-1", "legacy", "high-1", "crit-2");
     }
 
+    /**
+     * The report only sees sections in the edition that includes them. In the open source
+     * build an assessment's sections (left by a template that once ran the overlay, say) are
+     * withheld from the generator, so every finding lands in Default and nothing is lost.
+     */
+    @Test
+    void buildReportData_passesSectionsOnlyWhenTheEditionIncludesThem() throws Exception {
+        baseAssessment.setSections(new java.util.ArrayList<>(List.of("Web App", "Mobile")));
+        java.lang.reflect.Method m = DocxReportGenerationService.class.getDeclaredMethod(
+                "buildReportData", com.faction.clientportal.model.Assessment.class, List.class,
+                com.faction.clientportal.model.User.class, String.class, List.class,
+                java.util.Map.class, java.util.Map.class, java.util.Map.class);
+        m.setAccessible(true);
+
+        com.faction.clientportal.util.reporting.ReportData enterprise =
+                (com.faction.clientportal.util.reporting.ReportData) m.invoke(service, baseAssessment,
+                        List.of(), null, "Pentest", List.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of());
+        org.assertj.core.api.Assertions.assertThat(enterprise.getSections()).containsExactly("Web App", "Mobile");
+
+        org.mockito.Mockito.doReturn(false).when(editionPolicy)
+                .enabled(com.faction.clientportal.edition.Feature.REPORT_SECTIONS);
+        com.faction.clientportal.util.reporting.ReportData community =
+                (com.faction.clientportal.util.reporting.ReportData) m.invoke(service, baseAssessment,
+                        List.of(), null, "Pentest", List.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of());
+        org.assertj.core.api.Assertions.assertThat(community.getSections()).isEmpty();
+    }
+
     @Test
     void generateReport_throwsIllegalStateWhenTemplateHasNoFileEither() {
         baseAssessment.setTemplateFileId(null);

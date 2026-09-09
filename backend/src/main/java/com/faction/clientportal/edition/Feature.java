@@ -36,7 +36,19 @@ public enum Feature {
     EXTERNAL_OWNERS("external_owners", "External Owner Portal"),
 
     /** Creating and editing roles. Community ships Super Admin and Pentester, fixed. */
-    CUSTOM_ROLES("custom_roles", "Custom Roles & RBAC");
+    CUSTOM_ROLES("custom_roles", "Custom Roles & RBAC"),
+
+    /**
+     * Report sections: a template defines named sections, each finding is filed under one,
+     * and the DOCX renders a table and findings block per section.
+     *
+     * <p>Gated where sections come into being — defining them on a template — rather than
+     * on every finding. A finding can only be filed under a section its assessment has, and
+     * an assessment only has the sections its template had, so nothing downstream needs its
+     * own check. The report generator additionally ignores section data in this edition,
+     * so a database that once ran the overlay still produces a whole report.
+     */
+    REPORT_SECTIONS("report_sections", "Report Sections");
 
     private final String key;
     private final String displayName;

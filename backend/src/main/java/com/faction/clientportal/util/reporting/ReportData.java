@@ -50,6 +50,13 @@ public class ReportData {
     private List<ReportVulnerability> vulnerabilities;
 
     /**
+     * The assessment's report sections in template order, or empty when the assessment has
+     * none — or when this edition does not include them, in which case every finding renders
+     * under the implicit Default section whatever its own section says.
+     */
+    private List<String> sections;
+
+    /**
      * Inline image bytes keyed by image ID.
      * Used to embed images found in rich-text field content.
      */
@@ -133,6 +140,8 @@ public class ReportData {
         private LocalDateTime closedInDevAt;
         private LocalDateTime closedInStagingAt;
         private String categoryName;
+        /** The report section this finding is filed under; null or blank means Default. */
+        private String section;
 
         /**
          * Vulnerability-level user-defined field values.

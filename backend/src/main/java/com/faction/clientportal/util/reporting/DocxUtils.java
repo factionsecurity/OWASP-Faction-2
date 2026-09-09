@@ -111,11 +111,94 @@ public class DocxUtils {
         return Date.from(ldt.atZone(ZoneId.systemDefault()).toInstant());
     }
 
-    // ── vuln filtering (no section concept in new model) ───────────────────
+    // ── report sections ─────────────────────────────────────────────────────
 
+    /**
+     * The implicit section: every finding with no section, or a section the assessment no
+     * longer has, renders here. It has no name of its own in a template — the bare tags
+     * ({@code ${vulnTable}}, {@code ${fiBegin}}, {@code ${if-section}}) are the Default section.
+     */
+    public static final String DEFAULT_SECTION = "Default";
+
+    /**
+     * The token a section takes inside a template tag: the name with runs of whitespace
+     * replaced by underscores, so {@code Web Application} is written
+     * {@code ${vulnTable Web_Application}}. The same convention Faction 1 used, so a
+     * template written for it needs no edits.
+     */
+    public static String sectionVariable(String sectionName) {
+        return sectionName == null ? "" : sectionName.trim().replaceAll("\\s+", "_");
+    }
+
+    private static boolean isDefaultSection(String section) {
+        return section == null || section.isBlank() || DEFAULT_SECTION.equals(section);
+    }
+
+    private List<String> sections() {
+        return data.getSections() != null ? data.getSections() : List.of();
+    }
+
+    private boolean sectionExists(String section) {
+        String wanted = sectionVariable(section);
+        return sections().stream().anyMatch(sec -> sectionVariable(sec).equals(wanted));
+    }
+
+    /**
+     * The findings that belong in {@code section}, in the order they arrived.
+     *
+     * <p>Default takes everything that is unfiled and everything filed under a section the
+     * assessment does not have — a finding whose section was deleted from the template is
+     * still reported, not silently dropped. A named section takes exactly its own.
+     */
+    private List<ReportData.ReportVulnerability> getFilteredVulns(String section) {
+        List<ReportData.ReportVulnerability> vulns = data.getVulnerabilities();
+        if (vulns == null) return List.of();
+        if (isDefaultSection(section)) {
+            return vulns.stream()
+                    .filter(v -> isDefaultSection(v.getSection()) || !sectionExists(v.getSection()))
+                    .collect(Collectors.toList());
+        }
+        String wanted = sectionVariable(section);
+        return vulns.stream()
+                .filter(v -> sectionVariable(v.getSection()).equals(wanted))
+                .collect(Collectors.toList());
+    }
+
+    /** All findings, whatever their section — for counts and the risk summary. */
     private List<ReportData.ReportVulnerability> getFilteredVulns() {
         List<ReportData.ReportVulnerability> vulns = data.getVulnerabilities();
         return vulns != null ? vulns : List.of();
+    }
+
+    /** {@code ${tag}} for the Default section, {@code ${tag Section_Variable}} for a named one. */
+    private static String sectionTag(String tag, String section) {
+        return isDefaultSection(section)
+                ? "${" + tag + "}"
+                : "${" + tag + " " + sectionVariable(section) + "}";
+    }
+
+    /**
+     * Resolves a section's {@code ${if-section}} … {@code ${end-section}} wrappers: the marker
+     * paragraphs go either way, and when the section has no findings everything between them
+     * goes too — the heading, the intro paragraph, the table — so an empty section leaves no
+     * trace in the report. A template may wrap more than one region for the same section.
+     */
+    private void trimSectionBlocks(String section, boolean hasVulns) {
+        String beginTag = sectionTag("if-section", section);
+        String endTag   = sectionTag("end-section", section);
+        MainDocumentPart part = mlp.getMainDocumentPart();
+        for (int guard = 0; guard < 100; guard++) {
+            int begin = getIndex(part, beginTag);
+            if (begin == -1) return;
+            int end = getIndex(part, endTag);
+            if (end == -1) return;
+            if (!hasVulns) {
+                // Both marker paragraphs are already gone; the block now sits at [begin, end).
+                for (int i = end - 1; i >= begin; i--) {
+                    part.getContent().remove(i);
+                }
+            }
+        }
     }
 
     // ── CDATA wrap ──────────────────────────────────────────────────────────
@@ -317,10 +400,10 @@ public class DocxUtils {
 
     // ── vuln-table processing ────────────────────────────────────────────────
 
-    private void checkTables(String variable, String customCSS)
+    private void checkTables(String variable, String section, String customCSS)
             throws JAXBException, Docx4JException {
 
-        List<ReportData.ReportVulnerability> filteredVulns = getFilteredVulns();
+        List<ReportData.ReportVulnerability> filteredVulns = getFilteredVulns(section);
         List<Object> tables = getAllElementFromObject(mlp.getMainDocumentPart(), Tbl.class);
 
         for (Object table : tables) {
@@ -334,7 +417,7 @@ public class DocxUtils {
                 widths = setWidths(tc, "details", widths);
             }
 
-            String tableVariable = "${" + variable + "}";
+            String tableVariable = sectionTag(variable, section);
             String txt = getMatchingText(paragraphs, tableVariable);
             if (txt == null) continue;
 
@@ -622,8 +705,21 @@ public class DocxUtils {
 
         VariablePrepare.prepare(mlp);
 
-        checkTables("vulnTable", customCSS);
-        setFindings(customCSS);
+        // The Default section first, then each named section in template order. Every finding
+        // renders exactly once: under its own section, or under Default when it has none.
+        List<String> passes = new ArrayList<>();
+        passes.add(DEFAULT_SECTION);
+        passes.addAll(sections());
+        // Wrappers first, for every section, so no marker paragraph is still in the document
+        // when a findings block is cut out — a marker right after ${fiEnd} would otherwise be
+        // mistaken for content.
+        for (String section : passes) {
+            trimSectionBlocks(section, !getFilteredVulns(section).isEmpty());
+        }
+        for (String section : passes) {
+            checkTables("vulnTable", section, customCSS);
+            setFindings(section, customCSS);
+        }
 
         // Replace ${summary1} / ${summary2} with HTML from matching UDFs (if present)
         HashMap<String, List<Object>> summaryMap = new HashMap<>();
@@ -706,9 +802,9 @@ public class DocxUtils {
 
     // ── findings-block processing ────────────────────────────────────────────
 
-    private void setFindings(String customCSS) throws JAXBException, Docx4JException {
-        int begin = getIndex(mlp.getMainDocumentPart(), "${fiBegin}");
-        int end   = getIndex(mlp.getMainDocumentPart(), "${fiEnd}");
+    private void setFindings(String section, String customCSS) throws JAXBException, Docx4JException {
+        int begin = getIndex(mlp.getMainDocumentPart(), sectionTag("fiBegin", section));
+        int end   = getIndex(mlp.getMainDocumentPart(), sectionTag("fiEnd", section));
         if (begin == -1 || end == -1) return;
 
         HashMap<String, String> colorMap       = new HashMap<>();
@@ -716,8 +812,10 @@ public class DocxUtils {
         HashMap<String, String> customFieldMap = new HashMap<>();
         String noIssuesText = "No issues detected for this section.";
 
+        // Both marker paragraphs are gone by now, so the block is [begin, end): the paragraph
+        // that followed ${fiEnd} is the template's own again, not part of what repeats.
         List<Object> findingTemplate = new LinkedList<>();
-        for (int i = begin; i <= end; i++) {
+        for (int i = begin; i < end; i++) {
             Object node = mlp.getMainDocumentPart().getContent().get(i);
             findingTemplate.add(node);
             List<Object> paragraphs = getAllElementFromObject(node, P.class);
@@ -755,12 +853,12 @@ public class DocxUtils {
             }
         }
 
-        for (int i = end; i >= begin; i--) {
+        for (int i = end - 1; i >= begin; i--) {
             mlp.getMainDocumentPart().getContent().remove(i);
         }
 
         SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
-        List<ReportData.ReportVulnerability> filteredVulns = getFilteredVulns();
+        List<ReportData.ReportVulnerability> filteredVulns = getFilteredVulns(section);
 
         if (filteredVulns.isEmpty()) {
             ObjectFactory factory = Context.getWmlObjectFactory();

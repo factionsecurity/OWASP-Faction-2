@@ -48,6 +48,7 @@ import { createSseParser } from '../utils/sse';
 import ConfirmDialog from '../components/ConfirmDialog';
 import './AssessmentDetail.css';
 import { useTerminology } from '../context/TerminologyContext';
+import { useEdition } from '../context/EditionContext';
 
 /**
  * How long after completion an assessment can still be reopened. Mirrors
@@ -103,7 +104,8 @@ function isLinkableSection(section: string | null): boolean {
   if (!section) return false;
   return STATIC_LINKABLE_SECTIONS.includes(section)
     || section.startsWith('field-')
-    || section.startsWith('vuln-section-');
+    || section.startsWith('vuln-section-')
+    || section === 'vuln-unassigned';
 }
 
 export default function AssessmentDetail() {
@@ -135,6 +137,14 @@ export default function AssessmentDetail() {
   const [navTooltip, setNavTooltip] = useState<{ label: string; top: number; left: number } | null>(null);
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
+  // Report sections are a paid feature. An assessment can carry sections from a template that
+  // once ran the overlay; in this edition they are simply not shown, and the finding list is
+  // one tab again — the report generator ignores them the same way, so nothing is lost.
+  const sectionsAvailable = useEdition().hasFeature('report_sections');
+  const reportSections: string[] = sectionsAvailable && assessment?.sections ? assessment.sections : [];
+  // Findings that predate the sections, or whose section was removed, are not lost: they sit
+  // on an Unassigned tab until each has been moved into a section, at which point it goes away.
+  const hasUnassigned = reportSections.length > 0 && (assessment?.vulnerabilitySummary?.unsectioned ?? 0) > 0;
   const [application, setApplication] = useState<Application | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [workflowConfig, setWorkflowConfig] = useState<AssessmentWorkflowConfig | null>(null);
@@ -488,8 +498,8 @@ export default function AssessmentDetail() {
   // switch from the generic 'vulnerabilities' initial value to the first section's nav ID.
   useEffect(() => {
     if (!initialVulnIdRef.current || loading || !assessment) return;
-    if (assessment.sections && assessment.sections.length > 0 && activeSection === 'vulnerabilities') {
-      setActiveSection(`vuln-section-${assessment.sections[0]}`);
+    if (reportSections.length > 0 && activeSection === 'vulnerabilities') {
+      setActiveSection(`vuln-section-${reportSections[0]}`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
@@ -519,6 +529,14 @@ export default function AssessmentDetail() {
   const handleSectionChange = useCallback((nextSection: string) => {
     setActiveSection(nextSection);
   }, []);
+
+  // The Unassigned tab exists only while something is on it; when the last finding is filed,
+  // move to the first section rather than leave the user on a tab that is no longer listed.
+  useEffect(() => {
+    if (activeSection === 'vuln-unassigned' && !loading && assessment && !hasUnassigned) {
+      setActiveSection(reportSections.length > 0 ? `vuln-section-${reportSections[0]}` : 'vulnerabilities');
+    }
+  }, [activeSection, loading, assessment, hasUnassigned, reportSections]);
 
   const handleVulnSelected = useCallback((vulnId: string | null) => {
     setSearchParams(p => {
@@ -727,7 +745,18 @@ export default function AssessmentDetail() {
     .filter((f) => f.fieldType === 'RICH_TEXT')
     .sort(sortByDisplayOrder);
 
-  const sidebarItems = [
+  type SidebarItem = {
+    id: string;
+    label: string;
+    Icon: typeof Users;
+    /** A non-clickable group title; the items that follow with `child` set sit under it. */
+    heading?: boolean;
+    /** Indented under the heading above it; `tooltip` names the group when the sidebar is collapsed. */
+    child?: boolean;
+    tooltip?: string;
+  };
+
+  const sidebarItems: SidebarItem[] = [
     { id: 'assessment-info', label: 'Assessment Info', Icon: Users },
     ...(stringDropdownFields.length > 0
       ? [{ id: 'variables', label: 'Variables', Icon: Braces }]
@@ -737,12 +766,22 @@ export default function AssessmentDetail() {
       label: f.displayName,
       Icon: FileText,
     })),
-    ...(assessment.sections && assessment.sections.length > 0
-      ? assessment.sections.map((s) => ({
-          id: `vuln-section-${s}`,
-          label: `${s} Vulnerabilities`,
-          Icon: ShieldAlert,
-        }))
+    // With sections, one "Vulnerabilities" title and a short entry per section beneath it —
+    // section names are the customer's, and "<name> Vulnerabilities" overflowed the sidebar.
+    ...(reportSections.length > 0
+      ? [
+          { id: 'vulnerabilities-heading', label: 'Vulnerabilities', Icon: ShieldAlert, heading: true },
+          ...reportSections.map((s) => ({
+            id: `vuln-section-${s}`,
+            label: s,
+            Icon: ShieldAlert,
+            child: true,
+            tooltip: `Vulnerabilities · ${s}`,
+          })),
+          ...(hasUnassigned
+            ? [{ id: 'vuln-unassigned', label: 'Unassigned', Icon: ShieldAlert, child: true, tooltip: 'Vulnerabilities · Unassigned' }]
+            : []),
+        ]
       : [{ id: 'vulnerabilities', label: 'Vulnerabilities', Icon: ShieldAlert }]),
     { id: 'checklists', label: 'Checklists', Icon: CheckSquare },
     { id: 'notebook', label: 'Notebook', Icon: BookOpen },
@@ -813,19 +852,26 @@ export default function AssessmentDetail() {
           aria-label="Section navigation"
         >
           <div className="inner-nav-list">
-            {sidebarItems.map(({ id: sId, label, Icon }) => (
+            {sidebarItems.map(({ id: sId, label, Icon, heading, child, tooltip }) => heading ? (
+              <div key={sId} className="inner-nav-heading" title={sidebarLock === 'closed' ? label : undefined}>
+                <Icon size={18} className="inner-nav-icon" />
+                <span className="inner-nav-label">{label}</span>
+              </div>
+            ) : (
               <div
                 key={sId}
-                className={`inner-nav-item${activeSection === sId ? ' active' : ''}`}
+                className={`inner-nav-item${child ? ' inner-nav-item--child' : ''}${activeSection === sId ? ' active' : ''}`}
                 onClick={() => handleSectionChange(sId)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && handleSectionChange(sId)}
-                onMouseEnter={sidebarLock === 'closed' ? (e) => showNavTooltip(label, e) : undefined}
+                onMouseEnter={sidebarLock === 'closed' ? (e) => showNavTooltip(tooltip ?? label, e) : undefined}
                 onMouseLeave={sidebarLock === 'closed' ? hideNavTooltip : undefined}
-                title={sidebarLock === 'closed' ? undefined : label}
+                title={sidebarLock === 'closed' ? undefined : (tooltip ?? label)}
               >
-                <Icon size={18} className="inner-nav-icon" />
+                {child
+                  ? <span className="inner-nav-child-mark" aria-hidden="true" />
+                  : <Icon size={18} className="inner-nav-icon" />}
                 <span className="inner-nav-label">{label}</span>
               </div>
             ))}
@@ -1364,7 +1410,7 @@ export default function AssessmentDetail() {
           )}
 
           {/* ── Section: Per-section Vulnerabilities ── */}
-          {!loading && assessment.sections && assessment.sections.map((sectionName) => {
+          {!loading && reportSections.map((sectionName) => {
             const sectionId = `vuln-section-${sectionName}`;
             if (activeSection !== sectionId) return null;
             return (
@@ -1387,6 +1433,27 @@ export default function AssessmentDetail() {
               />
             );
           })}
+
+          {/* ── Section: Unassigned Vulnerabilities (sections in use, some findings outside them) ── */}
+          {!loading && activeSection === 'vuln-unassigned' && (
+            <AssessmentVulnerabilitySection
+              key="vuln-unassigned"
+              assessmentId={id!}
+              assessment={assessment}
+              fieldLocks={fieldLocks}
+              currentUsername={currentUsername}
+              isFinalized={isFinalized || isPeerReviewLocked}
+              pendingDefaultVuln={pendingDefaultVuln}
+              pendingVulnName={pendingVulnName}
+              onPendingConsumed={() => { setPendingDefaultVuln(undefined); setPendingVulnName(undefined); }}
+              onAddVulnerability={() => setShowDefaultVulnSearch(true)}
+              onVulnerabilitiesChanged={refreshVulnerabilitySummary}
+              section=""
+              initialVulnId={initialVulnIdRef.current ?? undefined}
+              onVulnSelected={handleVulnSelected}
+              refreshToken={vulnRefreshToken}
+            />
+          )}
 
           {/* ── Section: Checklists ── */}
           {activeSection === 'checklists' && (
@@ -1494,8 +1561,8 @@ export default function AssessmentDetail() {
         // Stay on the current section if already on a vuln section; otherwise navigate to the first one
         if (!activeSection.startsWith('vuln-section-') && activeSection !== 'vulnerabilities') {
           handleSectionChange(
-            assessment && assessment.sections && assessment.sections.length > 0
-              ? `vuln-section-${assessment.sections[0]}`
+            reportSections.length > 0
+              ? `vuln-section-${reportSections[0]}`
               : 'vulnerabilities'
           );
         }

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Plus, Upload, Download, ChevronDown, ChevronUp, X, Trash2, Copy, CopyPlus, GripVertical, AlertCircle } from 'lucide-react';
 import { Button, IconButton, Input, Select, Toast } from '../components';
+import { PaidFeature } from '../components/PaidFeature';
 import RichTextEditor from '../components/RichTextEditor';
 import Page from '../components/Page';
 import Modal from '../components/Modal';
@@ -945,10 +946,25 @@ export default function ReportDesigner() {
               <div className="rd-section-header">
                 <span>Sections</span>
               </div>
+              <PaidFeature
+                feature="report_sections"
+                title="Report Sections"
+                description="Group findings into named sections. Each section gets its own tab in the assessment and its own table and findings block in the generated report."
+              >
               <div className="rd-body">
-                <p className="rd-help-text">
-                  Sections group vulnerabilities in the assessment. Vulnerabilities are assigned to a section and will appear under separate sub-menus in the assessment view.
-                </p>
+                <div className="rd-section-help">
+                  <p>
+                    Sections group vulnerabilities in the assessment. Each section gets its own entry under Vulnerabilities in the assessment view, and its own table and findings block in the report.
+                  </p>
+                  <p>
+                    In the DOCX, the bare tags render unsectioned findings. Add the section variable to render one section:
+                  </p>
+                  <ul>
+                    <li><code className="rd-usage-code">{'${vulnTable Web_App}'}</code> — the summary table</li>
+                    <li><code className="rd-usage-code">{'${fiBegin Web_App}'}</code> … <code className="rd-usage-code">{'${fiEnd Web_App}'}</code> — the findings block</li>
+                    <li><code className="rd-usage-code">{'${if-section Web_App}'}</code> … <code className="rd-usage-code">{'${end-section Web_App}'}</code> — wraps a region that is dropped when the section has no findings</li>
+                  </ul>
+                </div>
                 <div className="rd-fields">
                   {(selectedTemplate.sections ?? []).map((section, idx) => (
                     <div
@@ -967,6 +983,7 @@ export default function ReportDesigner() {
                           <GripVertical size={16} />
                         </div>
                         <span className="rd-field-name">{section}</span>
+                        <code className="rd-usage-code" title="Use this in section tags">{section.trim().replace(/\s+/g, '_')}</code>
                         <IconButton
                           icon={Trash2}
                           onClick={() => deleteSection(idx)}
@@ -995,6 +1012,7 @@ export default function ReportDesigner() {
                   </Button>
                 </div>
               </div>
+              </PaidFeature>
             </div>
 
             {/* ── User Defined Fields ───────────────────────────────────── */}

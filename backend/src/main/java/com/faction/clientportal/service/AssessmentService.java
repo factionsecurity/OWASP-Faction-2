@@ -1454,7 +1454,7 @@ public class AssessmentService {
         migrateAssessorId(assessment);
         AssessmentDto dto = AssessmentDto.fromEntity(assessment);
         enrichWithDisplayNames(dto);
-        dto.setVulnerabilitySummary(computeVulnerabilitySummary(assessment.getId()));
+        dto.setVulnerabilitySummary(computeVulnerabilitySummary(assessment));
         // Compute isPastDue using workflow config (status-aware)
         dto.setIsPastDue(assessment.getPlannedEndDate() != null
                 && LocalDateTime.now().isAfter(assessment.getPlannedEndDate())
@@ -1463,8 +1463,11 @@ public class AssessmentService {
     }
 
     // All findings count, opened or not — the summary reflects what's been found so far
-    private AssessmentDto.VulnerabilitySummary computeVulnerabilitySummary(String assessmentId) {
+    private AssessmentDto.VulnerabilitySummary computeVulnerabilitySummary(Assessment assessment) {
+        String assessmentId = assessment.getId();
+        boolean hasSections = assessment.getSections() != null && !assessment.getSections().isEmpty();
         return AssessmentDto.VulnerabilitySummary.builder()
+            .unsectioned(hasSections ? vulnerabilityRepository.countUnsectioned(assessmentId, assessment.getSections()) : 0L)
             .critical(vulnerabilityRepository.countByAssessmentIdAndSeverityAndDeletedAtIsNull(assessmentId, VulnerabilitySeverity.CRITICAL))
             .high(vulnerabilityRepository.countByAssessmentIdAndSeverityAndDeletedAtIsNull(assessmentId, VulnerabilitySeverity.HIGH))
             .medium(vulnerabilityRepository.countByAssessmentIdAndSeverityAndDeletedAtIsNull(assessmentId, VulnerabilitySeverity.MEDIUM))

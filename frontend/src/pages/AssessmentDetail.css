@@ -151,6 +151,48 @@
   min-width: 18px;
 }
 
+/* Group title above the per-section vulnerability entries. Looks like an item, is not one. */
+.inner-nav-heading {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem 0.35rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  user-select: none;
+  border-left: 3px solid transparent;
+  cursor: default;
+}
+/* Section entries under the title: indented, with a small mark in place of the icon so they
+   still read as a column of items when the sidebar is collapsed to icons. */
+.inner-nav-item--child {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+.inner-nav-item--child .inner-nav-label {
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+.inner-nav-child-mark {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  position: relative;
+}
+.inner-nav-child-mark::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+.inner-nav-item--child.active .inner-nav-child-mark::before { opacity: 1; }
+
 .inner-nav-label {
   opacity: 0;
   white-space: nowrap;
@@ -1271,3 +1313,35 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Right-click menu on a finding: file it under another report section. */
+.vuln-section-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  padding: 0.25rem 0;
+  display: flex;
+  flex-direction: column;
+}
+.vuln-section-menu-title {
+  padding: 0.35rem 0.75rem 0.25rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.vuln-section-menu-item {
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.825rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.vuln-section-menu-item:hover { background: var(--hover-bg); }
+.vuln-section-menu-item--muted { color: var(--text-muted); border-top: 1px solid var(--border-color); }

@@ -619,6 +619,22 @@
   line-height: 1.5;
 }
 
+/* How-to for report sections: a padded callout, since it carries tag examples worth a glance. */
+.rd-section-help {
+  margin: 0 0 1rem 0;
+  padding: 0.875rem 1rem;
+  background: var(--tertiary-bg, rgba(127,127,127,0.08));
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #6b7280);
+  line-height: 1.55;
+}
+.rd-section-help p { margin: 0 0 0.5rem 0; }
+.rd-section-help ul { margin: 0; padding-left: 1.1rem; }
+.rd-section-help li { margin: 0.25rem 0; }
+.rd-section-help li + li { margin-top: 0.35rem; }
+
 .rd-add-section-row {
   display: flex;
   gap: 0.5rem;

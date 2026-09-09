@@ -432,6 +432,9 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 .fieldValues(asmtFieldValues)
                 .fieldTypes(asmtFieldTypes)
                 .vulnerabilities(reportVulns)
+                .sections(editionPolicy.enabled(Feature.REPORT_SECTIONS) && assessment.getSections() != null
+                        ? new ArrayList<>(assessment.getSections())
+                        : List.of())
                 .inlineImageBytes(imageBytes)
                 .inlineImageContentTypes(imageContentTypes)
                 .build();
@@ -468,6 +471,7 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 .categoryName(v.getVulnerabilityCategoryId() != null
                         ? categoryNames.get(v.getVulnerabilityCategoryId())
                         : null)
+                .section(v.getSection())
                 .fieldValues(vFieldValues)
                 .fieldTypes(vFieldTypes)
                 .build();
