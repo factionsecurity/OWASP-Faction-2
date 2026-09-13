@@ -332,11 +332,16 @@ public class ApplicationService {
      * The applications list: free-text search plus the optional organization / sub-organization /
      * status filters the Applications page exposes. Filters are ANDed and a null one is ignored.
      */
-    public Page<ApplicationDto> searchApplications(String search, String organizationId,
-                                                   String subOrganizationId, ApplicationStatus status,
+    /**
+     * The applications list. Each filter is a set matched as "any of", and a null or empty set is
+     * no filter; the filters combine with each other and with the search text.
+     */
+    public Page<ApplicationDto> searchApplications(String search, java.util.Collection<String> organizationIds,
+                                                   java.util.Collection<String> subOrganizationIds,
+                                                   java.util.Collection<ApplicationStatus> statuses,
                                                    Pageable pageable, Authentication authentication) {
         Page<ApplicationDto> result = doSearchApplications(
-                search, blankToNull(organizationId), blankToNull(subOrganizationId), status,
+                search, emptyToNull(organizationIds), emptyToNull(subOrganizationIds), emptyToNull(statuses),
                 pageable, authentication);
         enrichOpenIssueCounts(result.getContent());
         return result;
@@ -344,6 +349,10 @@ public class ApplicationService {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    private static <E> java.util.Collection<E> emptyToNull(java.util.Collection<E> values) {
+        return values == null || values.isEmpty() ? null : values;
     }
 
     /**
@@ -392,8 +401,9 @@ public class ApplicationService {
             "status", InMemorySort.byValue(ApplicationDto::getStatus),
             "lastAssessmentDate", InMemorySort.byValue(ApplicationDto::getLastAssessmentDate));
 
-    private Page<ApplicationDto> doSearchApplications(String search, String organizationId,
-                                                     String subOrganizationId, ApplicationStatus status,
+    private Page<ApplicationDto> doSearchApplications(String search, java.util.Collection<String> organizationIds,
+                                                     java.util.Collection<String> subOrganizationIds,
+                                                     java.util.Collection<ApplicationStatus> statuses,
                                                      Pageable pageable, Authentication authentication) {
         if (authentication != null) {
             boolean isSuperAdmin = authentication.getAuthorities().stream()
@@ -419,15 +429,17 @@ public class ApplicationService {
                 // This branch filters in Java, so the same filters the query applies below have to
                 // be applied here too — otherwise a scoped user's filter pills would do nothing.
                 Stream<Application> matching = source.stream()
-                        .filter(a -> organizationId == null || organizationId.equals(a.getOrganizationId()))
-                        .filter(a -> subOrganizationId == null || subOrganizationId.equals(a.getSubOrganizationId()))
-                        .filter(a -> status == null || status == a.getStatus());
+                        .filter(a -> organizationIds == null || organizationIds.contains(a.getOrganizationId()))
+                        .filter(a -> subOrganizationIds == null || subOrganizationIds.contains(a.getSubOrganizationId()))
+                        .filter(a -> statuses == null || statuses.contains(a.getStatus()));
                 if (search != null && !search.trim().isEmpty()) {
                     String lower = search.trim().toLowerCase();
-                    matching = matching
-                            .filter(a -> (a.getName() != null && a.getName().toLowerCase().contains(lower))
-                                    || (a.getDescription() != null && a.getDescription().toLowerCase().contains(lower))
-                                    || (a.getAppId() != null && a.getAppId().toLowerCase().contains(lower)));
+                    java.util.Set<String> orgIds = source.stream().map(Application::getOrganizationId)
+                            .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+                    Map<String, String> orgNames = organizationRepository.findAllById(orgIds).stream()
+                            .collect(Collectors.toMap(com.faction.clientportal.model.Organization::getId,
+                                    o -> o.getName() == null ? "" : o.getName()));
+                    matching = matching.filter(a -> matchesSearch(a, lower, orgNames));
                 }
                 List<ApplicationDto> dtos = matching.map(this::toDto).collect(Collectors.toList());
                 // This branch pages a list it filtered in Java, so the query never saw the sort —
@@ -441,8 +453,35 @@ public class ApplicationService {
         }
 
         return applicationRepository
-                .searchFiltered(search, organizationId, subOrganizationId, status, pageable)
+                .searchFiltered(search, organizationIds, subOrganizationIds, statuses, pageable)
                 .map(this::toDto);
+    }
+
+    /**
+     * The scoped (in-memory) twin of {@code ApplicationRepository#searchFiltered}'s search: application
+     * id, name, organization name, status, technologies and owner — never the description. Kept field
+     * for field with the query so a scoped user's search finds what an admin's would.
+     */
+    private static boolean matchesSearch(Application a, String lower, Map<String, String> orgNames) {
+        if (containsIgnoringCase(a.getName(), lower) || containsIgnoringCase(a.getAppId(), lower)
+                || containsIgnoringCase(a.getOwnerName(), lower) || containsIgnoringCase(a.getOwnerEmail(), lower)) {
+            return true;
+        }
+        if (a.getAppOwner() != null && (containsIgnoringCase(a.getAppOwner().getFullName(), lower)
+                || containsIgnoringCase(a.getAppOwner().getEmail(), lower))) {
+            return true;
+        }
+        if (a.getTechnologies() != null && a.getTechnologies().stream().anyMatch(t -> containsIgnoringCase(t, lower))) {
+            return true;
+        }
+        if (a.getStatus() != null && a.getStatus().name().toLowerCase().contains(lower)) {
+            return true;
+        }
+        return a.getOrganizationId() != null && containsIgnoringCase(orgNames.get(a.getOrganizationId()), lower);
+    }
+
+    private static boolean containsIgnoringCase(String value, String lower) {
+        return value != null && value.toLowerCase().contains(lower);
     }
 
     /**
