@@ -1,3 +1,5 @@
+import SearchableSelect from './SearchableSelect';
+import type { SelectOption } from './SearchableSelect';
 import { useTerminology } from '../context/TerminologyContext';
 import { VULNERABILITY_SEVERITIES } from '../utils/vulnSeverity';
 import type { VulnerabilitySeverity } from '../types';
@@ -27,6 +29,7 @@ interface Props {
   allowEmpty?: boolean;
   emptyLabel?: string;
   disabled?: boolean;
+  /** Extra classes for the control wrapper; it always stretches to fill its field. */
   className?: string;
   id?: string;
 }
@@ -43,6 +46,10 @@ interface Props {
  * and a rename never touches it. A stored value that is <em>not</em> one of the five — a legacy
  * "3", or free text from an import — is kept as its own option rather than dropped, so opening a
  * finding and saving it cannot silently discard a rating this control does not offer.
+ *
+ * <p>Renders as the shared searchable dropdown (SearchableSelect), like the rest of the app's
+ * pickers: type to filter the levels, or take one at a glance — five rows need no searching, but
+ * the control stays uniform wherever it appears.
  */
 export default function SeverityLevelSelect({
   value,
@@ -62,19 +69,19 @@ export default function SeverityLevelSelect({
   // exactly the bytes it had.
   const selected = canonical ?? raw;
 
+  const options: SelectOption[] = severityOptions.map(o => ({ value: o.value, label: o.label }));
+  if (!canonical && raw) options.push({ value: raw, label: severityLabel(raw) });
+
   return (
-    <select
+    <SearchableSelect
       id={id}
-      className={className}
+      className={`ss-wrap--block${className ? ' ' + className : ''}`}
       value={selected}
+      onChange={onChange}
+      options={options}
+      placeholder={emptyLabel}
       disabled={disabled}
-      onChange={e => onChange(e.target.value)}
-    >
-      {(allowEmpty || !raw) && <option value="">{emptyLabel}</option>}
-      {severityOptions.map(o => (
-        <option key={o.value} value={o.value}>{o.label}</option>
-      ))}
-      {!canonical && raw && <option value={raw}>{severityLabel(raw)}</option>}
-    </select>
+      showClear={allowEmpty || !raw}
+    />
   );
 }

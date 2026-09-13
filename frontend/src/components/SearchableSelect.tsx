@@ -15,6 +15,14 @@ export interface SearchableSelectProps {
   loading?: boolean;
   /** Show the search box — off for small fixed lists (e.g. severity). Default on. */
   searchable?: boolean;
+  /** Locked state: the trigger does not open and reads as unavailable. */
+  disabled?: boolean;
+  /** Extra classes for the wrapper (e.g. `ss-wrap--block` to stretch in a form field). */
+  className?: string;
+  /** Forwarded to the trigger button, for label association / autofocus targets. */
+  id?: string;
+  /** Offer the leading "clear back to placeholder" row. Off for required fields. Default on. */
+  showClear?: boolean;
 }
 
 export interface MultiSelectProps {
@@ -125,10 +133,12 @@ export function MultiSelect({ selected, onChange, options, placeholder, searchab
 /**
  * Single-choice filter pill with an optional search box. Filters `options` locally by default; pass
  * `onQueryChange` to debounce the typed query up to the parent for a server search instead. The
- * first entry always clears the filter back to `placeholder`.
+ * first entry clears the selection back to `placeholder` unless `showClear` is off (required
+ * fields). Also used as a form control — pass `ss-wrap--block` in `className` to stretch it.
  */
 export default function SearchableSelect({
   value, onChange, options, placeholder, onQueryChange, loading, searchable = true,
+  disabled = false, className, id, showClear = true,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -148,14 +158,18 @@ export default function SearchableSelect({
   const selected = options.find(o => o.value === value);
 
   return (
-    <div className="ss-wrap" ref={ref}>
+    <div className={`ss-wrap${className ? ' ' + className : ''}`} ref={ref}>
       <button
         type="button"
-        className={`ss-trigger${value ? ' ss-trigger--active' : ''}`}
-        onClick={() => setOpen(v => !v)}
+        id={id}
+        className={`ss-trigger${value ? ' ss-trigger--active' : ''}${disabled ? ' ss-trigger--disabled' : ''}`}
+        aria-expanded={open}
+        aria-disabled={disabled || undefined}
+        onClick={() => { if (!disabled) setOpen(v => !v); }}
       >
         <span className="ss-trigger-label">{selected?.label ?? placeholder}</span>
-        {value
+        {/* A disabled control keeps the static chevron — a live clear icon would be clickable. */}
+        {value && !disabled
           ? <XIcon size={13} onClick={(e) => { e.stopPropagation(); onChange(''); setOpen(false); }} className="ss-clear" />
           : <ChevronDown size={13} className="ss-chevron" />
         }
@@ -169,13 +183,15 @@ export default function SearchableSelect({
             </div>
           )}
           <div className="ss-list">
-            <button
-              type="button"
-              className={`ss-option${!value ? ' ss-option--selected' : ''}`}
-              onClick={() => { onChange(''); setOpen(false); }}
-            >
-              {placeholder}
-            </button>
+            {showClear && (
+              <button
+                type="button"
+                className={`ss-option${!value ? ' ss-option--selected' : ''}`}
+                onClick={() => { onChange(''); setOpen(false); }}
+              >
+                {placeholder}
+              </button>
+            )}
             {displayed.map(o => (
               <button
                 key={o.value}
