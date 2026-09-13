@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { Edit2, Trash2, Plus, X, Search, Mail, Check, UserX, UserCheck } from 'lucide-react';
-import { usersApi, rolesApi, teamsApi, organizationsApi, applicationsApi, azureUsersApi } from '../api';
-import type { User, Role, Team, Organization, Application, CreateUserRequest, UpdateUserRequest, AzureDirectoryUser } from '../types';
+import { usersApi, rolesApi, teamsApi, organizationsApi, subOrganizationsApi, applicationsApi, azureUsersApi } from '../api';
+import type { User, Role, Team, Organization, SubOrganization, Application, CreateUserRequest, UpdateUserRequest, AzureDirectoryUser } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
 import {
@@ -36,6 +36,8 @@ export default function Users() {
   const [accessScope, setAccessScope] = useState<'organization' | 'application'>('organization');
   const [appAssignments, setAppAssignments] = useState<{ applicationId: string; accessLevel: 'READ' | 'WRITE' }[]>([]);
   const [appSearchQuery, setAppSearchQuery] = useState('');
+  const [subOrganizations, setSubOrganizations] = useState<SubOrganization[]>([]);
+  const [membershipSearch, setMembershipSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -84,7 +86,8 @@ export default function Users() {
     roleIds: [] as string[],
     teamIds: [] as string[],
     isInternal: true,
-    organizationId: '',
+    organizationIds: [] as string[],
+    subOrganizationIds: [] as string[],
   });
 
   useEffect(() => {
@@ -201,6 +204,12 @@ export default function Users() {
     } catch (err) {
       console.error('Failed to load organizations:', err);
     }
+    try {
+      const subs = await subOrganizationsApi.listAll();
+      setSubOrganizations(subs.data || []);
+    } catch {
+      setSubOrganizations([]);
+    }
   };
 
   const loadApplications = async () => {
@@ -232,7 +241,8 @@ export default function Users() {
       roleIds: [],
       teamIds: [],
       isInternal: true,
-      organizationId: '',
+      organizationIds: [] as string[],
+      subOrganizationIds: [] as string[],
     });
     setShowModal(true);
   };
@@ -270,8 +280,10 @@ export default function Users() {
       roleIds: user.roleIds,
       teamIds: user.teamIds || [],
       isInternal: user.isInternal,
-      organizationId: user.organizationId || '',
+      organizationIds: user.organizationIds || [],
+      subOrganizationIds: user.subOrganizationIds || [],
     });
+    setMembershipSearch('');
     setShowModal(true);
   };
 
@@ -314,7 +326,8 @@ export default function Users() {
         roleIds: user.roleIds,
         teamIds: user.teamIds || [],
         isInternal: user.isInternal,
-        organizationId: user.organizationId || '',
+        organizationIds: user.organizationIds || [],
+        subOrganizationIds: user.subOrganizationIds || [],
         disabled: !user.disabledAt,
       });
       setConfirmToggleUser(null);
@@ -346,11 +359,11 @@ export default function Users() {
 
     try {
       let userId = selectedUser?.id;
-      // App-level external users have no home organization; org scope uses the
-      // selected org (which may be "No organization").
-      const effectiveOrgId = (!formData.isInternal && accessScope === 'application')
-        ? undefined
-        : (formData.organizationId || undefined);
+      // Memberships only mean something for external users in organizations mode; app-level
+      // users are scoped by their assignments and staff by their teams.
+      const membershipMode = !formData.isInternal && accessScope === 'organization';
+      const organizationIds = membershipMode ? formData.organizationIds : [];
+      const subOrganizationIds = membershipMode ? formData.subOrganizationIds : [];
 
       if (modalMode === 'create') {
         const createData: CreateUserRequest = {
@@ -363,7 +376,8 @@ export default function Users() {
           roleIds: formData.roleIds,
           teamIds: formData.teamIds,
           isInternal: formData.isInternal,
-          organizationId: effectiveOrgId,
+          organizationIds,
+          subOrganizationIds,
         };
         const created = await usersApi.create(createData);
         userId = created.data?.id;
@@ -377,7 +391,8 @@ export default function Users() {
           roleIds: formData.roleIds,
           teamIds: formData.teamIds,
           isInternal: formData.isInternal,
-          organizationId: effectiveOrgId,
+          organizationIds,
+          subOrganizationIds,
         };
         await usersApi.update(selectedUser.id, updateData);
       }
@@ -446,9 +461,9 @@ export default function Users() {
       a.applicationId === applicationId ? { ...a, accessLevel } : a));
   };
 
-  const getOrgName = (orgId?: string): string => {
-    if (!orgId) return '—';
-    return organizations.find(o => o.id === orgId)?.name || orgId;
+  const getMembershipNames = (user: User): string => {
+    const names = [...(user.organizationNames || []), ...(user.subOrganizationNames || [])];
+    return names.length ? names.join(', ') : '—';
   };
 
   const getFilteredTeams = (): Team[] => {
@@ -583,7 +598,7 @@ export default function Users() {
       header: `Teams / ${organizationSingular}`,
       render: (user) => (
         <span className="text-sm text-secondary">
-          {user.isInternal ? getTeamNames(user.teamIds) : getOrgName(user.organizationId)}
+          {user.isInternal ? getTeamNames(user.teamIds) : getMembershipNames(user)}
         </span>
       ),
     },
@@ -941,7 +956,7 @@ export default function Users() {
                     checked={accessScope === 'application'}
                     onChange={() => {
                       setAccessScope('application');
-                      setFormData(prev => ({ ...prev, organizationId: '' }));
+                      setFormData(prev => ({ ...prev, organizationIds: [], subOrganizationIds: [] }));
                     }}
                   />
                   <span>Specific applications</span>
@@ -950,19 +965,79 @@ export default function Users() {
 
               {accessScope === 'organization' ? (
                 <>
-                  <Select
-                    value={formData.organizationId}
-                    onChange={(e) => setFormData({ ...formData, organizationId: e.target.value })}
-                  >
-                    <option value="">No {organizationLower}</option>
-                    {organizations.map((org) => (
-                      <option key={org.id} value={org.id}>{org.name}</option>
-                    ))}
-                  </Select>
+                  <div className="search-input-wrapper">
+                    <Search size={18} className="search-icon" />
+                    <input
+                      type="text"
+                      className="form-input search-input"
+                      placeholder={`Search ${organizationPlural.toLowerCase()}...`}
+                      value={membershipSearch}
+                      onChange={(e) => setMembershipSearch(e.target.value)}
+                    />
+                    {membershipSearch && (
+                      <button className="clear-search" onClick={() => setMembershipSearch('')} type="button">
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="user-select-group membership-list">
+                    {organizations.length === 0 ? (
+                      <div className="empty-state">No {organizationPlural.toLowerCase()} yet</div>
+                    ) : (
+                      organizations
+                        .filter((org) => {
+                          const q = membershipSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          return org.name.toLowerCase().includes(q)
+                            || subOrganizations.some((s) => s.organizationId === org.id && s.name.toLowerCase().includes(q));
+                        })
+                        .map((org) => {
+                          const orgChecked = formData.organizationIds.includes(org.id);
+                          const subs = subOrganizations.filter((s) => s.organizationId === org.id);
+                          return (
+                            <div key={org.id} className="membership-org">
+                              <label className="checkbox-label">
+                                <input
+                                  type="checkbox"
+                                  checked={orgChecked}
+                                  onChange={(e) => setFormData((prev) => ({
+                                    ...prev,
+                                    organizationIds: e.target.checked
+                                      ? [...prev.organizationIds, org.id]
+                                      : prev.organizationIds.filter((id) => id !== org.id),
+                                    // An organization covers its sub-organizations, so drop picks it makes redundant.
+                                    subOrganizationIds: e.target.checked
+                                      ? prev.subOrganizationIds.filter((id) => !subs.some((s) => s.id === id))
+                                      : prev.subOrganizationIds,
+                                  }))}
+                                />
+                                <span>{org.name}</span>
+                              </label>
+                              {subs.map((sub) => (
+                                <label key={sub.id} className={`checkbox-label membership-sub${orgChecked ? ' is-covered' : ''}`}>
+                                  <input
+                                    type="checkbox"
+                                    disabled={orgChecked}
+                                    checked={orgChecked || formData.subOrganizationIds.includes(sub.id)}
+                                    onChange={(e) => setFormData((prev) => ({
+                                      ...prev,
+                                      subOrganizationIds: e.target.checked
+                                        ? [...prev.subOrganizationIds, sub.id]
+                                        : prev.subOrganizationIds.filter((id) => id !== sub.id),
+                                    }))}
+                                  />
+                                  <span>{sub.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
                   <FormHint>
-                    {formData.organizationId
-                      ? `Full access to everything in the selected ${organizationLower}.`
-                      : `No ${organizationLower}-wide access. Assign specific applications instead, or leave with no access.`}
+                    {formData.organizationIds.length + formData.subOrganizationIds.length > 0
+                      ? `An ${organizationLower} grants everything in it; a sub-${organizationLower} grants only its own applications. Access is the union.`
+                      : `No ${organizationLower} access. Select at least one, assign specific applications instead, or leave with no access.`}
                   </FormHint>
                 </>
               ) : (
@@ -1033,7 +1108,8 @@ export default function Users() {
             setFormData({
               ...formData,
               isInternal: e.target.checked,
-              organizationId: '',
+              organizationIds: [],
+              subOrganizationIds: [],
               teamIds: [],
               roleIds: [],
             });
