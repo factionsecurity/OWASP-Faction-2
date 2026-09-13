@@ -8,7 +8,7 @@ import type {
   AssessmentType,
 } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
-import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
+import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import { Button, Badge, FormLabel, Input, Checkbox } from '../components';
 import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
@@ -59,9 +59,9 @@ export default function Assessments() {
     pastDue: false,
     showCompleted: false, // Default to hiding completed assessments
     assignedToMe: false, // Default to showing all assessments
-    status: '',
+    statuses: [] as string[],
     applicationId: '',
-    assessmentTypeId: '',
+    assessmentTypeIds: [] as string[],
   });
 
   // Draft state for the advanced panel — staged until the user presses Apply.
@@ -101,7 +101,7 @@ export default function Assessments() {
   const clearAllFilters = () => {
     setDraft(ADVANCED_DEFAULTS);
     setFilters((prev) => ({
-      ...prev, ...ADVANCED_DEFAULTS, status: '', applicationId: '', assessmentTypeId: '',
+      ...prev, ...ADVANCED_DEFAULTS, statuses: [], applicationId: '', assessmentTypeIds: [],
     }));
     setPagination((prev) => ({ ...prev, page: 0 }));
   };
@@ -162,9 +162,9 @@ export default function Assessments() {
         pastDue: filters.pastDue,
         showCompleted: filters.showCompleted,
         assignedToMe: filters.assignedToMe,
-        status: filters.status || undefined,
+        statuses: filters.statuses,
         applicationId: filters.applicationId || undefined,
-        assessmentTypeId: filters.assessmentTypeId || undefined,
+        assessmentTypeIds: filters.assessmentTypeIds,
         sort: sortParam(sort),
       });
 
@@ -217,10 +217,12 @@ export default function Assessments() {
   const handleExportCsv = async () => {
     setExporting(true);
     try {
+      // The export endpoint takes one type and one status; pass them through only when the
+      // multi-select has exactly one, otherwise export unfiltered on that dimension.
       const blob = await assessmentsApi.exportToCsv({
         applicationId: filters.applicationId || undefined,
-        assessmentTypeId: filters.assessmentTypeId || undefined,
-        status: filters.status || undefined,
+        assessmentTypeId: filters.assessmentTypeIds.length === 1 ? filters.assessmentTypeIds[0] : undefined,
+        status: filters.statuses.length === 1 ? filters.statuses[0] : undefined,
         name: filters.search || undefined,
       });
 
@@ -400,16 +402,16 @@ export default function Assessments() {
               options={appOptions}
               placeholder="All Applications"
             />
-            <SearchableSelect
-              value={filters.assessmentTypeId}
-              onChange={(v) => applyInline({ assessmentTypeId: v })}
+            <MultiSelect
+              selected={filters.assessmentTypeIds}
+              onChange={(vals) => applyInline({ assessmentTypeIds: vals })}
               options={typeOptions}
               placeholder="All Types"
               searchable={false}
             />
-            <SearchableSelect
-              value={filters.status}
-              onChange={(v) => applyInline({ status: v })}
+            <MultiSelect
+              selected={filters.statuses}
+              onChange={(vals) => applyInline({ statuses: vals })}
               options={statusOptions}
               placeholder="All Statuses"
               searchable={false}

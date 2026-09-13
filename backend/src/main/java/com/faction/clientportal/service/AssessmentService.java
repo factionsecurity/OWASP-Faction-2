@@ -752,7 +752,7 @@ public class AssessmentService {
         if (isOrgScopedUser(authentication)) {
             // Membership scope is a union of organizations and sub-organization applications, which
             // the single-column finders below cannot express — route through the scoped search.
-            return searchAssessmentsAdvanced(name, applicationId, null, organizationId, assessmentTypeId,
+            return searchAssessmentsAdvanced(name, applicationId, null, organizationId, assessmentTypeId, null,
                     assessorId, status, null, null, null, null, null, null, null, Boolean.TRUE, null,
                     null, null, null, null, pageable, authentication);
         }
@@ -813,7 +813,7 @@ public class AssessmentService {
         Pageable pageable,
         Authentication authentication
     ) {
-        return searchAssessmentsAdvanced(search, applicationId, applicationIds, organizationId, assessmentTypeId, assessorId,
+        return searchAssessmentsAdvanced(search, applicationId, applicationIds, organizationId, assessmentTypeId, null, assessorId,
             status, null, null, startDateFrom, startDateTo, endDateFrom, endDateTo, pastDue, showCompleted, assignedToMe,
             currentUserId, null, null, null, pageable, authentication);
     }
@@ -829,6 +829,7 @@ public class AssessmentService {
         Collection<String> applicationIds,
         String organizationId,
         String assessmentTypeId,
+        Collection<String> assessmentTypeIds,
         String assessorId,
         String status,
         Collection<String> statuses,
@@ -916,6 +917,7 @@ public class AssessmentService {
                 .scopeOrgIds(effectiveScopeOrgIds)
                 .scopeAppIds(effectiveScopeAppIds)
                 .assessmentTypeId(assessmentTypeId)
+                .assessmentTypeIds(assessmentTypeIds)
                 .assessorId(assessorId)
                 .status(status)
                 .statuses(statusFilter)

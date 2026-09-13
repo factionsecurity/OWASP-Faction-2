@@ -50,6 +50,8 @@ public record AssessmentSearchCriteria(
         Collection<String> scopeOrgIds,
         Collection<String> scopeAppIds,
         String assessmentTypeId,
+        /** Multi-select type filter (UI); empty or null → no filter, like {@code applicationIds}. */
+        Collection<String> assessmentTypeIds,
         String assessorId,
         String status,
         Collection<String> statuses,

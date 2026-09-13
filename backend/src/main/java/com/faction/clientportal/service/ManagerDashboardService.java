@@ -266,7 +266,7 @@ public class ManagerDashboardService {
     private Page<AssessmentDto> fetchAssessments(
             ManagerDashboardFilters f, Pageable pageable, Authentication authentication) {
         return assessmentService.searchAssessmentsAdvanced(
-                f.getSearch(), f.getApplicationId(), null, null, f.getAssessmentTypeId(),
+                f.getSearch(), f.getApplicationId(), null, null, f.getAssessmentTypeId(), null,
                 f.getAssessorId(), f.getStatus(), null, null,
                 f.getStartDateFrom(), f.getStartDateTo(), f.getEndDateFrom(), f.getEndDateTo(),
                 null, f.getShowCompleted(), null, null,

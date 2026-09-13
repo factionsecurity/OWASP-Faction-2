@@ -121,6 +121,10 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
         if (c.assessmentTypeId() != null) {
             clauses.add(Clause.of("AND a.assessment_type_id = :typeId", q -> q.setParameter("typeId", c.assessmentTypeId())));
         }
+        if (c.assessmentTypeIds() != null && !c.assessmentTypeIds().isEmpty()) {
+            clauses.add(Clause.of("AND a.assessment_type_id IN (:typeIds)",
+                    q -> q.setParameter("typeIds", c.assessmentTypeIds())));
+        }
         if (c.assessorId() != null) {
             clauses.add(Clause.of("""
                     AND (a.assessor_id = :assessorId
