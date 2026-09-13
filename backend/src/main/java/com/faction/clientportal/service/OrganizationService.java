@@ -121,9 +121,37 @@ public class OrganizationService {
         if (request.getFieldValues() != null) {
             organization.setFieldValues(request.getFieldValues());
         }
+        if (request.getRemediationOwnerIds() != null) {
+            organization.setRemediationOwnerIds(validateRemediationOwners(request.getRemediationOwnerIds()));
+        }
 
         Organization updatedOrganization = organizationRepository.save(organization);
         return toDto(updatedOrganization);
+    }
+
+    /**
+     * Remediation owners are staff: they fix and track findings, and their notifications link
+     * into internal views. An external account here is a mistake worth refusing loudly.
+     */
+    private List<String> validateRemediationOwners(List<String> ids) {
+        List<String> clean = new ArrayList<>();
+        List<String> external = new ArrayList<>();
+        for (String id : ids) {
+            if (id == null || id.isBlank() || clean.contains(id)) continue;
+            User user = userRepository.findById(id)
+                    .filter(u -> u.getDeletedAt() == null)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+            if (!Boolean.TRUE.equals(user.getIsInternal())) {
+                external.add(user.getUsername());
+                continue;
+            }
+            clean.add(id);
+        }
+        if (!external.isEmpty()) {
+            throw new IllegalArgumentException("Remediation owners must be internal users: "
+                    + String.join(", ", external));
+        }
+        return clean;
     }
 
     public void deleteOrganizationById(String id) {
@@ -384,6 +412,17 @@ public class OrganizationService {
                 ? organization.getAssignedUsers().stream().map(AssignedUserDto::fromEntity).collect(Collectors.toList())
                 : new ArrayList<>();
 
+        List<String> ownerIds = organization.getRemediationOwnerIds() != null
+                ? organization.getRemediationOwnerIds() : List.of();
+        List<OrganizationDto.RemediationOwner> owners = ownerIds.stream()
+                .map(id -> userRepository.findById(id)
+                        .map(u -> OrganizationDto.RemediationOwner.builder()
+                                .userId(u.getId()).username(u.getUsername())
+                                .displayName(buildDisplayName(u)).email(u.getEmail()).build())
+                        .orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toList());
+
         return OrganizationDto.builder()
                 .id(organization.getId())
                 .name(organization.getName())
@@ -391,6 +430,8 @@ public class OrganizationService {
                 .fieldDefinitions(fieldDefs)
                 .fieldValues(organization.getFieldValues() != null ? organization.getFieldValues() : new HashMap<>())
                 .assignedUsers(assignedUserDtos)
+                .remediationOwnerIds(new ArrayList<>(ownerIds))
+                .remediationOwners(owners)
                 .build();
     }
 }

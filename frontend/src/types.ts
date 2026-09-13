@@ -268,6 +268,16 @@ export interface Organization {
   fieldDefinitions?: UserDefinedField[];
   fieldValues?: Record<string, string>;
   assignedUsers?: AssignedUser[];
+  /** Internal users responsible for every finding under this organization's applications. */
+  remediationOwnerIds?: string[];
+  remediationOwners?: OrganizationRemediationOwner[];
+}
+
+export interface OrganizationRemediationOwner {
+  userId: string;
+  username: string;
+  displayName: string;
+  email: string;
 }
 
 export interface CreateOrganizationRequest {
@@ -280,6 +290,8 @@ export interface UpdateOrganizationRequest {
   name: string;
   description: string;
   fieldValues?: Record<string, string>;
+  /** Full replacement; omit to leave the list unchanged. */
+  remediationOwnerIds?: string[];
 }
 
 export interface EntityFieldConfig {
@@ -1505,6 +1517,8 @@ export type NotificationCategory =
   | 'MENTION'
   | 'ASSESSMENT_ASSIGNED'
   | 'RETEST_ASSIGNED'
+  | 'THREAD_COMMENT'
+  | 'RESPONSIBLE_FINDING'
   | 'OTHER';
 
 export interface NotificationPreference {

@@ -975,4 +975,57 @@ class OrganizationControllerTest extends TestContainersConfig {
                         "Cannot delete organization with 1 member user(s). Remove them from the organization first."));
         assertThat(organizationRepository.findById(org.getId())).isPresent();
     }
+
+    // ── Remediation owners ────────────────────────────────────────────────────────
+
+    @Test
+    void updateOrganization_storesRemediationOwners_andReturnsTheirNames() throws Exception {
+        String token = jwtService.generateToken(superAdminUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("super_admin")));
+        Organization org = organizationRepository.save(Organization.builder().name("Owned").build());
+        User fixer = userRepository.save(User.builder().username("fixer").email("fixer@staff.com").password("x")
+                .firstName("Fran").lastName("Fixer").loginOption(LoginOption.NATIVE).isInternal(true)
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+
+        String body = String.format("""
+                {"name": "Owned", "description": "d", "remediationOwnerIds": ["%s"]}
+                """, fixer.getId());
+
+        mockMvc.perform(put("/api/v1/organizations/" + org.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.remediationOwnerIds[0]").value(fixer.getId()))
+                .andExpect(jsonPath("$.data.remediationOwners[0].displayName").value("Fran Fixer"))
+                .andExpect(jsonPath("$.data.remediationOwners[0].email").value("fixer@staff.com"));
+
+        assertThat(organizationRepository.findById(org.getId()).orElseThrow().getRemediationOwnerIds())
+                .containsExactly(fixer.getId());
+
+        // Leaving the field out of a later update keeps the list, like fieldValues.
+        mockMvc.perform(put("/api/v1/organizations/" + org.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json").content("{\"name\": \"Owned\", \"description\": \"e\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.remediationOwnerIds[0]").value(fixer.getId()));
+    }
+
+    @Test
+    void updateOrganization_rejectsAnExternalUserAsRemediationOwner() throws Exception {
+        String token = jwtService.generateToken(superAdminUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("super_admin")));
+        Organization org = organizationRepository.save(Organization.builder().name("Owned2").build());
+        User customer = userRepository.save(User.builder().username("cust").email("cust@client.com").password("x")
+                .loginOption(LoginOption.NATIVE).isInternal(false)
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+
+        mockMvc.perform(put("/api/v1/organizations/" + org.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(String.format("{\"name\": \"Owned2\", \"remediationOwnerIds\": [\"%s\"]}", customer.getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Remediation owners must be internal users: cust"));
+
+        assertThat(organizationRepository.findById(org.getId()).orElseThrow().getRemediationOwnerIds()).isEmpty();
+    }
 }

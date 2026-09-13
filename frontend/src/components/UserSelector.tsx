@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User } from '../types';
 import { usersApi } from '../api';
+import './UserSelector.css';
 
 interface UserSelectorProps {
   selectedUserIds: string[];
@@ -9,6 +10,8 @@ interface UserSelectorProps {
   placeholder?: string;
   disabled?: boolean;
   multiple?: boolean;
+  /** Offer staff accounts only (external users are hidden). */
+  internalOnly?: boolean;
 }
 
 export default function UserSelector({
@@ -18,6 +21,7 @@ export default function UserSelector({
   placeholder = 'Search users...',
   disabled = false,
   multiple = true,
+  internalOnly = false,
 }: UserSelectorProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
@@ -38,8 +42,9 @@ export default function UserSelector({
     try {
       const response = await usersApi.getAll(0, 1000);
       if (response.success && response.data) {
-        setUsers(response.data);
-        setFilteredUsers(response.data);
+        const offered = internalOnly ? response.data.filter((u) => u.isInternal) : response.data;
+        setUsers(offered);
+        setFilteredUsers(offered);
       }
     } catch (error) {
       console.error('Failed to load users:', error);
@@ -90,18 +95,19 @@ export default function UserSelector({
 
       {/* Selected Users Pills */}
       {selectedUsers.length > 0 && (
-        <div className="selected-users mb-2">
+        <div className="user-selector-pills">
           {selectedUsers.map((user) => (
-            <span key={user.id} className="badge bg-primary me-2 mb-2">
+            <span key={user.id} className="user-selector-pill">
               {user.firstName} {user.lastName} ({user.username})
               {!disabled && (
                 <button
                   type="button"
-                  className="btn-close btn-close-white ms-2"
-                  style={{ fontSize: '0.6rem' }}
+                  className="user-selector-pill-remove"
                   onClick={() => handleRemoveUser(user.id)}
-                  aria-label="Remove"
-                />
+                  aria-label={`Remove ${user.username}`}
+                >
+                  ×
+                </button>
               )}
             </span>
           ))}
@@ -109,10 +115,10 @@ export default function UserSelector({
       )}
 
       {/* Search Input */}
-      <div className="position-relative">
+      <div className="user-selector-field">
         <input
           type="text"
-          className="form-control"
+          className="form-input"
           placeholder={placeholder}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -123,24 +129,12 @@ export default function UserSelector({
         {/* Dropdown */}
         {isOpen && !disabled && (
           <>
-            <div
-              className="position-fixed top-0 start-0 w-100 h-100"
-              style={{ zIndex: 1040 }}
-              onClick={() => setIsOpen(false)}
-            />
-            <div
-              className="dropdown-menu show w-100"
-              style={{
-                maxHeight: '300px',
-                overflowY: 'auto',
-                position: 'absolute',
-                zIndex: 1050,
-              }}
-            >
+            <div className="user-selector-backdrop" onClick={() => setIsOpen(false)} />
+            <div className="user-selector-menu" role="listbox">
               {loading ? (
-                <div className="dropdown-item text-muted">Loading...</div>
+                <div className="user-selector-empty">Loading...</div>
               ) : filteredUsers.length === 0 ? (
-                <div className="dropdown-item text-muted">No users found</div>
+                <div className="user-selector-empty">No users found</div>
               ) : (
                 filteredUsers.map((user) => {
                   const isSelected = selectedUserIds.includes(user.id);
@@ -148,27 +142,22 @@ export default function UserSelector({
                     <button
                       key={user.id}
                       type="button"
-                      className={`dropdown-item ${isSelected ? 'active' : ''}`}
+                      role="option"
+                      aria-selected={isSelected}
+                      className={`user-selector-option${isSelected ? ' is-selected' : ''}`}
                       onClick={() => handleToggleUser(user.id)}
                     >
-                      <div className="d-flex align-items-center">
-                        {multiple && (
-                          <input
-                            type="checkbox"
-                            className="form-check-input me-2"
-                            checked={isSelected}
-                            readOnly
-                          />
-                        )}
-                        <div>
-                          <div>
-                            {user.firstName} {user.lastName}
-                          </div>
-                          <small className="text-muted">
-                            {user.username} • {user.email}
-                          </small>
-                        </div>
-                      </div>
+                      {multiple && (
+                        <input type="checkbox" checked={isSelected} readOnly tabIndex={-1} />
+                      )}
+                      <span className="user-selector-option-text">
+                        <span className="user-selector-option-name">
+                          {user.firstName} {user.lastName}
+                        </span>
+                        <span className="user-selector-option-meta">
+                          {user.username} • {user.email}
+                        </span>
+                      </span>
                     </button>
                   );
                 })

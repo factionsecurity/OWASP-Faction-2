@@ -20,4 +20,7 @@ public class UpdateOrganizationRequest {
     private String description;
 
     private Map<String, String> fieldValues;
+
+    /** Full replacement of the organization's remediation owners; null leaves them unchanged. */
+    private java.util.List<String> remediationOwnerIds;
 }
