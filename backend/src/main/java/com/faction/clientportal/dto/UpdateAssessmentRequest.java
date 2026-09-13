@@ -56,8 +56,9 @@ public class UpdateAssessmentRequest {
     /**
      * When the assessment was completed. Normally stamped by the server the moment the status
      * first becomes a completed one; an importer loading historical assessments sets it explicitly
-     * so the record carries the date the testing actually finished. Ignored unless {@code status}
-     * is a completed status.
+     * so the record carries the date the testing actually finished. On an assessment that is
+     * already completed only a super admin may change it (it moves the reopen window and the
+     * completed-work counts). Ignored on an assessment that is not completed.
      */
     private LocalDateTime completedDate;
 

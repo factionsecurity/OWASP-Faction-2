@@ -21,6 +21,8 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.data.domain.Pageable;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -88,6 +90,66 @@ public class DefaultReportTemplateService {
             return;
         }
 
+        install(assessmentType, templateName);
+    }
+
+    /**
+     * The template an assessment of this type gets when none was chosen for it — an assessment
+     * created without one, or a scheduled successor whose predecessor's template has since been
+     * deleted. In order: the type's template carrying the default name; failing that, the type's
+     * only active template (the same one the create form would have auto-selected); failing
+     * that, the project default is installed for this type, exactly as on first start.
+     *
+     * @throws IllegalStateException when nothing is usable and the default cannot be fetched —
+     *         an assessment pointing at no template would only fail later, at report generation,
+     *         where the cause is no longer visible.
+     */
+    public ReportTemplate resolveForAssessmentType(String assessmentTypeId) {
+        List<ReportTemplate> active = reportTemplateRepository
+                .findByAssessmentTypeIdAndActiveTrueAndDeletedAtIsNull(assessmentTypeId, Pageable.unpaged())
+                .getContent();
+        Optional<ReportTemplate> named = active.stream()
+                .filter(t -> templateName.equals(t.getName()))
+                .findFirst();
+        if (named.isPresent()) {
+            return named.get();
+        }
+        if (active.size() == 1) {
+            return active.get(0);
+        }
+
+        AssessmentType type = assessmentTypeRepository.findById(assessmentTypeId)
+                .orElseThrow(() -> new IllegalStateException("Assessment type not found: " + assessmentTypeId));
+        ReportTemplate installed = (templateUrl == null || templateUrl.isBlank())
+                ? null : install(type, freeName(type));
+        if (installed == null) {
+            throw new IllegalStateException("No report template is available for " + type.getName()
+                    + " and the default template could not be installed. Upload one under Report Designer.");
+        }
+        log.info("Installed the default report template for assessment type '{}' because no usable template existed.",
+                type.getName());
+        return installed;
+    }
+
+    /**
+     * Template names are unique across the install, deleted ones included, so a second copy of
+     * the default (another type, or a replacement for a deleted one) needs a name that is free.
+     */
+    private String freeName(AssessmentType type) {
+        if (!reportTemplateRepository.existsByName(templateName)) return templateName;
+        String base = templateName + " - " + type.getName();
+        String candidate = base;
+        for (int n = 2; reportTemplateRepository.existsByName(candidate); n++) {
+            candidate = base + " (" + n + ")";
+        }
+        return candidate;
+    }
+
+    /**
+     * Download the default DOCX and install it as an active template of the given type. Returns
+     * {@code null} when the download or storage fails, having logged why and left nothing behind.
+     */
+    private ReportTemplate install(AssessmentType assessmentType, String name) {
         byte[] docx;
         try {
             docx = download(templateUrl);
@@ -97,11 +159,11 @@ public class DefaultReportTemplateService {
             log.warn("Could not download the default report template from {}: {}. "
                     + "The install starts without one; upload a template under Report Designer.",
                     templateUrl, e.getMessage());
-            return;
+            return null;
         }
 
         ReportTemplate template = ReportTemplate.builder()
-                .name(templateName)
+                .name(name)
                 .description("The project's default pentest report template, installed on first start.")
                 .assessmentTypeId(assessmentType.getId())
                 // The same stylesheet a hand-created template starts with. Without it the
@@ -128,7 +190,7 @@ public class DefaultReportTemplateService {
             // — so take the row back out.
             reportTemplateRepository.delete(template);
             log.warn("Could not store the default report template: {}. Skipping.", e.getMessage());
-            return;
+            return null;
         }
 
         template.setTemplateFileId(key);
@@ -136,10 +198,11 @@ public class DefaultReportTemplateService {
         template.setTemplateFileSize((long) docx.length);
         template.setTemplateFileContentType(DOCX_CONTENT_TYPE);
         template.setUpdatedAt(LocalDateTime.now());
-        reportTemplateRepository.save(template);
+        template = reportTemplateRepository.save(template);
 
         log.info("Installed the default report template '{}' ({} bytes) against assessment type '{}'.",
-                templateName, docx.length, assessmentType.getName());
+                name, docx.length, assessmentType.getName());
+        return template;
     }
 
     /**

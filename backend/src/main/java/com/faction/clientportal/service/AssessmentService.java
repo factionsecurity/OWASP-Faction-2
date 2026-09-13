@@ -28,6 +28,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 
 import java.io.InputStream;
@@ -63,6 +64,7 @@ public class AssessmentService {
     private final CampaignRepository campaignRepository;
     private final com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
     private final com.faction.clientportal.service.email.EventNotificationEmailSender eventEmailSender;
+    private final DefaultReportTemplateService defaultReportTemplateService;
 
     /**
      * Create a new assessment from a report template
@@ -96,26 +98,33 @@ public class AssessmentService {
         assessmentTypeRepository.findById(request.getAssessmentTypeId())
             .orElseThrow(() -> new ResourceNotFoundException("Assessment type not found with id: " + request.getAssessmentTypeId()));
 
-        // Get report template and verify it can still be used. Deleted is looked up
-        // separately from inactive so the message names the real problem: "not active" on a
-        // template that has actually been deleted sends people to a toggle that isn't there.
-        ReportTemplate template = reportTemplateRepository.findByIdAndDeletedAtIsNull(request.getReportTemplateId())
-            .orElseThrow(() -> reportTemplateRepository.existsById(request.getReportTemplateId())
-                ? new IllegalArgumentException(
-                    "Report template has been deleted and cannot be used for new assessments")
-                : new ResourceNotFoundException(
-                    "Report template not found with id: " + request.getReportTemplateId()));
+        ReportTemplate template;
+        if (org.springframework.util.StringUtils.hasText(request.getReportTemplateId())) {
+            // Get report template and verify it can still be used. Deleted is looked up
+            // separately from inactive so the message names the real problem: "not active" on a
+            // template that has actually been deleted sends people to a toggle that isn't there.
+            template = reportTemplateRepository.findByIdAndDeletedAtIsNull(request.getReportTemplateId())
+                .orElseThrow(() -> reportTemplateRepository.existsById(request.getReportTemplateId())
+                    ? new IllegalArgumentException(
+                        "Report template has been deleted and cannot be used for new assessments")
+                    : new ResourceNotFoundException(
+                        "Report template not found with id: " + request.getReportTemplateId()));
 
-        if (!template.getActive()) {
-            throw new IllegalArgumentException("Report template is not active: " + template.getName());
-        }
+            if (!template.getActive()) {
+                throw new IllegalArgumentException("Report template is not active: " + template.getName());
+            }
 
-        // Verify template's assessment type matches request
-        if (!template.getAssessmentTypeId().equals(request.getAssessmentTypeId())) {
-            throw new IllegalArgumentException(
-                "Report template assessment type does not match. Expected: " + request.getAssessmentTypeId() +
-                ", Template has: " + template.getAssessmentTypeId()
-            );
+            // Verify template's assessment type matches request
+            if (!template.getAssessmentTypeId().equals(request.getAssessmentTypeId())) {
+                throw new IllegalArgumentException(
+                    "Report template assessment type does not match. Expected: " + request.getAssessmentTypeId() +
+                    ", Template has: " + template.getAssessmentTypeId()
+                );
+            }
+        } else {
+            // No template chosen (the create form left it blank, or a scheduled successor's
+            // predecessor template is gone): the type's default, installed if need be.
+            template = defaultReportTemplateService.resolveForAssessmentType(request.getAssessmentTypeId());
         }
 
         // Snapshot template data — only ASSESSMENT-scoped fields
@@ -441,11 +450,6 @@ public class AssessmentService {
                     userId);
             }
 
-            if (request.getCompletedDate() != null
-                    && workflowConfigService.isCompletedStatus(request.getStatus())) {
-                assessment.setCompletedDate(request.getCompletedDate());
-            }
-
             // Set peer review date when status changes to PENDING_REVIEW (legacy)
             if ("PENDING_REVIEW".equals(request.getStatus()) && !"PENDING_REVIEW".equals(oldStatus)) {
                 assessment.setPeerReviewedAt(LocalDateTime.now());
@@ -455,6 +459,19 @@ public class AssessmentService {
             if (assessment.getAssessmentDate() == null && !request.getStatus().equals(oldStatus)) {
                 assessment.setAssessmentDate(LocalDateTime.now());
             }
+        }
+
+        // Correcting the completion date of an assessment that is already completed. The date
+        // drives the reopen window and the completed-work counts, so rewriting history is a
+        // super-admin act — unlike the completion transition above, where any editor (notably
+        // the Faction 1 importer) may supply the real date. A date sent for an assessment that is
+        // not completed has no meaning and is ignored.
+        if (request.getCompletedDate() != null && !finalizing
+                && workflowConfigService.isCompletedStatus(assessment.getStatus())) {
+            if (!isSuperAdmin(authentication)) {
+                throw new AccessDeniedException("Only a super admin can change the completion date");
+            }
+            assessment.setCompletedDate(request.getCompletedDate());
         }
 
         // Update assessor (legacy)
@@ -1568,10 +1585,14 @@ public class AssessmentService {
                 .orElse(null);
     }
 
+    private static boolean isSuperAdmin(Authentication authentication) {
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals(RequiresPermissionAuthorizationManager.SUPER_ADMIN));
+    }
+
     private boolean isOrgScopedUser(Authentication authentication) {
         if (authentication == null) return false;
-        boolean isSuperAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals(RequiresPermissionAuthorizationManager.SUPER_ADMIN));
+        boolean isSuperAdmin = isSuperAdmin(authentication);
         boolean hasReadAll = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals(Permission.ASSESSMENTS_READ_ALL.getPermission()));
         boolean hasReadOrg = authentication.getAuthorities().stream()

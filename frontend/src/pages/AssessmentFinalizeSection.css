@@ -100,6 +100,12 @@
   margin-top: 2px;
 }
 
+.finalize-step-date-edit {
+  vertical-align: middle;
+  margin-left: 4px;
+  padding: 2px;
+}
+
 /* ── Peer Review Steps ── */
 .finalize-step--review .finalize-step-icon--review {
   background: rgba(99, 102, 241, 0.15);

@@ -239,3 +239,11 @@
 .vuln-high     { background-color: #f97316; }
 .vuln-medium   { background-color: #eab308; color: #1a1a1a; }
 .vuln-low      { background-color: #22c55e; }
+
+/* Human-readable application id shown ahead of the application name in the list. */
+.eng-app-id {
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8em;
+  margin-right: 0.4rem;
+}
