@@ -77,7 +77,7 @@ export default function RetestDetailPage() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: 'Retests', to: '/retests' },
+      { label: 'Your Retests', to: '/retests' },
       { label: vuln?.name || retest?.vulnerabilityName || 'Retest' },
     ]);
     return () => setBreadcrumbs(null);

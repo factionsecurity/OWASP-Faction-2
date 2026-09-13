@@ -351,7 +351,7 @@ export default function AssessmentDetail() {
 
       const appName = app?.name || a.applicationName || 'Unknown App';
       setBreadcrumbs([
-        { label: 'Assessments', to: '/assessments' },
+        { label: 'Your Assessments', to: '/assessments' },
         { label: `${appName} — ${a.name}` },
       ]);
 

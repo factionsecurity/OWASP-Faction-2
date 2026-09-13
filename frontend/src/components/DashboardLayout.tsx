@@ -75,18 +75,31 @@ interface MenuItem {
    * actually here to do. Carries no path and is never clickable.
    */
   heading?: boolean;
+  /**
+   * What the user sees, when it differs from `name`. `name` stays the stable key that permissions,
+   * queue counts and badge colours are looked up by, so a relabel never breaks those.
+   */
+  label?: string;
 }
 
 const menuItems: MenuItem[] = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Mentions', path: '/mentions', icon: AtSign },
   { name: 'Applications', path: '/applications', icon: AppWindow },
-  { name: 'Assessments', path: '/assessments', icon: GliderIcon },
+  { name: 'Assessments', label: 'Your Assessments', path: '/assessments', icon: GliderIcon },
+  { name: 'Retests', label: 'Your Retests', path: '/retests', icon: RefreshCw },
   { name: 'Peer Review Queue', path: '/peer-review', icon: ClipboardCheck },
-  { name: 'Vulnerabilities', path: '/vulnerabilities', icon: ShieldAlert },
-  { name: 'Retests', path: '/retests', icon: RefreshCw },
   { name: 'Scheduling', path: '/scheduling', icon: Calendar },
-  { name: 'Remediation', path: '/remediation', icon: CheckSquare },
+  {
+    // Group key differs from the Remediation item's key, which permissions and counts use.
+    name: 'Remediation Group',
+    label: 'Remediation',
+    icon: CheckSquare,
+    subItems: [
+      { name: 'Remediation', label: 'Alerts', path: '/remediation', icon: CheckSquare },
+      { name: 'Vulnerabilities', path: '/vulnerabilities', icon: ShieldAlert },
+    ],
+  },
   {
     name: 'Administration',
     icon: Settings,
@@ -174,7 +187,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem('sidebarOpen') !== 'false'
   );
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Administration']);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Remediation Group', 'Administration']);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   // Flyout for a submenu group when the sidebar is collapsed
   const [flyout, setFlyout] = useState<{ name: string; top: number; left: number } | null>(null);
@@ -568,18 +581,26 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                       );
                     }}
                     className={`nav-item ${isActive ? 'active' : ''}`}
-                    title={item.name}
+                    title={item.label ?? item.name}
                   >
                     <Icon className="nav-icon" size={20} />
                     {sidebarOpen && (
                       <>
-                        <span className="nav-label">{item.name}</span>
+                        <span className="nav-label">{item.label ?? item.name}</span>
                         <ChevronDown
                           className={`nav-arrow ${isExpanded ? 'expanded' : ''}`}
                           size={16}
                         />
                       </>
                     )}
+                    {(() => {
+                      // The sub-items carry the counts; when they're hidden, the group shows the total.
+                      if (sidebarOpen && isExpanded) return null;
+                      const total = item.subItems.reduce((sum, s) => sum + (queueCounts[s.name] ?? 0), 0);
+                      return total > 0 ? (
+                        <span className="nav-badge" title={total.toLocaleString()}>{formatCompact(total)}</span>
+                      ) : null;
+                    })()}
                   </button>
                   {sidebarOpen && isExpanded && (
                     <div className="nav-submenu">
@@ -597,10 +618,18 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                             key={subItem.path}
                             onClick={() => subItem.path && navigate(subItem.path)}
                             className={`nav-subitem ${subItem.path && (location.pathname === subItem.path || location.pathname.startsWith(subItem.path + '/')) ? 'active' : ''}`}
-                            title={subItem.name}
+                            title={subItem.label ?? subItem.name}
                           >
                             <SubIcon className="nav-icon" size={18} />
-                            <span className="nav-label">{menuLabel(subItem.name)}</span>
+                            <span className="nav-label">{subItem.label ?? menuLabel(subItem.name)}</span>
+                            {(queueCounts[subItem.name] ?? 0) > 0 && (
+                              <span
+                                className={`nav-badge ${QUEUE_BADGE_COLORS[subItem.name] ?? ''}`}
+                                title={queueCounts[subItem.name].toLocaleString()}
+                              >
+                                {formatCompact(queueCounts[subItem.name])}
+                              </span>
+                            )}
                           </button>
                         );
                       })}
@@ -612,7 +641,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                       className="nav-flyout"
                       style={{ top: flyout.top, left: flyout.left }}
                     >
-                      <div className="nav-flyout-title">{item.name}</div>
+                      <div className="nav-flyout-title">{item.label ?? item.name}</div>
                       {item.subItems.map((subItem) => {
                         const SubIcon = subItem.icon;
                         if (subItem.heading) {
@@ -636,7 +665,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                             className={`nav-flyout-item ${subActive ? 'active' : ''}`}
                           >
                             <SubIcon size={16} />
-                            <span>{menuLabel(subItem.name)}</span>
+                            <span>{subItem.label ?? menuLabel(subItem.name)}</span>
                           </button>
                         );
                       })}
@@ -654,10 +683,10 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                 key={item.path}
                 onClick={() => item.path && navigate(item.path)}
                 className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
-                title={item.name}
+                title={item.label ?? item.name}
               >
                 <Icon className="nav-icon" size={20} />
-                {sidebarOpen && <span className="nav-label">{item.name}</span>}
+                {sidebarOpen && <span className="nav-label">{item.label ?? item.name}</span>}
                 {queueCount > 0 && (
                   <span
                     className={`nav-badge ${QUEUE_BADGE_COLORS[item.name] ?? ''}`}
@@ -722,8 +751,14 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                 <h1 className="page-title">
                   <CurrentIcon size={18} className="page-breadcrumb-icon" />
                   {pageTitle ||
-                   menuItems.find(item => item.path === location.pathname)?.name ||
-                   menuItems.flatMap(item => item.subItems || []).find(subItem => subItem.path === location.pathname)?.name ||
+                   (() => {
+                     const top = menuItems.find(item => item.path === location.pathname);
+                     return top ? top.label ?? top.name : undefined;
+                   })() ||
+                   (() => {
+                     const sub = menuItems.flatMap(item => item.subItems || []).find(subItem => subItem.path === location.pathname);
+                     return sub ? sub.label ?? sub.name : undefined;
+                   })() ||
                    'Dashboard'}
                 </h1>
               );
