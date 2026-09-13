@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, createRef, useCallback } from 'react';
 import DOMPurify from 'dompurify';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { usePageTitle } from '../context/PageTitleContext';
 import {
   Users,
@@ -43,7 +43,7 @@ import RichTextEditor from '../components/RichTextEditor';
 import type { RichTextEditorRef } from '../components/RichTextEditor';
 import Page from '../components/Page';
 import AssessmentInfoEditDialog from '../components/AssessmentInfoEditDialog';
-import { usePermissions } from '../utils/permissions';
+import { usePermissions, getCurrentUser } from '../utils/permissions';
 import { createSseParser } from '../utils/sse';
 import ConfirmDialog from '../components/ConfirmDialog';
 import './AssessmentDetail.css';
@@ -108,6 +108,34 @@ function isLinkableSection(section: string | null): boolean {
     || section === 'vuln-unassigned';
 }
 
+/**
+ * The breadcrumb parent a link into this page asked for, such as Vuln Alerts. Only a well-formed
+ * in-app path is accepted; anything else falls back to Your Assessments.
+ */
+/** localStorage key for the last vulnerability this user opened on one assessment. */
+function lastVulnKey(assessmentId: string | undefined): string {
+  return `faction.lastVuln.${getCurrentUser()?.id ?? 'anonymous'}.${assessmentId ?? ''}`;
+}
+
+function readLastVuln(assessmentId: string | undefined): string | null {
+  try { return localStorage.getItem(lastVulnKey(assessmentId)); } catch { return null; }
+}
+
+function writeLastVuln(assessmentId: string | undefined, vulnId: string | null) {
+  try {
+    if (vulnId) localStorage.setItem(lastVulnKey(assessmentId), vulnId);
+    else localStorage.removeItem(lastVulnKey(assessmentId));
+  } catch {
+    // Blocked or full storage: the section just opens without a selection.
+  }
+}
+
+function originFrom(state: unknown): { label: string; to: string } | null {
+  const from = (state as { from?: { label?: unknown; to?: unknown } } | null)?.from;
+  if (!from || typeof from.label !== 'string' || typeof from.to !== 'string') return null;
+  return from.to.startsWith('/') && !from.to.startsWith('//') ? { label: from.label, to: from.to } : null;
+}
+
 export default function AssessmentDetail() {
   const { organizationSingular } = useTerminology();
   const { id } = useParams<{ id: string }>();
@@ -118,6 +146,22 @@ export default function AssessmentDetail() {
 
   // Capture ?vuln= once at render time so it survives any URL changes
   const initialVulnIdRef = useRef(searchParams.get('vuln'));
+
+  // Where this assessment was opened from, when that wasn't Your Assessments. Read once for the
+  // same reason as ?vuln=: picking a vulnerability rewrites the URL, which drops router state.
+  const location = useLocation();
+  const originRef = useRef(originFrom(location.state));
+
+  // The last vulnerability picked on this assessment, so coming back to Vulnerabilities reopens it.
+  // A ?vuln= link wins over the remembered one. `vulnSeed` is what a vulnerability section opens
+  // with; it only changes on a section switch, so a mounted section never sees it move.
+  const lastVulnIdRef = useRef<string | null>(searchParams.get('vuln') ?? readLastVuln(id));
+  const [vulnSeed, setVulnSeed] = useState<string | null>(lastVulnIdRef.current);
+  useEffect(() => {
+    lastVulnIdRef.current = searchParams.get('vuln') ?? readLastVuln(id);
+    setVulnSeed(lastVulnIdRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // Inner sidebar behaviour: 'auto' expands on hover (the default), the locked states pin it
   // open or closed so the section list stops moving while working in the content area.
@@ -351,7 +395,7 @@ export default function AssessmentDetail() {
 
       const appName = app?.name || a.applicationName || 'Unknown App';
       setBreadcrumbs([
-        { label: 'Your Assessments', to: '/assessments' },
+        originRef.current ?? { label: 'Your Assessments', to: '/assessments' },
         { label: `${appName} — ${a.name}` },
       ]);
 
@@ -527,6 +571,7 @@ export default function AssessmentDetail() {
   // Locks lapse 10s after the last edit and nothing else drops them, so moving to
   // another section deliberately keeps whatever the user was just editing locked.
   const handleSectionChange = useCallback((nextSection: string) => {
+    setVulnSeed(lastVulnIdRef.current);
     setActiveSection(nextSection);
   }, []);
 
@@ -539,11 +584,13 @@ export default function AssessmentDetail() {
   }, [activeSection, loading, assessment, hasUnassigned, reportSections]);
 
   const handleVulnSelected = useCallback((vulnId: string | null) => {
+    lastVulnIdRef.current = vulnId;
+    writeLastVuln(id, vulnId);
     setSearchParams(p => {
       if (vulnId) p.set('vuln', vulnId); else p.delete('vuln');
       return p;
     }, { replace: true });
-  }, [setSearchParams]);
+  }, [id, setSearchParams]);
 
   const getLockState = (fieldId: string) => {
     const lock = fieldLocks[fieldId];
@@ -1403,7 +1450,7 @@ export default function AssessmentDetail() {
               onPendingConsumed={() => { setPendingDefaultVuln(undefined); setPendingVulnName(undefined); }}
               onAddVulnerability={() => setShowDefaultVulnSearch(true)}
               onVulnerabilitiesChanged={refreshVulnerabilitySummary}
-              initialVulnId={initialVulnIdRef.current ?? undefined}
+              initialVulnId={vulnSeed ?? undefined}
               onVulnSelected={handleVulnSelected}
               refreshToken={vulnRefreshToken}
             />
@@ -1427,7 +1474,7 @@ export default function AssessmentDetail() {
                 onAddVulnerability={() => setShowDefaultVulnSearch(true)}
                 onVulnerabilitiesChanged={refreshVulnerabilitySummary}
                 section={sectionName}
-                initialVulnId={initialVulnIdRef.current ?? undefined}
+                initialVulnId={vulnSeed ?? undefined}
                 onVulnSelected={handleVulnSelected}
                 refreshToken={vulnRefreshToken}
               />
@@ -1449,7 +1496,7 @@ export default function AssessmentDetail() {
               onAddVulnerability={() => setShowDefaultVulnSearch(true)}
               onVulnerabilitiesChanged={refreshVulnerabilitySummary}
               section=""
-              initialVulnId={initialVulnIdRef.current ?? undefined}
+              initialVulnId={vulnSeed ?? undefined}
               onVulnSelected={handleVulnSelected}
               refreshToken={vulnRefreshToken}
             />

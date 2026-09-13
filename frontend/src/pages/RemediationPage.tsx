@@ -86,6 +86,10 @@ export default function RemediationPage({ kind }: { kind: RemediationAlertKind }
 function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   const isRetest = kind === 'RETEST';
   const tableKey = TABLE_KEYS[kind];
+  // Handed to the assessment page so its breadcrumb leads back here instead of to Your Assessments.
+  const alertsCrumb = isRetest
+    ? { label: 'Retest Alerts', to: '/remediation/retests' }
+    : { label: 'Vuln Alerts', to: '/remediation/vulnerabilities' };
   const { severityOptions, organizationPlural, organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
@@ -574,7 +578,7 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
               : r.retestStatus === 'REQUESTED' ? 'Schedule Retest' : 'Edit'}
             onClick={() => {
               if (r.type === 'VULNERABILITY') {
-                if (r.assessmentId) navigate(`/assessments/${r.assessmentId}`);
+                if (r.assessmentId) navigate(`/assessments/${r.assessmentId}`, { state: { from: alertsCrumb } });
               } else {
                 openRetestSchedule(r);
               }
@@ -876,7 +880,7 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
                   const vulnId = deleteVulnRow.vulnerabilityId;
                   const assessmentId = deleteVulnRow.assessmentId;
                   setDeleteVulnRow(null);
-                  navigate(`/assessments/${assessmentId}`, { state: { editVulnId: vulnId } });
+                  navigate(`/assessments/${assessmentId}`, { state: { editVulnId: vulnId, from: alertsCrumb } });
                 }
               }}
             >
