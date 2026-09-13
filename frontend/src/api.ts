@@ -1779,7 +1779,7 @@ export const remediationApi = {
    */
   getQueue: (params: {
     page?: number; size?: number; sort?: string; search?: string;
-    severity?: string; organizationId?: string; applicationId?: string; assessmentId?: string;
+    severities?: string[]; organizationIds?: string[]; applicationIds?: string[]; assessmentIds?: string[];
     statuses?: string[]; type?: string;
     /** Also show retests that have already been verified (PASSED/FAILED). */
     includeCompletedRetests?: boolean;
@@ -1789,10 +1789,10 @@ export const remediationApi = {
     const q: Record<string, string | number> = { page: params.page ?? 0, size: params.size ?? 20 };
     if (params.sort) q.sort = params.sort;
     if (params.search) q.search = params.search;
-    if (params.severity) q.severity = params.severity;
-    if (params.organizationId) q.organizationId = params.organizationId;
-    if (params.applicationId) q.applicationId = params.applicationId;
-    if (params.assessmentId) q.assessmentId = params.assessmentId;
+    if (params.severities?.length) q.severities = params.severities.join(',');
+    if (params.organizationIds?.length) q.organizationIds = params.organizationIds.join(',');
+    if (params.applicationIds?.length) q.applicationIds = params.applicationIds.join(',');
+    if (params.assessmentIds?.length) q.assessmentIds = params.assessmentIds.join(',');
     if (params.statuses?.length) q.statuses = params.statuses.join(',');
     if (params.type) q.type = params.type;
     if (params.includeCompletedRetests) q.includeCompletedRetests = 'true';
@@ -1804,16 +1804,16 @@ export const remediationApi = {
    *  each retest's completed date / result / verifier, which the table has no column for. */
   exportQueueCsv: (params: {
     sort?: string; search?: string;
-    severity?: string; organizationId?: string; applicationId?: string; assessmentId?: string;
+    severities?: string[]; organizationIds?: string[]; applicationIds?: string[]; assessmentIds?: string[];
     statuses?: string[]; type?: string; includeCompletedRetests?: boolean; buckets?: string[];
   }): Promise<Blob> => {
     const q: Record<string, string> = {};
     if (params.sort) q.sort = params.sort;
     if (params.search) q.search = params.search;
-    if (params.severity) q.severity = params.severity;
-    if (params.organizationId) q.organizationId = params.organizationId;
-    if (params.applicationId) q.applicationId = params.applicationId;
-    if (params.assessmentId) q.assessmentId = params.assessmentId;
+    if (params.severities?.length) q.severities = params.severities.join(',');
+    if (params.organizationIds?.length) q.organizationIds = params.organizationIds.join(',');
+    if (params.applicationIds?.length) q.applicationIds = params.applicationIds.join(',');
+    if (params.assessmentIds?.length) q.assessmentIds = params.assessmentIds.join(',');
     if (params.statuses?.length) q.statuses = params.statuses.join(',');
     if (params.type) q.type = params.type;
     if (params.includeCompletedRetests) q.includeCompletedRetests = 'true';
@@ -1826,15 +1826,15 @@ export const remediationApi = {
    *  buckets and includeCompletedRetests, so they aren't accepted here. */
   summary: (params: {
     search?: string;
-    severity?: string; organizationId?: string; applicationId?: string; assessmentId?: string;
+    severities?: string[]; organizationIds?: string[]; applicationIds?: string[]; assessmentIds?: string[];
     statuses?: string[]; type?: string;
   }): Promise<ApiResponse<RemediationQueueSummary>> => {
     const q: Record<string, string> = {};
     if (params.search) q.search = params.search;
-    if (params.severity) q.severity = params.severity;
-    if (params.organizationId) q.organizationId = params.organizationId;
-    if (params.applicationId) q.applicationId = params.applicationId;
-    if (params.assessmentId) q.assessmentId = params.assessmentId;
+    if (params.severities?.length) q.severities = params.severities.join(',');
+    if (params.organizationIds?.length) q.organizationIds = params.organizationIds.join(',');
+    if (params.applicationIds?.length) q.applicationIds = params.applicationIds.join(',');
+    if (params.assessmentIds?.length) q.assessmentIds = params.assessmentIds.join(',');
     if (params.statuses?.length) q.statuses = params.statuses.join(',');
     if (params.type) q.type = params.type;
     return api.get('/remediation/queue-summary', { params: q })

@@ -67,26 +67,26 @@ public class RemediationQueueService {
      * minus completed retests, which are no bucket's work.
      */
     public RemediationQueueSummaryDto summary(String search,
-                                              String severity,
-                                              String organizationId,
-                                              String applicationId,
-                                              String assessmentId,
+                                              Collection<String> severities,
+                                              Collection<String> organizationIds,
+                                              Collection<String> applicationIds,
+                                              Collection<String> assessmentIds,
                                               List<String> statuses,
                                               String type,
                                               Authentication authentication) {
-        var es = scopeResolver.effectiveScope(organizationId, applicationId, authentication);
+        var es = scopeResolver.effectiveScope(values(organizationIds), values(applicationIds), authentication);
         if (es.denied()) {
             return RemediationQueueSummaryDto.empty();
         }
         return summarize(RemediationQueueCriteria.builder()
                 .search(search)
-                .severityOrdinals(severityOrdinals(severity))
+                .severityOrdinals(severityOrdinals(severities))
                 .organizationIds(es.orgIds())
                 .scopeAppIds(es.scopeAppIds())
                 .applicationIds(es.appIds())
                 .teamIds(es.teamIds())
                 .assessorId(es.assessorId())
-                .assessmentId(assessmentId)
+                .assessmentIds(values(assessmentIds))
                 .statuses(statuses)
                 .rowType(rowType(type))
                 .includeCompletedRetests(false)
@@ -123,17 +123,17 @@ public class RemediationQueueService {
      * It never widens the vulnerability half: a closed finding is not a queue row.
      */
     public Page<RemediationRowDto> list(String search,
-                                        String severity,
-                                        String organizationId,
-                                        String applicationId,
-                                        String assessmentId,
+                                        Collection<String> severities,
+                                        Collection<String> organizationIds,
+                                        Collection<String> applicationIds,
+                                        Collection<String> assessmentIds,
                                         List<String> statuses,
                                         String type,
                                         List<String> buckets,
                                         boolean includeCompletedRetests,
                                         Pageable pageable,
                                         Authentication authentication) {
-        var es = scopeResolver.effectiveScope(organizationId, applicationId, authentication);
+        var es = scopeResolver.effectiveScope(values(organizationIds), values(applicationIds), authentication);
         if (es.denied()) {
             return Page.empty(pageable);
         }
@@ -144,13 +144,13 @@ public class RemediationQueueService {
 
         var criteria = RemediationQueueCriteria.builder()
                 .search(search)
-                .severityOrdinals(severityOrdinals(severity))
+                .severityOrdinals(severityOrdinals(severities))
                 .organizationIds(es.orgIds())
                 .scopeAppIds(es.scopeAppIds())
                 .applicationIds(es.appIds())
                 .teamIds(es.teamIds())
                 .assessorId(es.assessorId())
-                .assessmentId(assessmentId)
+                .assessmentIds(values(assessmentIds))
                 .statuses(statuses)
                 .rowType(rowType(type))
                 .buckets(buckets)
@@ -173,17 +173,17 @@ public class RemediationQueueService {
      * outstanding items only and every completion column comes back blank.
      */
     public String exportCsv(String search,
-                            String severity,
-                            String organizationId,
-                            String applicationId,
-                            String assessmentId,
+                            Collection<String> severities,
+                            Collection<String> organizationIds,
+                            Collection<String> applicationIds,
+                            Collection<String> assessmentIds,
                             List<String> statuses,
                             String type,
                             List<String> buckets,
                             boolean includeCompletedRetests,
                             Sort sort,
                             Authentication authentication) {
-        List<RemediationRowDto> rows = list(search, severity, organizationId, applicationId, assessmentId,
+        List<RemediationRowDto> rows = list(search, severities, organizationIds, applicationIds, assessmentIds,
                 statuses, type, buckets, includeCompletedRetests,
                 Pageable.unpaged(sort == null ? Sort.unsorted() : sort), authentication).getContent();
 
@@ -260,15 +260,33 @@ public class RemediationQueueService {
     /** Severity name (e.g. "HIGH") → the single-element ordinal set the query filters on; null (no
      *  filter) when absent or not a severity. The queue's filter is single-select, but the criteria
      *  it shares with the vulnerabilities list takes a set. */
-    private static Collection<Integer> severityOrdinals(String severity) {
-        if (severity == null || severity.isBlank()) {
+    /** Ordinals of the recognised severities; unknown names are ignored, and none left means no filter. */
+    private static Collection<Integer> severityOrdinals(Collection<String> severities) {
+        Set<String> names = values(severities);
+        if (names == null) {
             return null;
         }
-        try {
-            return Set.of(VulnerabilitySeverity.valueOf(severity.trim().toUpperCase()).ordinal());
-        } catch (IllegalArgumentException e) {
+        Set<Integer> ordinals = new java.util.LinkedHashSet<>();
+        for (String name : names) {
+            try {
+                ordinals.add(VulnerabilitySeverity.valueOf(name.toUpperCase()).ordinal());
+            } catch (IllegalArgumentException e) {
+                // not a severity: ignored, as a single unknown value always was
+            }
+        }
+        return ordinals.isEmpty() ? null : ordinals;
+    }
+
+    /** Trimmed, de-duplicated non-blank values; null when nothing is left, meaning "no filter". */
+    private static Set<String> values(Collection<String> raw) {
+        if (raw == null) {
             return null;
         }
+        Set<String> cleaned = raw.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+        return cleaned.isEmpty() ? null : cleaned;
     }
 
     private List<RemediationRowDto> toDtos(List<RemediationDueRow> rows) {
