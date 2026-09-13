@@ -165,6 +165,14 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
             clauses.add(Clause.of("AND a.planned_end_date <= :endTo",
                     q -> q.setParameter("endTo", c.endDateTo())));
         }
+        if (c.completedDateFrom() != null) {
+            clauses.add(Clause.of("AND a.completed_date >= :completedFrom",
+                    q -> q.setParameter("completedFrom", c.completedDateFrom())));
+        }
+        if (c.completedDateTo() != null) {
+            clauses.add(Clause.of("AND a.completed_date <= :completedTo",
+                    q -> q.setParameter("completedTo", c.completedDateTo())));
+        }
         if (c.pastDue()) {
             clauses.add(Clause.of("""
                     AND a.planned_end_date IS NOT NULL AND a.planned_end_date < :now

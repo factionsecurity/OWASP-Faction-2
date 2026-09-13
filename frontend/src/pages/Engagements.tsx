@@ -9,11 +9,12 @@ import type {
   AssessmentType,
   Vulnerability,
 } from '../types';
-import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
+import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
-import { Button, Badge, ConfirmDialog, IconButton, ActionButtons } from '../components';
+import { Button, Badge, ConfirmDialog, IconButton, ActionButtons, FormLabel, Input } from '../components';
 import AssessmentCalendar from '../components/AssessmentCalendar';
 import Page from '../components/Page';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { usePermissions } from '../utils/permissions';
 import './Engagements.css';
 
@@ -32,6 +33,9 @@ const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 
   APPROVED: 'success',
   ARCHIVED: 'secondary',
 };
+
+// localStorage key for the list view's saved search, filters, sort and paging.
+const TABLE_KEY = 'scheduling';
 
 export default function Engagements() {
   const navigate = useNavigate();
@@ -53,22 +57,31 @@ export default function Engagements() {
   const [statusColors, setStatusColors] = useState<Record<string, string>>({});
   const [wfStatuses, setWfStatuses] = useState<string[]>([]);
 
-  const [pagination, setPagination] = useState<PaginationInfo>({
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
 
-  const [filters, setFilters] = useState({
+  // Date ranges live in the advanced panel and are staged in `draft` until Apply; everything
+  // else applies live. Date-only strings (YYYY-MM-DD); widened to full days when sent.
+  const DATE_DEFAULTS = {
+    startDateFrom: '', startDateTo: '',
+    endDateFrom: '', endDateTo: '',
+    completedDateFrom: '', completedDateTo: '',
+  };
+  const [filters, setFilters] = usePersistedState(TABLE_KEY, 'filters', {
     statuses: [] as string[],
     applicationId: '',
     assessmentTypeIds: [] as string[],
     name: '',
     pastDue: false,
+    ...DATE_DEFAULTS,
   });
+  const [draft, setDraft] = useState(DATE_DEFAULTS);
 
   // Inline filter options + live-apply. Status is not here — the stat pills own status filtering.
   const appOptions: SelectOption[] = useMemo(
@@ -79,6 +92,41 @@ export default function Engagements() {
     setFilters((prev) => ({ ...prev, ...patch }));
     setPagination((prev) => ({ ...prev, page: 0 }));
   };
+  const applyAdvanced = () => applyInline({ ...draft });
+  const clearAllFilters = () => {
+    setDraft(DATE_DEFAULTS);
+    applyInline({ ...DATE_DEFAULTS, applicationId: '', assessmentTypeIds: [], statuses: [], pastDue: false });
+  };
+  // Keep the panel's draft in step when an applied range is removed via its chip or clear-all.
+  useEffect(() => { setDraft((d) => ({ ...d, startDateFrom: filters.startDateFrom, startDateTo: filters.startDateTo })); },
+    [filters.startDateFrom, filters.startDateTo]);
+  useEffect(() => { setDraft((d) => ({ ...d, endDateFrom: filters.endDateFrom, endDateTo: filters.endDateTo })); },
+    [filters.endDateFrom, filters.endDateTo]);
+  useEffect(() => { setDraft((d) => ({ ...d, completedDateFrom: filters.completedDateFrom, completedDateTo: filters.completedDateTo })); },
+    [filters.completedDateFrom, filters.completedDateTo]);
+
+  const fmtDay = (d: string) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString() : '…');
+  const filterChips: FilterChip[] = [];
+  if (filters.startDateFrom || filters.startDateTo) {
+    filterChips.push({
+      key: 'start', label: `Start: ${fmtDay(filters.startDateFrom)} – ${fmtDay(filters.startDateTo)}`,
+      onRemove: () => applyInline({ startDateFrom: '', startDateTo: '' }),
+    });
+  }
+  if (filters.endDateFrom || filters.endDateTo) {
+    filterChips.push({
+      key: 'end', label: `Planned end: ${fmtDay(filters.endDateFrom)} – ${fmtDay(filters.endDateTo)}`,
+      onRemove: () => applyInline({ endDateFrom: '', endDateTo: '' }),
+    });
+  }
+  if (filters.completedDateFrom || filters.completedDateTo) {
+    filterChips.push({
+      key: 'completed', label: `Completed: ${fmtDay(filters.completedDateFrom)} – ${fmtDay(filters.completedDateTo)}`,
+      onRemove: () => applyInline({ completedDateFrom: '', completedDateTo: '' }),
+    });
+  }
+  const dayStart = (d: string) => (d ? `${d}T00:00:00` : undefined);
+  const dayEnd = (d: string) => (d ? `${d}T23:59:59` : undefined);
 
   const [deleteTarget, setDeleteTarget] = useState<Assessment | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -149,6 +197,12 @@ export default function Engagements() {
         statuses: filters.statuses,
         assessmentTypeIds: filters.assessmentTypeIds,
         pastDue: filters.pastDue || undefined,
+        startDateFrom: dayStart(filters.startDateFrom),
+        startDateTo: dayEnd(filters.startDateTo),
+        endDateFrom: dayStart(filters.endDateFrom),
+        endDateTo: dayEnd(filters.endDateTo),
+        completedDateFrom: dayStart(filters.completedDateFrom),
+        completedDateTo: dayEnd(filters.completedDateTo),
         sort: sortParam(sort) ?? 'createdAt,desc',
       });
 
@@ -558,9 +612,45 @@ export default function Engagements() {
             pagination={pagination}
             onPageChange={(page) => setPagination({ ...pagination, page })}
             onPageSizeChange={(pageSize) => setPagination({ ...pagination, pageSize, page: 0 })}
+            initialSearch={filters.name}
             onSearchChange={(q) => applyInline({ name: q })}
             searchPlaceholder="Search by assessment or application"
             idAccessor="id"
+            advancedActiveCount={filterChips.length}
+            filterChips={filterChips}
+            onApplyAdvanced={applyAdvanced}
+            onClearFilters={clearAllFilters}
+            advancedFilters={
+              <>
+                <div className="filter-field">
+                  <FormLabel>Start Date</FormLabel>
+                  <div className="filter-field-range">
+                    <Input type="date" value={draft.startDateFrom}
+                      onChange={(e) => setDraft({ ...draft, startDateFrom: e.target.value })} />
+                    <Input type="date" value={draft.startDateTo}
+                      onChange={(e) => setDraft({ ...draft, startDateTo: e.target.value })} />
+                  </div>
+                </div>
+                <div className="filter-field">
+                  <FormLabel>Planned End</FormLabel>
+                  <div className="filter-field-range">
+                    <Input type="date" value={draft.endDateFrom}
+                      onChange={(e) => setDraft({ ...draft, endDateFrom: e.target.value })} />
+                    <Input type="date" value={draft.endDateTo}
+                      onChange={(e) => setDraft({ ...draft, endDateTo: e.target.value })} />
+                  </div>
+                </div>
+                <div className="filter-field">
+                  <FormLabel>Completed</FormLabel>
+                  <div className="filter-field-range">
+                    <Input type="date" value={draft.completedDateFrom}
+                      onChange={(e) => setDraft({ ...draft, completedDateFrom: e.target.value })} />
+                    <Input type="date" value={draft.completedDateTo}
+                      onChange={(e) => setDraft({ ...draft, completedDateTo: e.target.value })} />
+                  </div>
+                </div>
+              </>
+            }
             headerChildren={
               <div className="ss-filter-bar">
                 <SearchableSelect

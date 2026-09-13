@@ -753,7 +753,7 @@ public class AssessmentService {
             // Membership scope is a union of organizations and sub-organization applications, which
             // the single-column finders below cannot express — route through the scoped search.
             return searchAssessmentsAdvanced(name, applicationId, null, organizationId, assessmentTypeId, null,
-                    assessorId, status, null, null, null, null, null, null, null, Boolean.TRUE, null,
+                    assessorId, status, null, null, null, null, null, null, null, null, null, Boolean.TRUE, null,
                     null, null, null, null, pageable, authentication);
         }
         return searchAssessments(applicationId, organizationId, assessmentTypeId, assessorId, status, name, pageable);
@@ -814,7 +814,7 @@ public class AssessmentService {
         Authentication authentication
     ) {
         return searchAssessmentsAdvanced(search, applicationId, applicationIds, organizationId, assessmentTypeId, null, assessorId,
-            status, null, null, startDateFrom, startDateTo, endDateFrom, endDateTo, pastDue, showCompleted, assignedToMe,
+            status, null, null, startDateFrom, startDateTo, endDateFrom, endDateTo, null, null, pastDue, showCompleted, assignedToMe,
             currentUserId, null, null, null, pageable, authentication);
     }
 
@@ -838,6 +838,8 @@ public class AssessmentService {
         LocalDateTime startDateTo,
         LocalDateTime endDateFrom,
         LocalDateTime endDateTo,
+        LocalDateTime completedDateFrom,
+        LocalDateTime completedDateTo,
         Boolean pastDue,
         Boolean showCompleted,
         Boolean assignedToMe,
@@ -926,6 +928,8 @@ public class AssessmentService {
                 .startDateTo(startDateTo)
                 .endDateFrom(endDateFrom)
                 .endDateTo(endDateTo)
+                .completedDateFrom(completedDateFrom)
+                .completedDateTo(completedDateTo)
                 .pastDue(Boolean.TRUE.equals(pastDue))
                 .excludeCompleted(Boolean.FALSE.equals(showCompleted))
                 .assignedToMe(Boolean.TRUE.equals(assignedToMe))

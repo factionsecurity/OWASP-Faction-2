@@ -56,6 +56,8 @@ public record AssessmentSearchCriteria(
         LocalDateTime startDateTo,
         LocalDateTime endDateFrom,
         LocalDateTime endDateTo,
+        LocalDateTime completedDateFrom,
+        LocalDateTime completedDateTo,
         boolean pastDue,
         boolean excludeCompleted,
         boolean assignedToMe,
