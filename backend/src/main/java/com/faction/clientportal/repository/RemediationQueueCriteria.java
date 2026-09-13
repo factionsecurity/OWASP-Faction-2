@@ -40,6 +40,12 @@ public record RemediationQueueCriteria(
         String search,
         Collection<Integer> severityOrdinals,
         Collection<String> organizationIds,
+        /**
+         * Membership scope (the {@code :org} tier): applications granted through sub-organization
+         * membership, ORed with {@code organizationIds}. Null → plain organization filter; non-null
+         * (even empty) → membership predicate, and both empty → match nothing.
+         */
+        Collection<String> scopeAppIds,
         Collection<String> applicationIds,
         Collection<String> teamIds,
         String assessorId,

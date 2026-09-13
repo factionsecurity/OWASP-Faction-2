@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -24,7 +25,11 @@ public class UserDto {
     private List<String> roleIds;
     private List<String> teamIds;
     private Boolean isInternal;
-    private String organizationId;
+    @Builder.Default private List<String> organizationIds = new ArrayList<>();
+    @Builder.Default private List<String> subOrganizationIds = new ArrayList<>();
+    /** Display only: names for the ids above, same order. Sub-org names are "Org / Sub-org". */
+    @Builder.Default private List<String> organizationNames = new ArrayList<>();
+    @Builder.Default private List<String> subOrganizationNames = new ArrayList<>();
     private LocalDateTime createdAt;
     private LocalDateTime deletedAt;
     private LocalDateTime disabledAt;

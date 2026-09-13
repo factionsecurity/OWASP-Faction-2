@@ -103,15 +103,11 @@ public class ApplicationService {
                                 .accessLevel("WRITE")
                                 .build());
                     }
-                    // External owners create applications inside their home organization
-                    if (user.getOrganizationId() != null) {
-                        request.setOrganizationId(user.getOrganizationId());
-                    }
+                    // External owners create applications inside one of their organizations
+                    forceOrganization(user, request);
                 });
             } else if (!isSuperAdmin && !hasCreateAll && !hasCreateOwned && hasCreateOrg) {
-                // Org user: force organizationId to their org
-                String orgId = resolveOrgId(authentication);
-                request.setOrganizationId(orgId);
+                userRepository.findById(userId).ifPresent(user -> forceOrganization(user, request));
             }
         }
 
@@ -174,8 +170,7 @@ public class ApplicationService {
                     // Owned editors cannot move an application to a different organization
                     request.setOrganizationId(application.getOrganizationId());
                 } else if (hasEditOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    if (orgId == null || !orgId.equals(application.getOrganizationId())) {
+                    if (!accessScopeService.resolveOrgAccess(authentication).permits(application)) {
                         throw new AccessDeniedException("Access denied");
                     }
                     // Org users cannot move an application to a different organization
@@ -276,8 +271,7 @@ public class ApplicationService {
                         throw new ResourceNotFoundException("Application not found with id: " + id);
                     }
                 } else if (hasReadOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    if (orgId == null || !orgId.equals(application.getOrganizationId())) {
+                    if (!accessScopeService.resolveOrgAccess(authentication).permits(application)) {
                         throw new ResourceNotFoundException("Application not found with id: " + id);
                     }
                 }
@@ -313,10 +307,8 @@ public class ApplicationService {
                     List<ApplicationDto> page = start > dtos.size() ? new ArrayList<>() : dtos.subList(start, end);
                     return new PageImpl<>(page, pageable, dtos.size());
                 } else if (hasReadOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    List<Application> orgApps = orgId != null
-                            ? applicationRepository.findByOrganizationId(orgId)
-                            : new ArrayList<>();
+                    List<Application> orgApps = applicationRepository.findAllById(
+                            accessScopeService.applicationIdsFor(accessScopeService.resolveOrgAccess(authentication)));
                     List<ApplicationDto> dtos = orgApps.stream().map(this::toDto).collect(Collectors.toList());
                     int start = (int) pageable.getOffset();
                     int end = Math.min(start + pageable.getPageSize(), dtos.size());
@@ -419,8 +411,8 @@ public class ApplicationService {
                     source = applicationRepository.findAllById(
                             accessScopeService.ownedApplicationIds(resolveUserId(authentication)));
                 } else if (hasReadOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    source = orgId != null ? applicationRepository.findByOrganizationId(orgId) : new ArrayList<>();
+                    source = applicationRepository.findAllById(
+                            accessScopeService.applicationIdsFor(accessScopeService.resolveOrgAccess(authentication)));
                 } else {
                     source = new ArrayList<>();
                 }
@@ -630,11 +622,23 @@ public class ApplicationService {
                 .orElse(username);
     }
 
-    private String resolveOrgId(Authentication authentication) {
-        String username = authentication.getName();
-        return userRepository.findByUsername(username)
-                .map(User::getOrganizationId)
-                .orElse(null);
+    /**
+     * An external creator's application lands in one of their organizations: the only one when
+     * they have exactly one, otherwise the one the request names — never a guess between several,
+     * and never an organization they are not a member of. Sub-organization membership alone does
+     * not grant creating applications in the parent.
+     */
+    private void forceOrganization(User user, CreateApplicationRequest request) {
+        List<String> orgs = user.getOrganizationIds() == null ? List.of() : user.getOrganizationIds();
+        if (orgs.size() == 1) {
+            request.setOrganizationId(orgs.get(0));
+            return;
+        }
+        if (orgs.isEmpty() || request.getOrganizationId() == null || !orgs.contains(request.getOrganizationId())) {
+            throw new IllegalArgumentException(orgs.isEmpty()
+                    ? "You are not a member of an organization that can own applications"
+                    : "Choose one of your organizations for the application");
+        }
     }
 
     private String buildDisplayName(User user) {

@@ -199,20 +199,34 @@ public class MentionableUserService {
      * that person has left.
      */
     private List<User> orgPeers(User caller) {
-        if (caller.getOrganizationId() == null) {
-            return List.of();
+        java.util.LinkedHashMap<String, User> peers = new java.util.LinkedHashMap<>();
+        for (String orgId : ids(caller.getOrganizationIds())) {
+            userRepository.findExternalByOrganizationId(orgId).forEach(u -> peers.putIfAbsent(u.getId(), u));
         }
-        return userRepository.findByOrganizationIdAndIsInternalFalseAndDeletedAtIsNull(
-                caller.getOrganizationId());
+        for (String subId : ids(caller.getSubOrganizationIds())) {
+            userRepository.findExternalBySubOrganizationId(subId).forEach(u -> peers.putIfAbsent(u.getId(), u));
+        }
+        return new ArrayList<>(peers.values());
     }
 
     /**
-     * True when the candidate belongs to some other organization. A null organization is staff —
-     * reachable only because a thread already put them in front of this caller.
+     * True when the candidate is an external user who shares no organization and no
+     * sub-organization with the caller. A candidate with no memberships is staff — reachable only
+     * because a thread already put them in front of this caller.
      */
     private boolean isAnotherOrganisation(User candidate, User caller) {
-        return candidate.getOrganizationId() != null
-                && !candidate.getOrganizationId().equals(caller.getOrganizationId());
+        List<String> candidateOrgs = ids(candidate.getOrganizationIds());
+        List<String> candidateSubs = ids(candidate.getSubOrganizationIds());
+        if (candidateOrgs.isEmpty() && candidateSubs.isEmpty()) {
+            return false;
+        }
+        boolean sharesOrg = candidateOrgs.stream().anyMatch(ids(caller.getOrganizationIds())::contains);
+        boolean sharesSub = candidateSubs.stream().anyMatch(ids(caller.getSubOrganizationIds())::contains);
+        return !sharesOrg && !sharesSub;
+    }
+
+    private static List<String> ids(List<String> list) {
+        return list == null ? List.of() : list;
     }
 
     private boolean matches(User user, String needle) {

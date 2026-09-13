@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -269,7 +270,8 @@ public class TeamService {
                 .roleIds(user.getRoleIds())
                 .teamIds(user.getTeamIds())
                 .isInternal(user.getIsInternal())
-                .organizationId(user.getOrganizationId())
+                .organizationIds(new ArrayList<>(user.getOrganizationIds()))
+                .subOrganizationIds(new ArrayList<>(user.getSubOrganizationIds()))
                 .createdAt(user.getCreatedAt())
                 .deletedAt(user.getDeletedAt())
                 .disabledAt(user.getDisabledAt())

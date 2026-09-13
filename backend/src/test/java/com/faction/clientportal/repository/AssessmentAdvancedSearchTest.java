@@ -120,6 +120,27 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
         assertThat(search(base().search("app_0").build())).extracting(Assessment::getName).containsExactly("app_01");
     }
 
+    // ── Membership (ORG) scope: organizations OR sub-organization-granted applications ──
+
+    @Test
+    void orgScope_matchesOrganizationOrScopedApplication() {
+        String appX = application("APP-X", "X");
+        String appY = application("APP-Y", "Y");
+        save(a("In org").organizationId("org-1").applicationId(appY).status("IN_PROGRESS"));
+        save(a("Scoped app").organizationId("org-2").applicationId(appX).status("IN_PROGRESS"));
+        save(a("Neither").organizationId("org-2").applicationId(appY).status("IN_PROGRESS"));
+
+        var result = search(base().scopeOrgIds(Set.of("org-1")).scopeAppIds(Set.of(appX)).build());
+        assertThat(result).extracting(Assessment::getName).containsExactlyInAnyOrder("In org", "Scoped app");
+
+        assertThat(search(base().scopeOrgIds(Set.of("org-1")).scopeAppIds(Set.of()).build()))
+                .extracting(Assessment::getName).containsExactly("In org");
+        assertThat(search(base().scopeOrgIds(Set.of()).scopeAppIds(Set.of(appX)).build()))
+                .extracting(Assessment::getName).containsExactly("Scoped app");
+        // A membership scope that grants nothing matches nothing — never falls through to "all".
+        assertThat(search(base().scopeOrgIds(Set.of()).scopeAppIds(Set.of()).build())).isEmpty();
+    }
+
     // ── Equality filters ────────────────────────────────────────────────────────
 
     @Test

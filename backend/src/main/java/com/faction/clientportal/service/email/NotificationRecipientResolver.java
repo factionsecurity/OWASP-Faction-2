@@ -202,23 +202,32 @@ public class NotificationRecipientResolver {
      * Everyone whose access to this application comes from its organization.
      *
      * <p>Filtered through {@link AccessScopeService#ownsApplication}, the same rule the API
-     * enforces, rather than by home organization alone. A user with application-level
+     * enforces, rather than by organization membership alone. A user with application-level
      * assignments is restricted to those applications, so without this filter they would be
      * mailed about findings in their organization that they cannot open — every one of these
      * emails links into the platform, and a link to a 403 is worse than no email.
      *
-     * <p>External users only: an organization is only ever assigned to them. Staff reach
+     * <p>External users only: memberships are only ever given to them. Staff reach
      * these events through the assessor audience instead, and an internal account that
      * happens to carry an organization is not a customer contact.
      */
     private List<Recipient> organizationRecipients(Application application) {
         if (application == null || isBlank(application.getOrganizationId())) return List.of();
 
+        // Members of the application's organization, plus members of the sub-organization it is
+        // attributed to. De-duplicated by id: someone in both is one person and gets one email.
+        java.util.LinkedHashMap<String, User> candidates = new java.util.LinkedHashMap<>();
+        for (User user : userRepository.findLiveExternalByOrganizationId(application.getOrganizationId())) {
+            if (user != null && user.getId() != null) candidates.putIfAbsent(user.getId(), user);
+        }
+        if (!isBlank(application.getSubOrganizationId())) {
+            for (User user : userRepository.findLiveExternalBySubOrganizationId(application.getSubOrganizationId())) {
+                if (user != null && user.getId() != null) candidates.putIfAbsent(user.getId(), user);
+            }
+        }
+
         List<Recipient> out = new ArrayList<>();
-        for (User user : userRepository
-                .findByOrganizationIdAndIsInternalFalseAndDeletedAtIsNullAndDisabledAtIsNull(
-                        application.getOrganizationId())) {
-            if (user == null || user.getId() == null) continue;
+        for (User user : candidates.values()) {
             try {
                 if (!accessScopeService.ownsApplication(user.getId(), application)) continue;
             } catch (Exception e) {

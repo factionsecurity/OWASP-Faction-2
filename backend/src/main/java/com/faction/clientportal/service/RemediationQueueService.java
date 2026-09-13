@@ -98,6 +98,7 @@ public class RemediationQueueService {
                 .search(search)
                 .severityOrdinals(severityOrdinals(severity))
                 .organizationIds(es.orgIds())
+                .scopeAppIds(es.scopeAppIds())
                 .applicationIds(es.appIds())
                 .teamIds(es.teamIds())
                 .assessorId(es.assessorId())

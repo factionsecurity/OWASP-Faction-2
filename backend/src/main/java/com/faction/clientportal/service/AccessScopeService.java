@@ -7,6 +7,7 @@ import com.faction.clientportal.model.Permission;
 import com.faction.clientportal.model.User;
 import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.AssessmentRepository;
+import com.faction.clientportal.repository.SubOrganizationRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.security.RequiresPermissionAuthorizationManager;
 import lombok.RequiredArgsConstructor;
@@ -15,8 +16,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 
+import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -29,12 +30,13 @@ import java.util.stream.Collectors;
  * - App-level (restricted): the user appears in one or more applications'
  *   {@code assignedUsers} lists — they see ONLY those applications, with edit
  *   rights per assignment access level (WRITE edits, READ views).
- * - Org-level (default): no application assignments — the user's home
- *   organization ({@link User#getOrganizationId()}) grants FULL access to
- *   everything in that organization, including editing its applications.
+ * - Membership (default): no application assignments — the user's organizations
+ *   ({@link User#getOrganizationIds()}) grant FULL access to everything in each,
+ *   and their sub-organizations ({@link User#getSubOrganizationIds()}) grant the
+ *   applications attributed to those. See {@link OrgAccess}.
  *
- * ":org" scope (e.g. the Organization Read role) is unchanged: read-style
- * access to everything in the home organization, no assignment involved.
+ * ":org" scope (e.g. the Organization Read role) reads the same memberships:
+ * read-style access to what they grant, no assignment involved.
  *
  * Internal users (authorities without an :org/:owned suffix) are not
  * restricted here — their team/assigned data checks live elsewhere.
@@ -50,14 +52,76 @@ public class AccessScopeService {
     private final UserRepository userRepository;
     private final ApplicationRepository applicationRepository;
     private final AssessmentRepository assessmentRepository;
+    private final SubOrganizationRepository subOrganizationRepository;
 
     public Optional<User> currentUser(Authentication authentication) {
         if (authentication == null) return Optional.empty();
         return userRepository.findByUsername(authentication.getName());
     }
 
-    public String resolveOrgId(Authentication authentication) {
-        return currentUser(authentication).map(User::getOrganizationId).orElse(null);
+    /**
+     * What a user's organization memberships grant: the organizations they belong to (everything
+     * in each), and the applications their sub-organizations grant (only those). Access to an
+     * application is the union — see {@link #permits(Application)}.
+     */
+    public record OrgAccess(Set<String> orgIds, Set<String> subOrgIds, Set<String> subOrgAppIds) {
+        public static OrgAccess none() { return new OrgAccess(Set.of(), Set.of(), Set.of()); }
+        public boolean isEmpty() { return orgIds.isEmpty() && subOrgIds.isEmpty(); }
+        public boolean permitsOrg(String organizationId) {
+            return organizationId != null && orgIds.contains(organizationId);
+        }
+        public boolean permits(Application app) {
+            return app != null && (permitsOrg(app.getOrganizationId())
+                    || (app.getSubOrganizationId() != null && subOrgIds.contains(app.getSubOrganizationId())));
+        }
+    }
+
+    public OrgAccess resolveOrgAccess(User user) {
+        if (user == null) return OrgAccess.none();
+        Set<String> orgIds = user.getOrganizationIds() == null ? Set.of() : Set.copyOf(user.getOrganizationIds());
+        Set<String> subOrgIds = user.getSubOrganizationIds() == null ? Set.of() : Set.copyOf(user.getSubOrganizationIds());
+        Set<String> subOrgAppIds = subOrgIds.isEmpty() ? Set.of()
+                : subOrgIds.stream()
+                        .flatMap(id -> applicationRepository.findBySubOrganizationId(id).stream())
+                        .map(Application::getId)
+                        .collect(Collectors.toSet());
+        return new OrgAccess(orgIds, subOrgIds, subOrgAppIds);
+    }
+
+    /** The caller's memberships; {@link OrgAccess#none()} for an unknown or missing user. */
+    public OrgAccess resolveOrgAccess(Authentication authentication) {
+        return currentUser(authentication).map(this::resolveOrgAccess).orElse(OrgAccess.none());
+    }
+
+    /**
+     * Organizations whose record the user may open: their own, plus the parents of their
+     * sub-organizations. Opening the parent does not grant its other applications — that is still
+     * decided per application by {@link OrgAccess#permits(Application)}.
+     */
+    public Set<String> visibleOrganizationIds(OrgAccess access) {
+        Set<String> ids = new HashSet<>(access.orgIds());
+        if (!access.subOrgIds().isEmpty()) {
+            subOrganizationRepository.findAllById(access.subOrgIds()).forEach(s -> ids.add(s.getOrganizationId()));
+        }
+        return ids;
+    }
+
+    /** The subset of {@code appIds} whose application belongs to one of {@code organizationIds}. */
+    public Set<String> applicationIdsWithinOrganizations(Set<String> appIds, java.util.Collection<String> organizationIds) {
+        if (appIds.isEmpty() || organizationIds == null || organizationIds.isEmpty()) return Set.of();
+        return applicationRepository.findAllById(appIds).stream()
+                .filter(a -> a.getOrganizationId() != null && organizationIds.contains(a.getOrganizationId()))
+                .map(Application::getId)
+                .collect(Collectors.toSet());
+    }
+
+    /** Every application id an {@link OrgAccess} grants, for callers that page in memory. */
+    public Set<String> applicationIdsFor(OrgAccess access) {
+        Set<String> ids = new HashSet<>(access.subOrgAppIds());
+        if (!access.orgIds().isEmpty()) {
+            applicationRepository.findByOrganizationIdIn(access.orgIds()).forEach(a -> ids.add(a.getId()));
+        }
+        return ids;
     }
 
     /** True when the user has application-level assignments (restricted mode). */
@@ -66,18 +130,16 @@ public class AccessScopeService {
     }
 
     /**
-     * Application ids the user owns: their assigned applications when
-     * app-level restricted, otherwise every application in their home org.
+     * Application ids the user owns: their assigned applications when app-level restricted,
+     * otherwise everything their organization and sub-organization memberships grant.
      */
     public Set<String> ownedApplicationIds(String userId) {
         List<Application> assigned = applicationRepository.findByAssignedUsersUserId(userId);
         if (!assigned.isEmpty()) {
             return assigned.stream().map(Application::getId).collect(Collectors.toSet());
         }
-        return homeOrgId(userId)
-                .map(orgId -> applicationRepository.findByOrganizationId(orgId).stream()
-                        .map(Application::getId)
-                        .collect(Collectors.toSet()))
+        return userRepository.findById(userId)
+                .map(u -> applicationIdsFor(resolveOrgAccess(u)))
                 .orElse(Set.of());
     }
 
@@ -86,14 +148,14 @@ public class AccessScopeService {
         if (!assigned.isEmpty()) {
             return assigned.stream().anyMatch(a -> a.getId().equals(application.getId()));
         }
-        return homeOrgId(userId)
-                .map(orgId -> orgId.equals(application.getOrganizationId()))
+        return userRepository.findById(userId)
+                .map(u -> resolveOrgAccess(u).permits(application))
                 .orElse(false);
     }
 
     /**
-     * Edit rights on the application: WRITE assignment when app-level
-     * restricted; org-level users have full access to their org's apps.
+     * Edit rights on the application: WRITE assignment when app-level restricted; membership
+     * users have full access to the applications their memberships grant.
      */
     public boolean canWriteApplication(String userId, Application application) {
         List<Application> assigned = applicationRepository.findByAssignedUsersUserId(userId);
@@ -102,18 +164,20 @@ public class AccessScopeService {
                     .map(a -> ACCESS_WRITE.equals(a.getAccessLevel()))
                     .orElse(false);
         }
-        return homeOrgId(userId)
-                .map(orgId -> orgId.equals(application.getOrganizationId()))
+        return userRepository.findById(userId)
+                .map(u -> resolveOrgAccess(u).permits(application))
                 .orElse(false);
     }
 
     /**
-     * Organizations visible to an owned-scope user: the home organization for
-     * org-level users; none when app-level restricted (they work app-by-app).
+     * Organizations visible to an owned-scope user: the ones they belong to and the parents of
+     * their sub-organizations; none when app-level restricted (they work app-by-app).
      */
     public Set<String> ownedOrganizationIds(String userId) {
         if (isAppLevelRestricted(userId)) return Set.of();
-        return homeOrgId(userId).map(Set::of).orElse(Set.of());
+        return userRepository.findById(userId)
+                .map(u -> visibleOrganizationIds(resolveOrgAccess(u)))
+                .orElse(Set.of());
     }
 
     public boolean ownsAssessment(String userId, Assessment assessment) {
@@ -143,12 +207,12 @@ public class AccessScopeService {
     public enum AssessmentScopeKind { UNRESTRICTED, ORG, OWNED, TEAM, ASSIGNED, DENIED }
 
     /**
-     * A resolved assessment scope. Exactly one payload is populated, per {@code kind}:
-     * {@code orgId} for ORG, {@code appIds} for OWNED, {@code teamIds} for TEAM,
-     * {@code assessorId} for ASSIGNED.
+     * A resolved assessment scope. The payload depends on {@code kind}: {@code orgIds} plus
+     * {@code appIds} (the sub-organization grants) for ORG, {@code appIds} for OWNED,
+     * {@code teamIds} for TEAM, {@code assessorId} for ASSIGNED.
      */
     public record AssessmentScope(
-            AssessmentScopeKind kind, String orgId, Set<String> appIds, Set<String> teamIds, String assessorId) {
+            AssessmentScopeKind kind, Set<String> orgIds, Set<String> appIds, Set<String> teamIds, String assessorId) {
 
         public boolean denied() { return kind == AssessmentScopeKind.DENIED; }
         public boolean unrestricted() { return kind == AssessmentScopeKind.UNRESTRICTED; }
@@ -156,8 +220,8 @@ public class AccessScopeService {
         static AssessmentScope unrestrictedScope() {
             return new AssessmentScope(AssessmentScopeKind.UNRESTRICTED, null, null, null, null);
         }
-        static AssessmentScope org(String orgId) {
-            return new AssessmentScope(AssessmentScopeKind.ORG, orgId, null, null, null);
+        static AssessmentScope org(Set<String> orgIds, Set<String> appIds) {
+            return new AssessmentScope(AssessmentScopeKind.ORG, orgIds, appIds, null, null);
         }
         static AssessmentScope owned(Set<String> appIds) {
             return new AssessmentScope(AssessmentScopeKind.OWNED, null, appIds, null, null);
@@ -181,7 +245,8 @@ public class AccessScopeService {
             return switch (kind) {
                 case UNRESTRICTED -> true;
                 case DENIED -> false;
-                case ORG -> orgId != null && orgId.equals(a.getOrganizationId());
+                case ORG -> (orgIds != null && a.getOrganizationId() != null && orgIds.contains(a.getOrganizationId()))
+                        || (appIds != null && a.getApplicationId() != null && appIds.contains(a.getApplicationId()));
                 case OWNED -> a.getApplicationId() != null && appIds != null && appIds.contains(a.getApplicationId());
                 case TEAM -> a.getTeamId() != null && teamIds != null && teamIds.contains(a.getTeamId());
                 case ASSIGNED -> assessorId != null
@@ -208,8 +273,8 @@ public class AccessScopeService {
             return AssessmentScope.unrestrictedScope();
         }
         if (authorities.contains(Permission.ASSESSMENTS_READ_ORG.getPermission())) {
-            String orgId = resolveOrgId(authentication);
-            return orgId != null ? AssessmentScope.org(orgId) : AssessmentScope.deny();
+            OrgAccess access = resolveOrgAccess(authentication);
+            return access.isEmpty() ? AssessmentScope.deny() : AssessmentScope.org(access.orgIds(), access.subOrgAppIds());
         }
         if (authorities.contains(Permission.ASSESSMENTS_READ_OWNED.getPermission())) {
             return currentUser(authentication)
@@ -333,7 +398,7 @@ public class AccessScopeService {
     /** Guard for interactions tied to an application (comments, edits by scope). */
     public void checkApplicationAccess(Authentication authentication, Application application) {
         checkScope(authentication,
-                user -> Objects.equals(user.getOrganizationId(), application.getOrganizationId()),
+                user -> resolveOrgAccess(user).permits(application),
                 user -> ownsApplication(user.getId(), application));
     }
 
@@ -350,7 +415,7 @@ public class AccessScopeService {
         if (!orgScoped && !ownedScoped) return; // internal user — not scoped here
         User user = currentUser(authentication)
                 .orElseThrow(() -> new AccessDeniedException("Access denied"));
-        if (orgScoped && user.getOrganizationId() != null && orgMatch.test(user)) return;
+        if (orgScoped && orgMatch.test(user)) return;
         if (ownedScoped && ownedMatch.test(user)) return;
         throw new AccessDeniedException("Access denied");
     }
@@ -358,12 +423,6 @@ public class AccessScopeService {
     public boolean hasOwnedScope(Authentication authentication) {
         return authentication != null && authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().endsWith(":owned"));
-    }
-
-    private Optional<String> homeOrgId(String userId) {
-        return userRepository.findById(userId)
-                .map(User::getOrganizationId)
-                .filter(Objects::nonNull);
     }
 
     private Optional<AssignedUser> assignment(List<AssignedUser> assignedUsers, String userId) {

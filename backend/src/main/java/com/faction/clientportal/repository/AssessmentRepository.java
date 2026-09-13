@@ -154,14 +154,27 @@ public interface AssessmentRepository extends JpaRepository<Assessment, String>,
             """)
     List<Object[]> countByStatusGroupedAll();
 
-    /** Org-scoped variant: grouped status counts restricted to a single organization. */
+    /**
+     * Membership-scoped variant: grouped status counts for the caller's organizations OR the
+     * applications their sub-organizations grant — the same predicate the list applies. Both
+     * collections must be non-empty; the service short-circuits the empty cases.
+     */
     @Query("""
             SELECT a.status, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
-              AND a.organizationId = :orgId
+              AND (a.organizationId IN :orgIds OR a.applicationId IN :applicationIds)
             GROUP BY a.status
             """)
-    List<Object[]> countByStatusGrouped(String orgId);
+    List<Object[]> countByStatusGroupedMembership(Collection<String> orgIds, Collection<String> applicationIds);
+
+    /** Grouped status counts restricted to the given organizations. */
+    @Query("""
+            SELECT a.status, count(a) FROM Assessment a
+            WHERE a.deletedAt IS NULL
+              AND a.organizationId IN :orgIds
+            GROUP BY a.status
+            """)
+    List<Object[]> countByStatusGroupedOrgs(Collection<String> orgIds);
 
     /** Owned-scope variant: grouped status counts restricted to the given application ids. */
     @Query("""

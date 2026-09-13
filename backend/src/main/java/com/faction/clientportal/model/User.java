@@ -82,5 +82,26 @@ public class User {
     @Builder.Default
     private Boolean isInternal = true;
 
-    private String organizationId;
+    /** Organizations an external user belongs to; each grants everything in it. Empty for staff. */
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<String> organizationIds = new ArrayList<>();
+
+    /** Sub-organizations an external user belongs to; each grants only its own applications. */
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<String> subOrganizationIds = new ArrayList<>();
+
+    /**
+     * Builder shorthand kept for the many callers that put a user in one organization. Not an
+     * entity field: the single-organization column is gone.
+     */
+    public static class UserBuilder {
+        public UserBuilder organizationId(String organizationId) {
+            this.organizationIds$value = organizationId == null
+                    ? new ArrayList<>() : new ArrayList<>(List.of(organizationId));
+            this.organizationIds$set = true;
+            return this;
+        }
+    }
 }
