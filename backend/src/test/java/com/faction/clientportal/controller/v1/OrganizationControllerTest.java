@@ -1028,4 +1028,39 @@ class OrganizationControllerTest extends TestContainersConfig {
 
         assertThat(organizationRepository.findById(org.getId()).orElseThrow().getRemediationOwnerIds()).isEmpty();
     }
+
+    @Test
+    void listOrganizations_sortsByRemediationOwnerNames_emptyLast() throws Exception {
+        String token = jwtService.generateToken(superAdminUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("super_admin")));
+        User alice = userRepository.save(User.builder().username("alice").email("alice@staff.com").password("x")
+                .firstName("Alice").lastName("Adams").loginOption(LoginOption.NATIVE).isInternal(true)
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+        User zed = userRepository.save(User.builder().username("zed").email("zed@staff.com").password("x")
+                .firstName("Zed").lastName("Zimmer").loginOption(LoginOption.NATIVE).isInternal(true)
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+        organizationRepository.save(Organization.builder().name("Zed's org")
+                .remediationOwnerIds(new ArrayList<>(List.of(zed.getId()))).build());
+        organizationRepository.save(Organization.builder().name("Nobody's org").build());
+        organizationRepository.save(Organization.builder().name("Alice's org")
+                .remediationOwnerIds(new ArrayList<>(List.of(alice.getId()))).build());
+
+        mockMvc.perform(get("/api/v1/organizations").param("sort", "remediationOwners,asc")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].name").value("Alice's org"))
+                .andExpect(jsonPath("$.data[1].name").value("Zed's org"))
+                .andExpect(jsonPath("$.data[2].name").value("Nobody's org"));
+
+        // Descending reverses the whole order, empties included — the same as every other text
+        // column here — so only the relative order of the owned organizations is pinned.
+        String json = mockMvc.perform(get("/api/v1/organizations").param("sort", "remediationOwners,desc")
+                        .param("search", "org")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andReturn().getResponse().getContentAsString();
+        List<String> names = com.jayway.jsonpath.JsonPath.read(json, "$.data[*].name");
+        assertThat(names.indexOf("Zed's org")).isLessThan(names.indexOf("Alice's org"));
+    }
 }

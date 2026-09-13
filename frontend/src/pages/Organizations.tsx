@@ -171,6 +171,7 @@ export default function Organizations() {
     },
     {
       header: 'Remediation Owners',
+      sortKey: 'remediationOwners',
       render: (organization) => {
         const owners = organization.remediationOwners || [];
         if (owners.length === 0) return <span className="text-muted">—</span>;
