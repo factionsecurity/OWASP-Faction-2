@@ -6,6 +6,7 @@ import type { Retest } from '../types';
 import DataTable, { Column, PaginationInfo, SortState } from '../components/DataTable';
 import { applyClientSort, SortAccessors } from '../utils/tableSort';
 import Page from '../components/Page';
+import { usePersistedState } from '../hooks/usePersistedState';
 import './RetestsPage.css';
 
 const columns: Column<Retest>[] = [
@@ -54,15 +55,18 @@ const SORT_ACCESSORS: SortAccessors<Retest> = {
 };
 
 const PAGE_SIZE = 15;
+// localStorage key for this table's saved search, sort and paging.
+const TABLE_KEY = 'retests';
 
 export default function RetestsPage() {
   const navigate = useNavigate();
   const [allRetests, setAllRetests] = useState<Retest[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortState | null>(null);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  // Starts true so DataTable doesn't clamp a restored page against the empty pre-load list.
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = usePersistedState(TABLE_KEY, 'search', '');
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [page, setPage] = usePersistedState(TABLE_KEY, 'page', 0);
+  const [pageSize, setPageSize] = usePersistedState(TABLE_KEY, 'pageSize', PAGE_SIZE);
 
   useEffect(() => {
     setLoading(true);
@@ -116,6 +120,7 @@ export default function RetestsPage() {
         pagination={pagination}
         onPageChange={setPage}
         onPageSizeChange={handlePageSizeChange}
+        initialSearch={search}
         onSearchChange={handleSearchChange}
         searchPlaceholder="Search retests"
         emptyMessage="No scheduled retests assigned to you."

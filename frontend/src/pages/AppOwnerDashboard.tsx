@@ -14,8 +14,10 @@ import type {
 } from '../types';
 import './AppOwnerDashboard.css';
 import { useTerminology } from '../context/TerminologyContext';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 const DAY_MS = 86_400_000;
+const TABLE_KEY = 'appOwnerDashboard';
 
 // The due-soon table is a view of the remediation queue's vulnerability half — server-paginated
 // and server-filtered, so the page never holds more than one screenful of findings.
@@ -62,19 +64,21 @@ export default function AppOwnerDashboard() {
   // Due-date table: server-paginated, -sorted and -filtered off the remediation queue.
   const [dueSoon, setDueSoon] = useState<RemediationQueueRow[]>([]);
   const [tableLoading, setTableLoading] = useState(true);
-  const [pagination, setPagination] = useState<PaginationInfo>({
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0, pageSize: PAGE_SIZE, total: 0, totalPages: 0,
   });
-  const [sort, setSort] = useState<SortState | null>(null);
-  const [search, setSearch] = useState('');
-  const [filterSeverity, setFilterSeverity] = useState('');
-  const [filterApplicationId, setFilterApplicationId] = useState('');
-  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [search, setSearch] = usePersistedState(TABLE_KEY, 'search', '');
+  const [filterSeverity, setFilterSeverity] = usePersistedState(TABLE_KEY, 'filterSeverity', '');
+  const [filterApplicationId, setFilterApplicationId] = usePersistedState(TABLE_KEY, 'filterApplicationId', '');
+  const [filterStatuses, setFilterStatuses] = usePersistedState<string[]>(TABLE_KEY, 'filterStatuses', []);
 
   // Dropdown options
   const [appOptions, setAppOptions] = useState<SelectOption[]>([]);
   const [appLoading, setAppLoading] = useState(false);
-  const [appLabels, setAppLabels] = useState<Record<string, string>>({});
+  // Saved with the filter so a restored application still shows its name when it is not in the
+  // starter option list. Only the selected application's label is kept, so it never grows.
+  const [appLabels, setAppLabels] = usePersistedState<Record<string, string>>(TABLE_KEY, 'appLabels', {});
   const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(DEFAULT_VULN_STATUSES);
 
   const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
@@ -265,7 +269,7 @@ export default function AppOwnerDashboard() {
           setFilterApplicationId(v); setPagination(prev => ({ ...prev, page: 0 }));
           if (v) {
             const o = appOptionsMerged.find(x => x.value === v);
-            if (o) setAppLabels(p => ({ ...p, [v]: o.label }));
+            if (o) setAppLabels({ [v]: o.label });
           }
         }}
         options={appOptionsMerged}
@@ -364,6 +368,7 @@ export default function AppOwnerDashboard() {
           onPageChange={handlePageChange}
           onPageSizeChange={handlePageSizeChange}
           onSearchChange={handleSearchChange}
+          initialSearch={search}
           searchPlaceholder="Search vulnerabilities"
           emptyMessage={anyFilterActive
             ? 'No findings match these filters.'

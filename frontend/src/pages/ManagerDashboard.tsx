@@ -44,6 +44,9 @@ import '../components/SearchableSelect.css';
 import { formatCompact as fmtStat } from '../utils/formatNumber';
 import './ManagerDashboard.css';
 import { useTerminology } from '../context/TerminologyContext';
+import { usePersistedState } from '../hooks/usePersistedState';
+
+const TABLE_KEY = 'managerDashboard';
 
 // Dashboard severity chips: lowercase keys + single-letter labels are presentational
 // and dashboard-specific; the color comes from the canonical palette.
@@ -158,15 +161,29 @@ export default function ManagerDashboard() {
 
   // Applied filters — the source of truth that drives getStats + the table. Inline filters
   // (severity/status/assessor/type) write here live; advanced filters land here on Apply.
-  const [applied, setApplied] = useState<FilterFormState>(defaultFilterForm());
-  // Advanced panel draft (dates + team + campaign), staged until Apply.
+  const [applied, setApplied] = usePersistedState<FilterFormState>(TABLE_KEY, 'applied', defaultFilterForm());
+  const [appliedQuickRange, setAppliedQuickRange] = usePersistedState(TABLE_KEY, 'appliedQuickRange', '30days');
+  // A saved quick range stores the dates it resolved to on the day it was applied. Re-resolve them
+  // once on return so "Last 30 Days" still ends today. This is a render-phase update, so the first
+  // fetch already uses the fresh dates.
+  const [rangeRebased, setRangeRebased] = useState(false);
+  if (!rangeRebased) {
+    setRangeRebased(true);
+    if (appliedQuickRange) {
+      const { from, to } = quickRangeDates(appliedQuickRange);
+      if (from !== applied.startDate || to !== applied.endDate) {
+        setApplied((prev) => ({ ...prev, startDate: from, endDate: to }));
+      }
+    }
+  }
+  // Advanced panel draft (dates + team + campaign), staged until Apply. Starts from the applied
+  // (possibly restored) values.
   const advancedDraft = (f: FilterFormState) => ({
     startDate: f.startDate, endDate: f.endDate, teamId: f.teamId, campaignId: f.campaignId,
   });
-  const [draft, setDraft] = useState(advancedDraft(defaultFilterForm()));
+  const [draft, setDraft] = useState(() => advancedDraft(applied));
   // Quick range: the panel's picked preset (drives the date fields); the applied one labels the chip.
-  const [quickRange, setQuickRange] = useState('30days');
-  const [appliedQuickRange, setAppliedQuickRange] = useState('30days');
+  const [quickRange, setQuickRange] = useState(appliedQuickRange);
   const [exporting, setExporting] = useState(false);
   const [earliestStart, setEarliestStart] = useState<string | null>(null);
 
@@ -182,12 +199,12 @@ export default function ManagerDashboard() {
   // Results table
   const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>([]);
   const [assessmentsLoading, setAssessmentsLoading] = useState(false);
-  const [assessmentPagination, setAssessmentPagination] = useState<PaginationInfo>({
+  const [assessmentPagination, setAssessmentPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0, pageSize: 25, total: 0, totalPages: 0,
   });
   // Free-text search from the DataTable search box
-  const [assessmentSearch, setAssessmentSearch] = useState('');
-  const [assessmentSort, setAssessmentSort] = useState<SortState | null>(null);
+  const [assessmentSearch, setAssessmentSearch] = usePersistedState(TABLE_KEY, 'search', '');
+  const [assessmentSort, setAssessmentSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
 
   useEffect(() => {
     setPageTitle('Operational Dashboard');
@@ -613,6 +630,7 @@ export default function ManagerDashboard() {
         onPageChange={handleAssessmentPageChange}
         onPageSizeChange={handleAssessmentPageSizeChange}
         onSearchChange={handleAssessmentSearchChange}
+        initialSearch={assessmentSearch}
         searchPlaceholder="Search assessments"
         emptyMessage="No assessments match the current filters"
         idAccessor="id"
