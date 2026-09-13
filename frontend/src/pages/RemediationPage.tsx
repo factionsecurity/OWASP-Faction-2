@@ -734,6 +734,9 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
           ? `No ${isRetest ? 'retest' : 'vulnerability'} alerts match these filters.`
           : isRetest ? 'No retests are waiting on anyone.' : 'No vulnerabilities currently need attention.'}
         idAccessor="key"
+        // A row click opens the vulnerability panel: the finding itself, or on a retest row the
+        // finding being retested. The Actions cell stops its clicks from reaching the row.
+        onRowClick={openVulnDrawer}
         headerChildren={headerFilters}
         advancedActiveCount={filterChips.length}
         filterChips={filterChips}

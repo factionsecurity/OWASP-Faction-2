@@ -377,12 +377,13 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
   const columns: Column<VulnerabilityListItem>[] = [
     {
       header: '',
+      // Selecting a row must never open the vulnerability panel, wherever in the cell you click.
+      stopRowClick: true,
       render: (v) => (
         <input
           type="checkbox"
           checked={selectedVulns.has(v.id)}
-          onChange={e => { e.stopPropagation(); toggleVulnSelection(v); }}
-          onClick={e => e.stopPropagation()}
+          onChange={() => toggleVulnSelection(v)}
           style={{ cursor: 'pointer', width: '16px', height: '16px' }}
         />
       ),
@@ -438,6 +439,8 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
     { header: 'Closed', sortKey: 'closedAt', render: (v) => v.closedAt ? new Date(v.closedAt).toLocaleDateString() : '-' },
     {
       header: 'Actions',
+      // Kept from reaching the row, which opens the same panel, so it isn't fetched twice.
+      stopRowClick: true,
       render: (v) => (
         <ActionButtons>
           <IconButton icon={Eye} onClick={() => handleView(v)} title="View Details" variant="edit" />
@@ -516,6 +519,8 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
         searchPlaceholder="Search vulnerabilities"
         emptyMessage={showClosed ? 'No vulnerabilities found' : 'No open vulnerabilities found'}
         idAccessor="id"
+        // A row click opens the vulnerability panel; the checkbox and Actions cells opt out.
+        onRowClick={handleView}
         headerChildren={headerFilters}
         advancedActiveCount={filterChips.length}
         filterChips={filterChips}

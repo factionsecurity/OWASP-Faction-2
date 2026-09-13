@@ -14,6 +14,11 @@ export interface Column<T> {
    * order by (computed/aggregated cells, action buttons).
    */
   sortKey?: string;
+  /**
+   * Clicks anywhere in this column's cells never reach `onRowClick` — for checkbox and action
+   * cells, where a click means "select" or "act", not "open the row".
+   */
+  stopRowClick?: boolean;
 }
 
 export type SortDirection = 'asc' | 'desc';
@@ -474,7 +479,11 @@ export default function DataTable<T>({
                   style={onRowClick ? { cursor: 'pointer' } : undefined}
                 >
                   {columns.map((column, colIndex) => (
-                    <td key={colIndex}>
+                    <td
+                      key={colIndex}
+                      onClick={column.stopRowClick ? (e) => e.stopPropagation() : undefined}
+                      style={column.stopRowClick && onRowClick ? { cursor: 'default' } : undefined}
+                    >
                       {column.render
                         ? column.render(item)
                         : column.accessor
