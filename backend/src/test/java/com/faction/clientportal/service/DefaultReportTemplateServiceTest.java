@@ -20,11 +20,13 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The default report template is fetched over the network during startup, which is the whole
@@ -244,6 +246,81 @@ class DefaultReportTemplateServiceTest extends TestContainersConfig {
 
         service.ensureDefaultTemplate();
 
+        assertThat(reportTemplateRepository.findAll()).isEmpty();
+    }
+
+    // ── Resolving a template for an assessment that was created without one ──────────────
+
+    private String typeId() {
+        return assessmentTypeRepository.findAll().get(0).getId();
+    }
+
+    private ReportTemplate template(String name, String typeId, boolean active, boolean deleted) {
+        return reportTemplateRepository.save(ReportTemplate.builder()
+                .name(name)
+                .assessmentTypeId(typeId)
+                .version(1)
+                .active(active)
+                .deletedAt(deleted ? LocalDateTime.now() : null)
+                .userDefinedFields(new ArrayList<>())
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+    }
+
+    @Test
+    void resolve_prefersTheTemplateCarryingTheDefaultName() throws Exception {
+        template("Customer template", typeId(), true, false);
+        ReportTemplate named = template("Default Pentest Report", typeId(), true, false);
+        // Nothing served: choosing an existing template must not reach for the network.
+        pointAt("/missing.docx");
+
+        ReportTemplate resolved = service.resolveForAssessmentType(typeId());
+
+        assertThat(resolved.getId()).isEqualTo(named.getId());
+        assertThat(reportTemplateRepository.findAll()).hasSize(2);
+    }
+
+    @Test
+    void resolve_usesTheOnlyActiveTemplateOfTheType() throws Exception {
+        ReportTemplate only = template("Customer template", typeId(), true, false);
+        template("Retired template", typeId(), false, false);
+        template("Deleted template", typeId(), true, true);
+        pointAt("/missing.docx");
+
+        ReportTemplate resolved = service.resolveForAssessmentType(typeId());
+
+        assertThat(resolved.getId()).isEqualTo(only.getId());
+        assertThat(reportTemplateRepository.findAll()).hasSize(3);
+    }
+
+    @Test
+    void resolve_installsTheDefaultWhenTheTypeHasNoUsableTemplate() throws Exception {
+        // The one template the type had was deleted, and it held the default name, so the
+        // replacement has to be installed under a name that is still free.
+        template("Default Pentest Report", typeId(), true, true);
+        byte[] docx = docxBytes();
+        serve("/template.docx", 200, docx);
+        pointAt("/template.docx");
+
+        ReportTemplate resolved = service.resolveForAssessmentType(typeId());
+
+        assertThat(resolved.getDeletedAt()).isNull();
+        assertThat(resolved.getActive()).isTrue();
+        assertThat(resolved.getAssessmentTypeId()).isEqualTo(typeId());
+        assertThat(resolved.getName()).startsWith("Default Pentest Report");
+        assertThat(resolved.getTemplateFileSize()).isEqualTo((long) docx.length);
+        assertThat(storageService.downloadBytes(resolved.getTemplateFileId())).isEqualTo(docx);
+        assertThat(reportTemplateRepository.findAll()).hasSize(2);
+    }
+
+    @Test
+    void resolve_failsClearlyWhenTheDefaultCannotBeFetched() {
+        pointAt("/missing.docx");
+
+        assertThatThrownBy(() -> service.resolveForAssessmentType(typeId()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Report Designer");
         assertThat(reportTemplateRepository.findAll()).isEmpty();
     }
 }

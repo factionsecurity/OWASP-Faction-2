@@ -73,8 +73,14 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
     private List<Clause> buildClauses(AssessmentSearchCriteria c) {
         List<Clause> clauses = new ArrayList<>();
 
+        // The search box matches the assessment's name or its application's name — people look
+        // for "the banking portal's assessments" as often as for an assessment by title. An EXISTS
+        // subquery rather than a join keeps the count query a single-table scan.
         if (c.search() != null && !c.search().isBlank()) {
-            clauses.add(Clause.of("AND LOWER(a.name) LIKE LOWER(CONCAT('%', :search, '%')) ESCAPE '!'",
+            clauses.add(Clause.of("""
+                    AND (LOWER(a.name) LIKE LOWER(CONCAT('%', :search, '%')) ESCAPE '!'
+                         OR EXISTS (SELECT 1 FROM applications sapp WHERE sapp.id = a.application_id
+                                    AND LOWER(sapp.name) LIKE LOWER(CONCAT('%', :search, '%')) ESCAPE '!'))""",
                     q -> q.setParameter("search", LikeEscaper.escape(c.search()))));
         }
         if (c.applicationId() != null) {

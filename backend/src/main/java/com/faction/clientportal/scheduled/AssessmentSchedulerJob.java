@@ -7,6 +7,7 @@ import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.AssessmentFrequency;
 import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.AssessmentRepository;
+import com.faction.clientportal.repository.ReportTemplateRepository;
 import com.faction.clientportal.service.AssessmentService;
 import com.faction.clientportal.service.NotebookService;
 import lombok.RequiredArgsConstructor;
@@ -27,9 +28,9 @@ import java.util.List;
  *   <li>Custom: successor scheduled after the configured number of months</li>
  * </ul>
  *
- * <p>The successor is created with the same application, assessment type, report template,
- * assessors, and managers. Its start date is set to completedDate + interval and its
- * status is set to the configured newAssessmentStatus.</p>
+ * <p>The successor is created with the same application, assessment type and report template
+ * (or the type's default template if that one is gone), with nobody assigned and no dates, in
+ * the configured newAssessmentStatus. It appears once completedDate + interval has passed.</p>
  *
  * <p>The {@code autoScheduledSuccessorId} field on the original assessment is set after
  * creation to prevent duplicate scheduling across runs.</p>
@@ -45,8 +46,9 @@ public class AssessmentSchedulerJob {
     private final ApplicationRepository applicationRepository;
     private final AssessmentService assessmentService;
     private final NotebookService notebookService;
+    private final ReportTemplateRepository reportTemplateRepository;
 
-    @Scheduled(cron = "0 0 1 * * ?") // 1:00 AM every day
+    @Scheduled(cron = "${app.scheduling.assessment-scheduler-cron:0 0 1 * * ?}") // 1:00 AM daily by default
     public void scheduleSuccessorAssessments() {
         List<Assessment> candidates = assessmentRepository.findCompletedWithNoSuccessor();
 
@@ -74,11 +76,11 @@ public class AssessmentSchedulerJob {
                         .name(assessment.getName())
                         .applicationId(assessment.getApplicationId())
                         .assessmentTypeId(assessment.getAssessmentTypeId())
-                        .reportTemplateId(assessment.getReportTemplateId())
-                        .assessorIds(assessment.getAssessorIds())
-                        .engagementManagerId(assessment.getEngagementManagerId())
-                        .remediationManagerId(assessment.getRemediationManagerId())
-                        .startDate(newStartDate)
+                        .reportTemplateId(usableTemplateId(assessment))
+                        // Deliberately no assessors, managers or dates: the successor is a
+                        // placeholder for work that is now due, and copying people would notify
+                        // them of an engagement nobody has planned yet. The due date above only
+                        // decides *when* the placeholder appears; scheduling it is a person's job.
                         .build();
 
                 AssessmentDto successor = assessmentService.createAssessment(request, "system");
@@ -97,6 +99,25 @@ public class AssessmentSchedulerJob {
         }
 
         log.info("Assessment scheduler: auto-scheduled {} successor assessment(s)", scheduled);
+    }
+
+    /**
+     * The predecessor's template, unless it has since been deleted or deactivated — creation
+     * would refuse it, and the assessment would stay stuck on every run. A blank id lets creation
+     * fall back to the type's default template instead.
+     */
+    private String usableTemplateId(Assessment predecessor) {
+        String id = predecessor.getReportTemplateId();
+        if (id == null) return null;
+        boolean usable = reportTemplateRepository.findByIdAndDeletedAtIsNull(id)
+                .map(t -> Boolean.TRUE.equals(t.getActive()))
+                .orElse(false);
+        if (!usable) {
+            log.info("Assessment scheduler: template {} of assessment {} is no longer usable; "
+                    + "the successor gets the default template for its type", id, predecessor.getId());
+            return null;
+        }
+        return id;
     }
 
     /**

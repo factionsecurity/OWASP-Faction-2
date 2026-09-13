@@ -777,6 +777,11 @@ export interface UpdateAssessmentRequest {
   engagementManagerId?: string;
   remediationManagerId?: string;
   startDate?: string;
+  /**
+   * When the assessment was completed. Supplied at the completion transition by importers; on an
+   * already-completed assessment only a super admin may change it.
+   */
+  completedDate?: string;
   plannedEndDate?: string;
   scope?: string;
   engagementUrls?: EngagementUrl[];

@@ -91,6 +91,7 @@ services:
 
       MAX_FAILED_LOGIN_ATTEMPTS: ${MAX_FAILED_LOGIN_ATTEMPTS:-5}
       VULNERABILITY_DIGEST_CRON: ${VULNERABILITY_DIGEST_CRON:-0 0 8 * * *}
+      ASSESSMENT_SCHEDULER_CRON: ${ASSESSMENT_SCHEDULER_CRON:-0 0 1 * * ?}
 
       # The shipped application.yml logs at DEBUG, which is a development
       # default: it prints a line per security filter decision.

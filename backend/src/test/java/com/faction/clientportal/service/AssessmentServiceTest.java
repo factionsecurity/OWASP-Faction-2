@@ -94,6 +94,9 @@ class AssessmentServiceTest {
     @Mock
     private com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
 
+    @Mock
+    private DefaultReportTemplateService defaultReportTemplateService;
+
     @InjectMocks
     private AssessmentService assessmentService;
 
@@ -1832,5 +1835,109 @@ class AssessmentServiceTest {
         var captor = ArgumentCaptor.forClass(AssessmentSearchCriteria.class);
         verify(assessmentRepository).searchAdvanced(captor.capture(), any());
         assertThat(captor.getValue().organizationId()).isEqualTo("org-A"); // forced to own org, not "org-B"
+    }
+
+    // ── Editing the completed date of an already-completed assessment ─────────────────────
+
+    private Assessment completedAssessment(LocalDateTime completedDate) {
+        return Assessment.builder()
+                .id(testAssessment.getId())
+                .name(testAssessment.getName())
+                .applicationId(testAssessment.getApplicationId())
+                .assessmentTypeId(testAssessment.getAssessmentTypeId())
+                .organizationId(testAssessment.getOrganizationId())
+                .reportTemplateId(testAssessment.getReportTemplateId())
+                .reportTemplateVersion(testAssessment.getReportTemplateVersion())
+                .status("COMPLETED")
+                .completedDate(completedDate)
+                .fieldDefinitions(new ArrayList<>())
+                .fieldValues(new HashMap<>())
+                .createdAt(testAssessment.getCreatedAt())
+                .build();
+    }
+
+    @Test
+    void updateAssessment_superAdminCanChangeCompletedDateOfCompletedAssessment() {
+        LocalDateTime original = LocalDateTime.of(2026, 1, 10, 9, 0);
+        LocalDateTime corrected = LocalDateTime.of(2025, 12, 1, 17, 30);
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
+                .thenReturn(Optional.of(completedAssessment(original)));
+        when(assessmentRepository.save(any(Assessment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var superAdmin = new UsernamePasswordAuthenticationToken("root", null,
+                List.of(new SimpleGrantedAuthority(
+                        com.faction.clientportal.security.RequiresPermissionAuthorizationManager.SUPER_ADMIN)));
+
+        // No status in the request: the date is corrected on its own.
+        AssessmentDto result = assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder().completedDate(corrected).build(), "root", superAdmin);
+
+        assertThat(result.getCompletedDate()).isEqualTo(corrected);
+        assertThat(result.getStatus()).isEqualTo("COMPLETED");
+        // Correcting the date is not a fresh completion: findings are not re-opened.
+        verify(vulnerabilityRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void updateAssessment_regularEditorCannotChangeCompletedDateOfCompletedAssessment() {
+        LocalDateTime original = LocalDateTime.of(2026, 1, 10, 9, 0);
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
+                .thenReturn(Optional.of(completedAssessment(original)));
+
+        var editor = new UsernamePasswordAuthenticationToken("tester", null,
+                List.of(new SimpleGrantedAuthority(Permission.ASSESSMENTS_EDIT_ALL.getPermission())));
+
+        // Re-sending the completed status alongside the date used to slip through; it must not.
+        UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
+                .status("COMPLETED")
+                .completedDate(LocalDateTime.of(2025, 12, 1, 17, 30))
+                .build();
+
+        assertThatThrownBy(() -> assessmentService.updateAssessment(
+                testAssessment.getId(), request, "tester", editor))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        verify(assessmentRepository, never()).save(any(Assessment.class));
+    }
+
+    @Test
+    void updateAssessment_completionTransitionStillHonorsSuppliedDateFromAnyEditor() {
+        // The Faction 1 importer completes historical assessments with their real completion date
+        // and is not a super admin — that path must keep working.
+        LocalDateTime historical = LocalDateTime.of(2024, 6, 15, 12, 0);
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
+                .thenReturn(Optional.of(testAssessment));
+        when(assessmentRepository.save(any(Assessment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(vulnerabilityRepository.findByAssessmentIdAndDeletedAtIsNull(testAssessment.getId()))
+                .thenReturn(List.of());
+
+        var editor = new UsernamePasswordAuthenticationToken("importer", null,
+                List.of(new SimpleGrantedAuthority(Permission.ASSESSMENTS_EDIT_ALL.getPermission())));
+
+        AssessmentDto result = assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder().status("COMPLETED").completedDate(historical).build(),
+                "importer", editor);
+
+        assertThat(result.getCompletedDate()).isEqualTo(historical);
+    }
+
+    @Test
+    void testCreateAssessment_WithoutTemplateUsesTheDefaultForItsType() {
+        CreateAssessmentRequest request = CreateAssessmentRequest.builder()
+                .name("Successor")
+                .applicationId(testApplication.getId())
+                .assessmentTypeId(testAssessmentType.getId())
+                .build();
+
+        when(applicationRepository.findById(testApplication.getId())).thenReturn(Optional.of(testApplication));
+        when(assessmentTypeRepository.findById(testAssessmentType.getId())).thenReturn(Optional.of(testAssessmentType));
+        when(defaultReportTemplateService.resolveForAssessmentType(testAssessmentType.getId())).thenReturn(testTemplate);
+        ArgumentCaptor<Assessment> saved = ArgumentCaptor.forClass(Assessment.class);
+        when(assessmentRepository.save(saved.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+        assessmentService.createAssessment(request, "testuser");
+
+        assertThat(saved.getValue().getReportTemplateId()).isEqualTo(testTemplate.getId());
+        assertThat(saved.getValue().getTemplateName()).isEqualTo(testTemplate.getName());
+        verify(reportTemplateRepository, never()).findByIdAndDeletedAtIsNull(any());
     }
 }

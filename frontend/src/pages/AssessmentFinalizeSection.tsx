@@ -11,15 +11,17 @@ import {
   GitMerge,
   ChevronRight,
   FileJson,
+  Pencil,
 } from 'lucide-react';
 import type { Assessment, AssessmentChecklist, PeerReview } from '../types';
 import { assessmentsApi, peerReviewsApi, assessmentChecklistsApi, vulnerabilitiesApi } from '../api';
-import { Button } from '../components';
+import { Button, IconButton, FormGroup, FormLabel, FormHint, Input } from '../components';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
 import ReportDocumentsPanel from '../components/ReportDocumentsPanel';
 import PeerReviewDiff from './PeerReviewDiff';
 import { peerReviewerLabel } from '../utils/peerReview';
+import { usePermissions } from '../utils/permissions';
 import './AssessmentFinalizeSection.css';
 
 interface Props {
@@ -38,6 +40,9 @@ interface Props {
  * for the same period. The server rejects a late reopen regardless of what the UI offers.
  */
 const REOPEN_WINDOW_DAYS = 30;
+
+/** ISO timestamp → the `YYYY-MM-DDTHH:mm` a datetime-local input takes; '' when unset. */
+const toLocalInput = (iso?: string | null): string => (iso ? iso.slice(0, 16) : '');
 
 /** Whole days left before a completed assessment can no longer be reopened; 0 once it has lapsed. */
 function reopenDaysLeft(completedDate?: string | null): number {
@@ -135,6 +140,8 @@ interface TimelineStep {
   date?: string | null;
   icon: React.ReactNode;
   done: boolean;
+  /** Shows a pencil next to the date; only the completion date is editable, and only by super admins. */
+  editable?: boolean;
 }
 
 export default function AssessmentFinalizeSection({
@@ -157,6 +164,13 @@ export default function AssessmentFinalizeSection({
   const [peerReviews, setPeerReviews] = useState<PeerReview[]>([]);
   const [openReview, setOpenReview] = useState<PeerReview | null>(null);
   const [blockingChecklists, setBlockingChecklists] = useState<AssessmentChecklist[]>([]);
+  // Correcting the completion date: super-admin only, mirrored by the server. The date drives
+  // the reopen window and the completed-work counts, so it is a deliberate edit behind a modal.
+  const { isSuperAdmin } = usePermissions();
+  const [editingCompletedDate, setEditingCompletedDate] = useState(false);
+  const [completedDateInput, setCompletedDateInput] = useState('');
+  const [savingCompletedDate, setSavingCompletedDate] = useState(false);
+  const [completedDateError, setCompletedDateError] = useState('');
 
   useEffect(() => {
     Promise.all([
@@ -212,6 +226,35 @@ export default function AssessmentFinalizeSection({
 
   const daysLeftToReopen = isCompleted ? reopenDaysLeft(assessment.completedDate) : 0;
   const canReopen = isCompleted && daysLeftToReopen > 0;
+  const canEditCompletedDate = isSuperAdmin && isCompleted;
+
+  const openCompletedDateEditor = () => {
+    setCompletedDateInput(toLocalInput(assessment.completedDate));
+    setCompletedDateError('');
+    setEditingCompletedDate(true);
+  };
+
+  const handleSaveCompletedDate = async () => {
+    if (!completedDateInput) {
+      setCompletedDateError('A completion date is required');
+      return;
+    }
+    setSavingCompletedDate(true);
+    setCompletedDateError('');
+    try {
+      const res = await assessmentsApi.update(assessmentId, { completedDate: `${completedDateInput}:00` });
+      if (res.success && res.data) {
+        onAssessmentUpdated(res.data);
+        setEditingCompletedDate(false);
+      } else {
+        setCompletedDateError(res.message || 'Failed to update completion date');
+      }
+    } catch (err: any) {
+      setCompletedDateError(err.response?.data?.message || 'Failed to update completion date');
+    } finally {
+      setSavingCompletedDate(false);
+    }
+  };
 
   const handleReopen = async () => {
     setReopening(true);
@@ -299,6 +342,7 @@ export default function AssessmentFinalizeSection({
       date: assessment.completedDate,
       icon: <Flag size={16} />,
       done: !!assessment.completedDate,
+      editable: canEditCompletedDate,
     },
   ];
 
@@ -328,7 +372,18 @@ export default function AssessmentFinalizeSection({
                 </div>
                 <div className="finalize-step-body">
                   <div className="finalize-step-label">{step.label}</div>
-                  <div className="finalize-step-date">{step.date ? formatDate(step.date) : null}</div>
+                  <div className="finalize-step-date">
+                    {step.date ? formatDate(step.date) : null}
+                    {step.editable && (
+                      <IconButton
+                        icon={Pencil}
+                        variant="edit"
+                        title="Edit completion date"
+                        className="finalize-step-date-edit"
+                        onClick={openCompletedDateEditor}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -611,6 +666,36 @@ export default function AssessmentFinalizeSection({
             readOnly
           />
         )}
+      </Modal>
+
+      <Modal
+        isOpen={editingCompletedDate}
+        onClose={() => !savingCompletedDate && setEditingCompletedDate(false)}
+        size="sm"
+        title="Edit Completion Date"
+        footer={
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', width: '100%' }}>
+            <Button variant="secondary" onClick={() => setEditingCompletedDate(false)} disabled={savingCompletedDate}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCompletedDate} disabled={savingCompletedDate}>
+              {savingCompletedDate ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        }
+      >
+        <FormGroup>
+          <FormLabel>Completion Date</FormLabel>
+          <Input
+            type="datetime-local"
+            value={completedDateInput}
+            onChange={e => setCompletedDateInput(e.target.value)}
+          />
+          <FormHint>
+            {`Moves the ${REOPEN_WINDOW_DAYS}-day reopen window and the completed-work counts on the manager dashboard.`}
+          </FormHint>
+        </FormGroup>
+        {completedDateError && <div className="alert alert-danger" style={{ marginTop: '0.75rem' }}>{completedDateError}</div>}
       </Modal>
     </section>
   );

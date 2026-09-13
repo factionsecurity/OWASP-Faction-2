@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Edit2, Trash2, Plus, Calendar, List, Download } from 'lucide-react';
+import { Edit2, Trash2, Plus, Calendar, List, Download, Eye } from 'lucide-react';
 import { assessmentsApi, applicationsApi, assessmentTypesApi, workflowConfigApi, vulnerabilitiesApi } from '../api';
 import type {
   Assessment,
@@ -14,6 +14,7 @@ import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
 import { Button, Badge, ConfirmDialog, IconButton, ActionButtons } from '../components';
 import AssessmentCalendar from '../components/AssessmentCalendar';
 import Page from '../components/Page';
+import { usePermissions } from '../utils/permissions';
 import './Engagements.css';
 
 /** A calendar Date as the zone-less ISO datetime the API uses for these date-only fields. */
@@ -34,6 +35,9 @@ const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 
 
 export default function Engagements() {
   const navigate = useNavigate();
+  // The View action opens the assessment detail page, which sits behind its own permission —
+  // scheduling access alone does not imply it.
+  const { permissions } = usePermissions();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -136,18 +140,18 @@ export default function Engagements() {
     setLoading(true);
     setError('');
     try {
-      const response = await assessmentsApi.getAll(
-        pagination.page,
-        pagination.pageSize,
-        filters.applicationId || undefined,
-        undefined,
-        filters.assessmentTypeId || undefined,
-        undefined,
-        filters.status || undefined,
-        filters.name || undefined,
-        sortParam(sort) ?? 'createdAt,desc',
-        filters.pastDue || undefined
-      );
+      // The list endpoint reads the search box as `search` (matching assessment or application
+      // name); the older getAll helper sent it as `name`, which the endpoint ignored.
+      const response = await assessmentsApi.search({
+        page: pagination.page,
+        size: pagination.pageSize,
+        search: filters.name || undefined,
+        applicationId: filters.applicationId || undefined,
+        assessmentTypeId: filters.assessmentTypeId || undefined,
+        status: filters.status || undefined,
+        pastDue: filters.pastDue || undefined,
+        sort: sortParam(sort) ?? 'createdAt,desc',
+      });
 
       if (response.success && response.data) {
         setAssessments(response.data);
@@ -247,6 +251,10 @@ export default function Engagements() {
       }
       setPagination(prev => ({ ...prev, page: 0 }));
     }
+  };
+
+  const handleViewClick = (assessment: Assessment) => {
+    navigate(`/assessments/${assessment.id}`);
   };
 
   const handleEditClick = (assessment: Assessment) => {
@@ -370,6 +378,16 @@ export default function Engagements() {
       ),
     },
     {
+      header: 'Application',
+      sortKey: 'applicationName',
+      render: (assessment) => (
+        <span>
+          {assessment.appId && <span className="eng-app-id">{assessment.appId}</span>}
+          {assessment.applicationName || '-'}
+        </span>
+      ),
+    },
+    {
       header: 'Status',
       sortKey: 'status',
       accessor: 'status',
@@ -405,6 +423,13 @@ export default function Engagements() {
         assessment.plannedEndDate ? new Date(assessment.plannedEndDate).toLocaleDateString() : '-',
     },
     {
+      header: 'Completed',
+      sortKey: 'completedDate',
+      accessor: 'completedDate',
+      render: (assessment) =>
+        assessment.completedDate ? new Date(assessment.completedDate).toLocaleDateString() : '-',
+    },
+    {
       header: 'Assessors',
       render: (assessment) => {
         const count = assessment.assessorIds?.length || 0;
@@ -434,10 +459,18 @@ export default function Engagements() {
       header: 'Actions',
       render: (assessment) => (
         <ActionButtons>
+          {permissions.canViewAssessments && (
+            <IconButton
+              icon={Eye}
+              onClick={() => handleViewClick(assessment)}
+              title="View assessment"
+              variant="info"
+            />
+          )}
           <IconButton
             icon={Edit2}
             onClick={() => handleEditClick(assessment)}
-            title="Edit"
+            title="Edit scheduling"
             variant="edit"
           />
           <IconButton
@@ -525,7 +558,7 @@ export default function Engagements() {
             onPageChange={(page) => setPagination({ ...pagination, page })}
             onPageSizeChange={(pageSize) => setPagination({ ...pagination, pageSize, page: 0 })}
             onSearchChange={(q) => applyInline({ name: q })}
-            searchPlaceholder="Search assessments"
+            searchPlaceholder="Search by assessment or application"
             idAccessor="id"
             headerChildren={
               <div className="ss-filter-bar">
