@@ -22,7 +22,8 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    # MinIO no longer publishes to Docker Hub; quay.io carries the same images.
+    image: quay.io/minio/minio:latest
     container_name: client-portal-minio
     ports:
       - "9000:9000"   # S3 API

@@ -11,7 +11,9 @@ public abstract class TestContainersConfig {
     static final DockerImageName timescaleImage = DockerImageName.parse("timescale/timescaledb:latest-pg16")
         .asCompatibleSubstituteFor("postgres");
 
-    static final DockerImageName minioImage = DockerImageName.parse("minio/minio:RELEASE.2024-08-17T01-24-54Z");
+    static final DockerImageName minioImage = DockerImageName.parse("quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z")
+            // MinIO no longer publishes to Docker Hub; the same image lives on quay.io.
+            .asCompatibleSubstituteFor("minio/minio");
 
     static final PostgreSQLContainer<?> postgresqlContainer;
 
