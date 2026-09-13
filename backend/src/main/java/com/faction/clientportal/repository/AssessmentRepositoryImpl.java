@@ -172,15 +172,10 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
                     q -> { q.setParameter("now", c.now()); q.setParameter("completed", c.completedStatuses()); }));
         }
         if (c.excludeCompleted()) {
-            // A completed assessment stays in the queue for its reopen window, so the people who
-            // can still reopen it can find it without switching the list to "show completed".
-            clauses.add(Clause.of("""
-                    AND (a.status IS NULL OR a.status NOT IN (:completed)
-                         OR (a.completed_date IS NOT NULL AND a.completed_date > :reopenableSince))""",
-                    q -> {
-                        q.setParameter("completed", c.completedStatuses());
-                        q.setParameter("reopenableSince", c.reopenableSince());
-                    }));
+            // Completed assessments leave the list entirely; "show completed" is how to see them,
+            // reopen window or not.
+            clauses.add(Clause.of("AND (a.status IS NULL OR a.status NOT IN (:completed))",
+                    q -> q.setParameter("completed", c.completedStatuses())));
         }
         if (c.assignedToMe() && c.currentUserId() != null) {
             clauses.add(Clause.of("""

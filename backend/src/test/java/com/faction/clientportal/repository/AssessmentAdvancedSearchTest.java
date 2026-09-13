@@ -214,6 +214,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     void excludeCompleted_dropsCompletedStatuses_butKeepsNullStatus() {
         save(a("Active").status("IN_PROGRESS"));
         save(a("Done").status("COMPLETED"));
+        // Just completed: still inside the reopen window, and still hidden — "show completed" is
+        // the only way a completed assessment reaches the list.
+        save(a("JustDone").status("COMPLETED").completedDate(LocalDateTime.now().minusDays(1)));
         save(a("NoStatus").status(null));
 
         var result = search(base().excludeCompleted(true).build());

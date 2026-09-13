@@ -329,19 +329,25 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
     }
 
     @Test
-    void reopenableAssessmentsStayInTheQueue_lapsedOnesDropOut() {
+    void completedAssessmentsLeaveTheQueue_reopenableOrNot() {
         completeAssessment(aliceOnly, LocalDateTime.now().minusDays(5));    // still reopenable
         completeAssessment(bobOnly, LocalDateTime.now().minusDays(31));     // lapsed
 
-        // The default list hides completed work; one of these is still reopenable, so it stays
-        // visible to whoever could reopen it without switching on "show completed".
+        // The default list hides completed work outright: even one still inside its reopen
+        // window is reached through "show completed", not by lingering in the queue.
         var open = assessmentService.searchAssessmentsAdvanced(
                 null, null, null, null, null, null, null, null, null, null, null,
                 null, false, null, null, PAGE,
                 auth(alice, RequiresPermissionAuthorizationManager.SUPER_ADMIN)).getContent();
 
-        assertThat(names(open)).contains("Alice's Assessment", "Beta Assessment");
-        assertThat(names(open)).doesNotContain("Bob's Assessment");
+        assertThat(names(open)).contains("Beta Assessment");
+        assertThat(names(open)).doesNotContain("Alice's Assessment", "Bob's Assessment");
+
+        var all = assessmentService.searchAssessmentsAdvanced(
+                null, null, null, null, null, null, null, null, null, null, null,
+                null, true, null, null, PAGE,
+                auth(alice, RequiresPermissionAuthorizationManager.SUPER_ADMIN)).getContent();
+        assertThat(names(all)).contains("Alice's Assessment", "Bob's Assessment", "Beta Assessment");
     }
 
     /** Put an assessment into the completed state, stamped as finishing at {@code when}. */

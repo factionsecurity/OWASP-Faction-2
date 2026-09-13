@@ -31,10 +31,6 @@ import java.util.Collection;
  * another table (currently "has an unfinished survey") are applied. Null → not applied; empty →
  * match nothing, since a filter that resolved to no assessments must not fall through to "all".
  *
- * <p>{@code reopenableSince} is the reopen-window cutoff: with {@code excludeCompleted}, assessments
- * completed after it stay in the queue so the people who can still reopen them can find them.
- * Required whenever {@code excludeCompleted} is set.
- *
  * <p>{@code scopeAssessorId} and {@code scopeTeamIds} carry the caller's mandatory assessment read
  * scope (see {@code AccessScopeService.resolveAssessmentScope}) — distinct from the optional
  * {@code assignedToMe} / {@code assessorId} <em>filters</em>, which the user can clear. An empty
@@ -62,7 +58,6 @@ public record AssessmentSearchCriteria(
         LocalDateTime endDateTo,
         boolean pastDue,
         boolean excludeCompleted,
-        LocalDateTime reopenableSince,
         boolean assignedToMe,
         String currentUserId,
         Collection<String> teamMemberIds,
