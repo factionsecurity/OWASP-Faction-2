@@ -699,6 +699,7 @@
 .nav-badge--green  { background: #22c55e; }
 .nav-badge--sky    { background: #38bdf8; }
 .nav-badge--red    { background: #ef4444; }
+.nav-badge--orange { background: #f97316; }
 
 /* Collapsed sidebar: shrink the badge onto the icon's corner */
 .sidebar.closed .nav-badge {
