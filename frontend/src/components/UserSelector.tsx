@@ -31,7 +31,7 @@ export default function UserSelector({
 
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [internalOnly]);
 
   useEffect(() => {
     filterUsers();
@@ -40,9 +40,11 @@ export default function UserSelector({
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const response = await usersApi.getAll(0, 1000);
+      // Staff-only pickers ask the server for staff, so an external account never reaches the
+      // list; the client-side filter is a second line for a stale or unfiltered response.
+      const response = await usersApi.getAll(0, 1000, '', '', internalOnly ? { type: 'INTERNAL' } : {});
       if (response.success && response.data) {
-        const offered = internalOnly ? response.data.filter((u) => u.isInternal) : response.data;
+        const offered = internalOnly ? response.data.filter((u) => u.isInternal !== false) : response.data;
         setUsers(offered);
         setFilteredUsers(offered);
       }
