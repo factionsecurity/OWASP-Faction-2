@@ -221,7 +221,7 @@ class RemediationQueueServiceTest extends TestContainersConfig {
     void excludesSoftDeletedRetests() {
         retest("SCHEDULED");
         retestRepository.save(Retest.builder()
-                .assessmentId("assessment-1").applicationId("app-1").vulnerabilityId("vuln-1")
+                .assessmentId(liveAssessmentId).applicationId("app-1").vulnerabilityId("vuln-1")
                 .status("SCHEDULED").createdBy("system").lastUpdatedBy("system")
                 .deletedAt(LocalDateTime.now())
                 .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())
@@ -292,9 +292,13 @@ class RemediationQueueServiceTest extends TestContainersConfig {
                 .build());
     }
 
+    /**
+     * An open retest on the live assessment. The queue joins retests to their assessment, so a retest
+     * pointing at an assessment that doesn't exist is never shown — or counted.
+     */
     private void retest(String status) {
         retestRepository.save(Retest.builder()
-                .assessmentId("assessment-1").applicationId("app-1").vulnerabilityId("vuln-1")
+                .assessmentId(liveAssessmentId).applicationId("app-1").vulnerabilityId("vuln-1")
                 .status(status).createdBy("system").lastUpdatedBy("system")
                 .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())
                 .build());

@@ -97,29 +97,29 @@ class RemediationQueueListTest extends TestContainersConfig {
     }
 
     private List<RemediationRowDto> list(String search, Authentication auth) {
-        return service.list(search, null, null, null, null, null, null, false, PAGE, auth).getContent();
+        return service.list(search, null, null, null, null, null, null, null, false, PAGE, auth).getContent();
     }
 
     /** Filtered list as a super admin: (severity, organizationId, applicationId, assessmentId). */
     private List<RemediationRowDto> filtered(String severity, String orgFilter, String appFilter, String asmtFilter) {
-        return service.list(null, severity, orgFilter, appFilter, asmtFilter, null, null, false, PAGE, superAdmin()).getContent();
+        return service.list(null, severity, orgFilter, appFilter, asmtFilter, null, null, null, false, PAGE, superAdmin()).getContent();
     }
 
     /** Filtered list as a super admin, by row type ("VULNERABILITY" / "RETEST"). */
     private List<RemediationRowDto> byType(String type) {
-        return service.list(null, null, null, null, null, null, type, false, PAGE, superAdmin()).getContent();
+        return service.list(null, null, null, null, null, null, type, null, false, PAGE, superAdmin()).getContent();
     }
 
     /** Filtered list as a super admin, by vulnerability status. */
     private List<RemediationRowDto> byStatus(String... statuses) {
-        return service.list(null, null, null, null, null, List.of(statuses), null, false, PAGE, superAdmin()).getContent();
+        return service.list(null, null, null, null, null, List.of(statuses), null, null, false, PAGE, superAdmin()).getContent();
     }
 
     // ── Completed retests (opt-in) ───────────────────────────────────────────────
 
     /** Queue as a super admin with verified retests included. */
     private List<RemediationRowDto> withCompletedRetests() {
-        return service.list(null, null, null, null, null, null, null, true, PAGE, superAdmin()).getContent();
+        return service.list(null, null, null, null, null, null, null, null, true, PAGE, superAdmin()).getContent();
     }
 
     @Test
@@ -187,7 +187,7 @@ class RemediationQueueListTest extends TestContainersConfig {
         retest("OpenRetest", "IN_PROGRESS", -10, -5);
         retest("PassedRetest", "PASSED", -20, -15);
 
-        var page = service.list(null, null, null, null, null, null, null, true,
+        var page = service.list(null, null, null, null, null, null, null, null, true,
                 PageRequest.of(0, 1), superAdmin());
         assertThat(page.getTotalElements()).isEqualTo(2);
         assertThat(page.getContent()).hasSize(1);
@@ -288,7 +288,7 @@ class RemediationQueueListTest extends TestContainersConfig {
     // ── CSV export ───────────────────────────────────────────────────────────────
 
     private String exportCsv(boolean includeCompletedRetests) {
-        return service.exportCsv(null, null, null, null, null, null, null,
+        return service.exportCsv(null, null, null, null, null, null, null, null,
                 includeCompletedRetests, Sort.unsorted(), superAdmin());
     }
 
@@ -299,7 +299,7 @@ class RemediationQueueListTest extends TestContainersConfig {
         var lines = exportCsv(false).split("\n");
 
         assertThat(lines[0]).isEqualTo("Type,Vulnerability,Severity,Status,Application,Organization,"
-                + "Due Date,Scheduled Start,Scheduled End,Retest Status,Last Retest,"
+                + "Due Date,Scheduled Start,Scheduled End,Retest Status,Last Retest,Last Retest Date,"
                 + "Completed Date,Result,Completed By");
         assertThat(lines).hasSize(2);
         assertThat(lines[1]).contains("VULNERABILITY", "SQL Injection", "HIGH", "Payments API", "Acme");
@@ -368,7 +368,7 @@ class RemediationQueueListTest extends TestContainersConfig {
         vulnBuilder("Theirs", VulnerabilitySeverity.HIGH, 40).assessment(asmtB).save();
         user("acme-user", orgId);
 
-        var csv = service.exportCsv(null, null, null, null, null, null, null, false, Sort.unsorted(),
+        var csv = service.exportCsv(null, null, null, null, null, null, null, null, false, Sort.unsorted(),
                 auth("acme-user", Permission.VULNERABILITIES_READ_ORG.getPermission()));
 
         assertThat(csv).contains("Mine").doesNotContain("Theirs");
@@ -415,6 +415,54 @@ class RemediationQueueListTest extends TestContainersConfig {
         var result = list();
         assertThat(result).hasSize(1);
         assertThat(row(result, "V").getLastRetestStatus()).isEqualTo("FAILED");
+    }
+
+    @Test
+    void sortsByLastRetestResult_withNeverRetestedLast() {
+        // Opened 20/21/22 days ago, so the default due-date order is the reverse of the sorted one.
+        var passed = vuln("PassedVuln", VulnerabilitySeverity.HIGH, 20);
+        var failed = vuln("FailedVuln", VulnerabilitySeverity.HIGH, 21);
+        vuln("NeverRetested", VulnerabilitySeverity.HIGH, 22);
+        retestRepository.save(baseRetest(passed, "PASSED", assessmentId, appId)
+                .updatedAt(LocalDateTime.now().minusDays(2)).build());
+        retestRepository.save(baseRetest(failed, "FAILED", assessmentId, appId)
+                .updatedAt(LocalDateTime.now().minusDays(2)).build());
+
+        var ascending = service.list(null, null, null, null, null, null, null, null, false,
+                PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "lastRetestStatus")), superAdmin()).getContent();
+        assertThat(names(ascending)).containsExactly("FailedVuln", "PassedVuln", "NeverRetested");
+
+        var descending = service.list(null, null, null, null, null, null, null, null, false,
+                PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "lastRetestStatus")), superAdmin()).getContent();
+        assertThat(names(descending)).containsExactly("PassedVuln", "FailedVuln", "NeverRetested");
+    }
+
+    @Test
+    void carriesTheLastRetestDate_fromTheSameRetestAsTheResult_andSortsByIt() {
+        var older = vuln("OlderRetest", VulnerabilitySeverity.HIGH, 20);
+        var newer = vuln("NewerRetest", VulnerabilitySeverity.HIGH, 21);
+        vuln("NeverRetested", VulnerabilitySeverity.HIGH, 22);
+        LocalDateTime olderClosed = LocalDateTime.now().minusDays(9).withNano(0);
+        LocalDateTime newerClosed = LocalDateTime.now().minusDays(1).withNano(0);
+        // Two retests on OlderRetest: the later-updated one decides both the result and the date.
+        retestRepository.save(baseRetest(older, "PASSED", assessmentId, appId)
+                .closedDate(LocalDateTime.now().minusDays(30).withNano(0))
+                .updatedAt(LocalDateTime.now().minusDays(30)).build());
+        retestRepository.save(baseRetest(older, "FAILED", assessmentId, appId)
+                .closedDate(olderClosed).updatedAt(LocalDateTime.now().minusDays(9)).build());
+        retestRepository.save(baseRetest(newer, "PASSED", assessmentId, appId)
+                .closedDate(newerClosed).updatedAt(LocalDateTime.now().minusDays(1)).build());
+
+        var rows = list();
+        assertThat(row(rows, "OlderRetest").getLastRetestStatus()).isEqualTo("FAILED");
+        assertThat(row(rows, "OlderRetest").getLastRetestDate()).isEqualTo(olderClosed);
+        assertThat(row(rows, "NewerRetest").getLastRetestDate()).isEqualTo(newerClosed);
+        assertThat(row(rows, "NeverRetested").getLastRetestDate()).isNull();
+
+        // Newest first; never-retested last. The default due-date order would put NeverRetested first.
+        var newestFirst = service.list(null, null, null, null, null, null, null, null, false,
+                PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "lastRetestDate")), superAdmin()).getContent();
+        assertThat(names(newestFirst)).containsExactly("NewerRetest", "OlderRetest", "NeverRetested");
     }
 
     @Test
@@ -495,9 +543,9 @@ class RemediationQueueListTest extends TestContainersConfig {
         var acmeAuth = auth("acme-user", Permission.VULNERABILITIES_READ_ORG.getPermission());
 
         // Asking for another org as an org-scoped caller returns nothing, not the other org's rows.
-        assertThat(service.list(null, null, orgB, null, null, null, null, false, PAGE, acmeAuth).getContent()).isEmpty();
+        assertThat(service.list(null, null, orgB, null, null, null, null, null, false, PAGE, acmeAuth).getContent()).isEmpty();
         // Asking for their own org still works.
-        assertThat(names(service.list(null, null, orgId, null, null, null, null, false, PAGE, acmeAuth).getContent()))
+        assertThat(names(service.list(null, null, orgId, null, null, null, null, null, false, PAGE, acmeAuth).getContent()))
                 .containsExactly("inAcme");
     }
 
@@ -510,8 +558,8 @@ class RemediationQueueListTest extends TestContainersConfig {
         vuln("inOther", VulnerabilitySeverity.HIGH, 40); // default app, not owned
 
         var ownerAuth = auth("owner", Permission.VULNERABILITIES_READ_OWNED.getPermission());
-        assertThat(service.list(null, null, null, appId, null, null, null, false, PAGE, ownerAuth).getContent()).isEmpty();
-        assertThat(names(service.list(null, null, null, ownedAppId, null, null, null, false, PAGE, ownerAuth).getContent()))
+        assertThat(service.list(null, null, null, appId, null, null, null, null, false, PAGE, ownerAuth).getContent()).isEmpty();
+        assertThat(names(service.list(null, null, null, ownedAppId, null, null, null, null, false, PAGE, ownerAuth).getContent()))
                 .containsExactly("inOwned");
     }
 
@@ -563,7 +611,7 @@ class RemediationQueueListTest extends TestContainersConfig {
         vuln("SQLInjection", VulnerabilitySeverity.HIGH, 40);
         vuln("SQLInjectionCritical", VulnerabilitySeverity.CRITICAL, 40);
 
-        var result = service.list("sqlinjection", "HIGH", orgId, appId, assessmentId, null, null, false, PAGE, superAdmin());
+        var result = service.list("sqlinjection", "HIGH", orgId, appId, assessmentId, null, null, null, false, PAGE, superAdmin());
         assertThat(names(result.getContent())).containsExactly("SQLInjection");
     }
 
@@ -664,7 +712,7 @@ class RemediationQueueListTest extends TestContainersConfig {
         var seen = new java.util.HashSet<String>();
         long total = -1;
         for (int p = 0; p < 3; p++) {
-            var page = service.list(null, null, null, null, null, null, null, false, PageRequest.of(p, 2), superAdmin());
+            var page = service.list(null, null, null, null, null, null, null, null, false, PageRequest.of(p, 2), superAdmin());
             total = page.getTotalElements();
             page.getContent().forEach(d -> assertThat(seen.add(d.getKey())).isTrue());
         }
@@ -680,6 +728,80 @@ class RemediationQueueListTest extends TestContainersConfig {
 
     private RemediationRowDto row(List<RemediationRowDto> l, String name) {
         return l.stream().filter(d -> name.equals(d.getVulnerabilityName())).findFirst().orElseThrow();
+    }
+
+    // ── Summary badges and the nav count ─────────────────────────────────────────
+
+    private com.faction.clientportal.dto.RemediationQueueSummaryDto summary(Authentication auth) {
+        return service.summary(null, null, null, null, null, null, null, auth);
+    }
+
+    /** One row in every badge bucket (two in two of them), plus a verified retest that is none. */
+    private void seedEveryBucket() {
+        vuln("pastDueHigh", VulnerabilitySeverity.HIGH, 40);          // HIGH due at 30 → past due
+        vuln("pastDueCritical", VulnerabilitySeverity.CRITICAL, 10);  // CRITICAL due at 7 → past due
+        vuln("dueSoonHigh", VulnerabilitySeverity.HIGH, 20);          // HIGH warning from 15 → due soon
+        retest("requested", "REQUESTED", null, null);
+        retest("scheduled", "SCHEDULED", 1, 5);
+        retest("inProgressA", "IN_PROGRESS", -2, 3);
+        retest("inProgressB", "IN_PROGRESS", -2, 3);
+        retest("passed", "PASSED", -20, -15);                         // verified: not queue work
+    }
+
+    @Test
+    void summary_breaksTheQueueIntoBuckets_thatAddUpToTheTotal() {
+        seedEveryBucket();
+
+        var s = summary(superAdmin());
+
+        assertThat(s.pastDue()).isEqualTo(2);
+        assertThat(s.dueSoon()).isEqualTo(1);
+        assertThat(s.retestRequested()).isEqualTo(1);
+        assertThat(s.retestScheduled()).isEqualTo(1);
+        assertThat(s.retestInProgress()).isEqualTo(2);
+        // The badges partition the queue: they add up to the rows the table shows.
+        assertThat(s.total()).isEqualTo(7).isEqualTo(list().size());
+    }
+
+    @Test
+    void summary_followsTheOtherFilters() {
+        seedEveryBucket();
+
+        var vulnsOnly = service.summary(null, null, null, null, null, null, "VULNERABILITY", superAdmin());
+        assertThat(vulnsOnly.pastDue()).isEqualTo(2);
+        assertThat(vulnsOnly.dueSoon()).isEqualTo(1);
+        assertThat(vulnsOnly.retestRequested() + vulnsOnly.retestScheduled() + vulnsOnly.retestInProgress()).isZero();
+        assertThat(vulnsOnly.total()).isEqualTo(3);
+
+        var critical = service.summary(null, "CRITICAL", null, null, null, null, null, superAdmin());
+        assertThat(critical.pastDue()).isEqualTo(1);
+        assertThat(critical.total()).isEqualTo(1);
+    }
+
+    @Test
+    void bucketFilter_narrowsTheListToTheChosenBadges() {
+        seedEveryBucket();
+
+        var rows = service.list(null, null, null, null, null, null, null,
+                List.of("PAST_DUE", "RETEST_SCHEDULED"), false, PAGE, superAdmin()).getContent();
+
+        assertThat(names(rows)).containsExactlyInAnyOrder("pastDueHigh", "pastDueCritical", "scheduled");
+    }
+
+    @Test
+    void summaryAndNavCount_areScopedToWhatTheCallerMayRead() {
+        vuln("inAcme", VulnerabilitySeverity.HIGH, 40); // Acme (default)
+        var orgB = organization("Globex").getId();
+        var appB = application(orgB, "Ledger").getId();
+        var asmtB = assessment(orgB, appB, "B");
+        vulnBuilder("inGlobex", VulnerabilitySeverity.HIGH, 40).assessment(asmtB).save();
+        user("acme-user", orgId);
+        var acme = auth("acme-user", Permission.VULNERABILITIES_READ_ORG.getPermission());
+
+        assertThat(summary(acme).pastDue()).isEqualTo(1);
+        assertThat(service.queueCount(acme)).isEqualTo(1);
+        assertThat(summary(superAdmin()).pastDue()).isEqualTo(2);
+        assertThat(service.queueCount(superAdmin())).isEqualTo(2);
     }
 
     private void configureSlas(VulnerabilitySla... slas) {

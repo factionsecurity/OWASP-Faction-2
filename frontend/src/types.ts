@@ -1477,6 +1477,22 @@ export interface RemediationQueueRow {
   vulnerabilityStatus?: string; // the underlying vulnerability's workflow status (both row types)
   retestStatus?: RetestStatus;
   lastRetestStatus?: 'PASSED' | 'FAILED';
+  /** Vuln rows: when that same last retest completed (its closed date, else its last update). */
+  lastRetestDate?: string;
+}
+
+/**
+ * Counts for the remediation queue's stat badges, computed server-side with the queue's current
+ * filters (but not its bucket selection or completed-retest toggle), so each badge shows how many
+ * rows selecting it would yield.
+ */
+export interface RemediationQueueSummary {
+  total: number;
+  pastDue: number;
+  dueSoon: number;
+  retestRequested: number;
+  retestScheduled: number;
+  retestInProgress: number;
 }
 
 // ── Email Configuration ───────────────────────────────────────────────────────
