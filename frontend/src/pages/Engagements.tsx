@@ -10,7 +10,7 @@ import type {
   Vulnerability,
 } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
-import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
+import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import { Button, Badge, ConfirmDialog, IconButton, ActionButtons } from '../components';
 import AssessmentCalendar from '../components/AssessmentCalendar';
 import Page from '../components/Page';
@@ -63,13 +63,12 @@ export default function Engagements() {
   const [sort, setSort] = useState<SortState | null>(null);
 
   const [filters, setFilters] = useState({
-    status: '',
+    statuses: [] as string[],
     applicationId: '',
-    assessmentTypeId: '',
+    assessmentTypeIds: [] as string[],
     name: '',
     pastDue: false,
   });
-  const [activeStatChip, setActiveStatChip] = useState<string | null>(null);
 
   // Inline filter options + live-apply. Status is not here — the stat pills own status filtering.
   const appOptions: SelectOption[] = useMemo(
@@ -147,8 +146,8 @@ export default function Engagements() {
         size: pagination.pageSize,
         search: filters.name || undefined,
         applicationId: filters.applicationId || undefined,
-        assessmentTypeId: filters.assessmentTypeId || undefined,
-        status: filters.status || undefined,
+        statuses: filters.statuses,
+        assessmentTypeIds: filters.assessmentTypeIds,
         pastDue: filters.pastDue || undefined,
         sort: sortParam(sort) ?? 'createdAt,desc',
       });
@@ -235,22 +234,22 @@ export default function Engagements() {
     navigate('/scheduling/create');
   };
 
+  // The status chips are a multi-select: each click toggles that status in or out, so two or
+  // three statuses can be viewed together. Total clears everything; Past Due is its own toggle.
   const handleStatChipClick = (chip: string) => {
-    if (activeStatChip === chip) {
-      // Second click — reset
-      setActiveStatChip(null);
-      setFilters(prev => ({ ...prev, status: '', pastDue: false }));
+    if (chip === 'total') {
+      setFilters(prev => ({ ...prev, statuses: [], pastDue: false }));
+    } else if (chip === 'pastDue') {
+      setFilters(prev => ({ ...prev, pastDue: !prev.pastDue }));
     } else {
-      setActiveStatChip(chip);
-      if (chip === 'pastDue') {
-        setFilters(prev => ({ ...prev, status: '', pastDue: true }));
-      } else if (chip === 'total') {
-        setFilters(prev => ({ ...prev, status: '', pastDue: false }));
-      } else {
-        setFilters(prev => ({ ...prev, status: chip, pastDue: false }));
-      }
-      setPagination(prev => ({ ...prev, page: 0 }));
+      setFilters(prev => ({
+        ...prev,
+        statuses: prev.statuses.includes(chip)
+          ? prev.statuses.filter(s => s !== chip)
+          : [...prev.statuses, chip],
+      }));
     }
+    setPagination(prev => ({ ...prev, page: 0 }));
   };
 
   const handleViewClick = (assessment: Assessment) => {
@@ -339,10 +338,12 @@ export default function Engagements() {
   const handleExportCsv = async () => {
     setExporting(true);
     try {
+      // The export endpoint takes one type and one status; pass them through only when the
+      // multi-select has exactly one, otherwise export unfiltered on that dimension.
       const blob = await assessmentsApi.exportToCsv({
         applicationId: filters.applicationId || undefined,
-        assessmentTypeId: filters.assessmentTypeId || undefined,
-        status: filters.status || undefined,
+        assessmentTypeId: filters.assessmentTypeIds.length === 1 ? filters.assessmentTypeIds[0] : undefined,
+        status: filters.statuses.length === 1 ? filters.statuses[0] : undefined,
         name: filters.name || undefined,
       });
 
@@ -489,14 +490,14 @@ export default function Engagements() {
       <div className="eng-toolbar">
         <div className="eng-stats-bar">
           <button
-            className={`eng-stat${activeStatChip === 'total' || activeStatChip === null ? ' active' : ''}`}
+            className={`eng-stat${filters.statuses.length === 0 && !filters.pastDue ? ' active' : ''}`}
             onClick={() => handleStatChipClick('total')}
           >
             <span className="eng-stat-dot" style={{ background: '#94a3b8' }} />
             Total <strong>{metrics?.totalCount ?? 0}</strong>
           </button>
           <button
-            className={`eng-stat${activeStatChip === 'pastDue' ? ' active' : ''}`}
+            className={`eng-stat${filters.pastDue ? ' active' : ''}`}
             onClick={() => handleStatChipClick('pastDue')}
           >
             <span className="eng-stat-dot" style={{ background: '#ef4444' }} />
@@ -508,7 +509,7 @@ export default function Engagements() {
             return (
               <button
                 key={status}
-                className={`eng-stat${activeStatChip === status ? ' active' : ''}`}
+                className={`eng-stat${filters.statuses.includes(status) ? ' active' : ''}`}
                 onClick={() => handleStatChipClick(status)}
               >
                 <span className="eng-stat-dot" style={{ background: color }} />
@@ -538,8 +539,8 @@ export default function Engagements() {
       {view === 'calendar' ? (
         <AssessmentCalendar
           assessments={assessments.filter(a => {
-            if (filters.pastDue) return !!a.isPastDue;
-            if (filters.status) return a.status === filters.status;
+            if (filters.pastDue && !a.isPastDue) return false;
+            if (filters.statuses.length > 0) return filters.statuses.includes(a.status);
             return true;
           })}
           statusColors={statusColors}
@@ -568,9 +569,9 @@ export default function Engagements() {
                   options={appOptions}
                   placeholder="All Applications"
                 />
-                <SearchableSelect
-                  value={filters.assessmentTypeId}
-                  onChange={(v) => applyInline({ assessmentTypeId: v })}
+                <MultiSelect
+                  selected={filters.assessmentTypeIds}
+                  onChange={(vals) => applyInline({ assessmentTypeIds: vals })}
                   options={typeOptions}
                   placeholder="All Types"
                   searchable={false}

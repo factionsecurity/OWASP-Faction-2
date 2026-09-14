@@ -141,6 +141,17 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
         assertThat(search(base().scopeOrgIds(Set.of()).scopeAppIds(Set.of()).build())).isEmpty();
     }
 
+    @Test
+    void assessmentTypeIds_matchesAny_emptyMeansNoFilter() {
+        save(a("Web").assessmentTypeId("type-web").status("IN_PROGRESS"));
+        save(a("Mobile").assessmentTypeId("type-mobile").status("IN_PROGRESS"));
+        save(a("Cloud").assessmentTypeId("type-cloud").status("IN_PROGRESS"));
+
+        assertThat(search(base().assessmentTypeIds(List.of("type-web", "type-cloud")).build()))
+                .extracting(Assessment::getName).containsExactlyInAnyOrder("Web", "Cloud");
+        assertThat(search(base().assessmentTypeIds(List.of()).build())).hasSize(3);
+    }
+
     // ── Equality filters ────────────────────────────────────────────────────────
 
     @Test
@@ -203,6 +214,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     void excludeCompleted_dropsCompletedStatuses_butKeepsNullStatus() {
         save(a("Active").status("IN_PROGRESS"));
         save(a("Done").status("COMPLETED"));
+        // Just completed: still inside the reopen window, and still hidden — "show completed" is
+        // the only way a completed assessment reaches the list.
+        save(a("JustDone").status("COMPLETED").completedDate(LocalDateTime.now().minusDays(1)));
         save(a("NoStatus").status(null));
 
         var result = search(base().excludeCompleted(true).build());

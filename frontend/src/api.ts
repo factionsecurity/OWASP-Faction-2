@@ -985,6 +985,8 @@ export const assessmentsApi = {
     applicationId?: string;
     applicationIds?: string[];
     assessmentTypeId?: string;
+    /** Multi-select type filter; ORed with each other, ANDed with the rest. */
+    assessmentTypeIds?: string[];
     sort?: string;
   }): Promise<PagedApiResponse<Assessment[]>> => {
     const params: Record<string, string | number | boolean> = {
@@ -1010,6 +1012,8 @@ export const assessmentsApi = {
     // Comma-joined so Spring binds it to List<String> applicationIds.
     if (filters.applicationIds?.length) params.applicationIds = filters.applicationIds.join(',');
     if (filters.assessmentTypeId) params.assessmentTypeId = filters.assessmentTypeId;
+    // Comma-joined so Spring binds it to List<String> assessmentTypeIds.
+    if (filters.assessmentTypeIds?.length) params.assessmentTypeIds = filters.assessmentTypeIds.join(',');
 
     const response = await api.get<PagedApiResponse<Assessment[]>>('/assessments', { params });
     return response.data;
