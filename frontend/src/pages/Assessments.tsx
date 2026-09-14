@@ -12,6 +12,7 @@ import SearchableSelect, { MultiSelect, SelectOption } from '../components/Searc
 import { Button, Badge, FormLabel, Input, Checkbox } from '../components';
 import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
+import { usePersistedState } from '../hooks/usePersistedState';
 import './Assessments.css';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
@@ -23,6 +24,9 @@ const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 
   APPROVED: 'success',
   ARCHIVED: 'secondary',
 };
+
+// localStorage key for this table's saved search, filters, sort and paging.
+const TABLE_KEY = 'assessments';
 
 export default function Assessments() {
   const navigate = useNavigate();
@@ -39,18 +43,18 @@ export default function Assessments() {
   const [statusColors, setStatusColors] = useState<Record<string, string>>({});
   const [wfStatuses, setWfStatuses] = useState<string[]>([]);
 
-  const [pagination, setPagination] = useState<PaginationInfo>({
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
 
   // Applied filters — what actually drives the query. Inline filters (search, application, type,
   // status) write here directly (live-apply); advanced filters land here only on Apply.
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = usePersistedState(TABLE_KEY, 'filters', {
     search: '',
     startDateFrom: '',
     startDateTo: '',
@@ -380,6 +384,7 @@ export default function Assessments() {
         pagination={pagination}
         onPageChange={(page) => setPagination({ ...pagination, page })}
         onPageSizeChange={(pageSize) => setPagination({ ...pagination, pageSize, page: 0 })}
+        initialSearch={filters.search}
         onSearchChange={(search) => {
           setFilters((prev) => ({ ...prev, search }));
           setPagination((prev) => ({ ...prev, page: 0 }));

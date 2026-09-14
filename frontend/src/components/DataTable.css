@@ -494,3 +494,9 @@
     justify-content: center;
   }
 }
+
+/* The sort chip sits with the filter chips but is not a filter — set apart by an outline. */
+.filter-chip--sort {
+  background: transparent;
+  border-style: dashed;
+}

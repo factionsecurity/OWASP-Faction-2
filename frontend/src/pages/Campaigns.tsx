@@ -3,6 +3,7 @@ import { Edit2, Trash2, Plus, Star } from 'lucide-react';
 import { campaignsApi } from '../api';
 import type { Campaign } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Modal,
   Button,
@@ -23,6 +24,9 @@ interface CampaignsProps {
   embedded?: boolean;
 }
 
+// Table view state (search, filters, sort, page) is remembered under this key across navigation.
+const TABLE_KEY = 'campaigns';
+
 export default function Campaigns({ embedded = false }: CampaignsProps) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,15 +39,15 @@ export default function Campaigns({ embedded = false }: CampaignsProps) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
-  const [pagination, setPagination] = useState<PaginationInfo>({
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [searchQuery, setSearchQuery] = usePersistedState(TABLE_KEY, 'searchQuery', '');
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
 
   useEffect(() => {
     loadCampaigns();
@@ -219,6 +223,7 @@ export default function Campaigns({ embedded = false }: CampaignsProps) {
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
         onSearchChange={handleSearchChange}
+        initialSearch={searchQuery}
         searchPlaceholder="Search campaigns"
         emptyMessage="No campaigns found"
         idAccessor="id"

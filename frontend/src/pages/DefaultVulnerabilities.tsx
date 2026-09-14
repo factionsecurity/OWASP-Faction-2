@@ -15,6 +15,7 @@ import {
 } from '../components';
 import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 const severityBadgeVariant = (s: VulnerabilitySeverity) => {
   switch (s) {
@@ -26,6 +27,8 @@ const severityBadgeVariant = (s: VulnerabilitySeverity) => {
   }
 };
 
+const TABLE_KEY = 'defaultVulnerabilities';
+
 export default function DefaultVulnerabilities() {
   const { permissions } = usePermissions();
   const navigate = useNavigate();
@@ -33,9 +36,10 @@ export default function DefaultVulnerabilities() {
   const [defaultVulns, setDefaultVulns] = useState<DefaultVulnerability[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
-  const [sort, setSort] = useState<SortState | null>(null);
-  const [pagination, setPagination] = useState<PaginationInfo>({ page: 0, pageSize: 25, total: 0, totalPages: 0 });
+  const [showArchived, setShowArchived] = usePersistedState(TABLE_KEY, 'showArchived', false);
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(
+    TABLE_KEY, 'pagination', { page: 0, pageSize: 25, total: 0, totalPages: 0 });
   const [dvToDelete, setDvToDelete] = useState<string | null>(null);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [importing, setImporting] = useState(false);

@@ -58,6 +58,11 @@ interface DataTableProps<T> {
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onSearchChange: (search: string) => void;
+  /**
+   * Text the search box starts with — a restored search. Read once on mount; the page already holds
+   * the same value in its own state, so no search callback fires for it.
+   */
+  initialSearch?: string;
   searchPlaceholder?: string;
   /** Render the search box. Off for tables whose endpoint has no text search — a search box that
    *  silently ignores input is worse than none. The placeholder is kept for when search is re-enabled. */
@@ -102,6 +107,7 @@ export default function DataTable<T>({
   onPageChange,
   onPageSizeChange,
   onSearchChange,
+  initialSearch = '',
   searchPlaceholder = 'Search...',
   searchable = true,
   emptyMessage = 'No data found',
@@ -117,8 +123,8 @@ export default function DataTable<T>({
   sort,
   onSortChange,
 }: DataTableProps<T>) {
-  const [searchValue, setSearchValue] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchValue, setSearchValue] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const wasFocusedRef = useRef(false);
@@ -143,23 +149,53 @@ export default function DataTable<T>({
   const onSearchChangeRef = useRef(onSearchChange);
   useEffect(() => { onSearchChangeRef.current = onSearchChange; }, [onSearchChange]);
 
-  // Fire the search callback only when the debounced value actually changes.
+  // Fire the search callback only when the debounced value actually changes — never for the value
+  // the box started with. Pages reset to page 1 when the search changes, so firing on mount would
+  // throw away a restored page every time the table is revisited.
+  const searchMountedRef = useRef(false);
   useEffect(() => {
+    if (!searchMountedRef.current) {
+      searchMountedRef.current = true;
+      return;
+    }
     onSearchChangeRef.current(debouncedSearch);
   }, [debouncedSearch]);
 
-  // "Clear all" clears every zone — the search box (owned here) plus the page's
-  // structured filters (via onClearFilters). Clearing debouncedSearch fires the search reset now.
+  // A restored page can point past the end once rows have gone (page 6 of what is now 2 pages).
+  // Step back to the last real page instead of showing an empty table with no way to tell why.
+  const onPageChangeRef = useRef(onPageChange);
+  useEffect(() => { onPageChangeRef.current = onPageChange; }, [onPageChange]);
+  useEffect(() => {
+    if (loading) return;
+    const { page, totalPages } = pagination;
+    if (totalPages > 0 && page >= totalPages) {
+      onPageChangeRef.current(totalPages - 1);
+    } else if (totalPages === 0 && page > 0 && pagination.total === 0) {
+      onPageChangeRef.current(0);
+    }
+  }, [loading, pagination.page, pagination.totalPages, pagination.total]);
+
+  // "Clear all" clears everything the chip row shows — the search box (owned here), the page's
+  // structured filters (via onClearFilters) and the sort. Clearing debouncedSearch fires the search
+  // reset now.
   const handleClearAll = () => {
     setSearchValue('');
     setDebouncedSearch('');
     onClearFilters?.();
+    if (sort) onSortChange?.(null);
   };
 
   // Clears the search text only (the ✕ inside the box) — distinct from "Clear all" (every filter).
   const clearSearch = () => { setSearchValue(''); setDebouncedSearch(''); };
 
-  const hasChips = !!filterChips && filterChips.length > 0;
+  // Sorting is remembered between visits, so an ordering the user set weeks ago must be visible and
+  // removable from the same row as the filters — a table that silently comes back reordered reads
+  // as broken.
+  const sortColumn = sort ? columns.find((c) => c.sortKey === sort.key) : undefined;
+  const sortChipLabel = sort
+    ? `Sorted by ${sortColumn?.header ?? sort.key} ${sort.direction === 'asc' ? '↑' : '↓'}`
+    : null;
+  const hasChips = (!!filterChips && filterChips.length > 0) || (!!sortChipLabel && !!onSortChange);
 
   // Track if search was active before loading started
   useEffect(() => {
@@ -311,7 +347,21 @@ export default function DataTable<T>({
       {hasChips && (
         <div className="filter-row">
           <div className="filter-chips">
-            {filterChips!.map((chip) => (
+            {sortChipLabel && onSortChange && (
+              <span className="filter-chip filter-chip--sort">
+                {sortChipLabel}
+                <button
+                  type="button"
+                  className="filter-chip-remove"
+                  onClick={() => onSortChange(null)}
+                  aria-label="Remove sorting"
+                  title="Remove sorting"
+                >
+                  <X size={13} />
+                </button>
+              </span>
+            )}
+            {(filterChips ?? []).map((chip) => (
               <span key={chip.key} className="filter-chip">
                 {chip.label}
                 <button
@@ -324,7 +374,7 @@ export default function DataTable<T>({
                 </button>
               </span>
             ))}
-            {onClearFilters && (
+            {(onClearFilters || (sort && onSortChange)) && (
               <button type="button" className="filter-chips-clear" onClick={handleClearAll}>
                 Clear all
               </button>

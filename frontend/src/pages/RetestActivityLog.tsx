@@ -7,6 +7,9 @@ import DataTable, { sortParam } from '../components/DataTable';
 import type { Column, SortState } from '../components/DataTable';
 import { SeverityBadge } from '../components';
 import { useTerminology } from '../context/TerminologyContext';
+import { usePersistedState } from '../hooks/usePersistedState';
+
+const TABLE_KEY = 'retestActivityLog';
 
 /** yyyy-MM-dd for a date input, in local time — `toISOString` would shift the day near midnight. */
 function isoDate(d: Date): string {
@@ -21,11 +24,18 @@ function daysAgo(n: number): string {
 }
 
 /** The windows people actually ask for, rather than making them count back days. */
-const QUICK_RANGES: { label: string; from: () => string }[] = [
-  { label: 'Last 7 days', from: () => daysAgo(6) },
-  { label: 'Last 30 days', from: () => daysAgo(29) },
-  { label: 'Last 90 days', from: () => daysAgo(89) },
+const QUICK_RANGES: { label: string; days: number }[] = [
+  { label: 'Last 7 days', days: 6 },
+  { label: 'Last 30 days', days: 29 },
+  { label: 'Last 90 days', days: 89 },
 ];
+
+/**
+ * The saved date window. A quick range is kept as its length (`days`) rather than the dates it
+ * resolved to, so "last 7 days" still ends today when the page is reopened next week; hand-picked
+ * dates (`days: null`) are kept as they are.
+ */
+interface DateRange { days: number | null; from: string; to: string }
 
 const RESULT_FILTERS: { label: string; value: '' | 'PASS' | 'FAIL' }[] = [
   { label: 'All', value: '' },
@@ -48,18 +58,19 @@ export default function RetestActivityLog() {
   const { organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
-  const [from, setFrom] = useState(() => daysAgo(6));
-  const [to, setTo] = useState(() => isoDate(new Date()));
-  const [result, setResult] = useState<'' | 'PASS' | 'FAIL'>('');
+  const [range, setRange] = usePersistedState<DateRange>(TABLE_KEY, 'range', { days: 6, from: '', to: '' });
+  const from = range.days !== null ? daysAgo(range.days) : range.from;
+  const to = range.days !== null ? isoDate(new Date()) : range.to;
+  const [result, setResult] = usePersistedState<'' | 'PASS' | 'FAIL'>(TABLE_KEY, 'result', '');
 
   const [rows, setRows] = useState<RetestCompletionLog[]>([]);
   const [summary, setSummary] = useState<RetestActivitySummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = usePersistedState(TABLE_KEY, 'page', 0);
+  const [pageSize, setPageSize] = usePersistedState(TABLE_KEY, 'pageSize', 25);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,9 +130,8 @@ export default function RetestActivityLog() {
     },
   ];
 
-  const applyQuickRange = (rangeFrom: string) => {
-    setFrom(rangeFrom);
-    setTo(isoDate(new Date()));
+  const applyQuickRange = (days: number) => {
+    setRange({ days, from: '', to: '' });
     setPage(0);
   };
 
@@ -152,16 +162,16 @@ export default function RetestActivityLog() {
         <label className="logs-range-field">
           From
           <input type="date" value={from} max={to}
-            onChange={e => { setFrom(e.target.value); setPage(0); }} />
+            onChange={e => { setRange({ days: null, from: e.target.value, to }); setPage(0); }} />
         </label>
         <label className="logs-range-field">
           To
           <input type="date" value={to} min={from}
-            onChange={e => { setTo(e.target.value); setPage(0); }} />
+            onChange={e => { setRange({ days: null, from, to: e.target.value }); setPage(0); }} />
         </label>
         {QUICK_RANGES.map(q => (
           <button key={q.label} type="button" className="logs-range-btn"
-            onClick={() => applyQuickRange(q.from())}>
+            onClick={() => applyQuickRange(q.days)}>
             {q.label}
           </button>
         ))}

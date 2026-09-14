@@ -12,10 +12,14 @@ import { DEFAULT_VULN_STATUSES, vulnStatusBadgeVariant } from '../utils/vulnStat
 import { usePermissions } from '../utils/permissions';
 import './Applications.css';
 import { useTerminology } from '../context/TerminologyContext';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 const PAGE_SIZE = 10; // must match a DataTable page-size option (10/25/50/100)
 // App/assessment dropdowns default to a starter list; typing server-searches the rest.
 const OPTION_LIMIT = 250;
+// localStorage key for the saved search, filters, sort and paging. Shared by the /vulnerabilities
+// route and the Applications "All Vulnerabilities" tab — both render the same unscoped list.
+const TABLE_KEY = 'vulnerabilities';
 
 const formatAssessmentLabel = (a: Assessment): SelectOption => {
   const raw = a.startDate ?? a.createdAt;
@@ -51,38 +55,41 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
   const [vulns, setVulns] = useState<VulnerabilityListItem[]>([]);
   const [remediationStages, setRemediationStages] = useState<RemediationStage[]>([]);
   const [total, setTotal] = useState(0);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
-  const [loading, setLoading] = useState(false);
+  const [pageSize, setPageSize] = usePersistedState(TABLE_KEY, 'pageSize', PAGE_SIZE);
+  // Starts true so DataTable doesn't clamp a restored page against the empty pre-load total.
+  const [loading, setLoading] = useState(true);
   const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(DEFAULT_VULN_STATUSES);
 
   // Filters
-  const [search, setSearch] = useState('');
-  const [showClosed, setShowClosed] = useState(false);
-  const [filterSeverities, setFilterSeverities] = useState<string[]>([]);
-  const [filterOrganizationIds, setFilterOrganizationIds] = useState<string[]>([]);
-  const [filterApplicationId, setFilterApplicationId] = useState('');
-  const [filterAssessmentId, setFilterAssessmentId] = useState('');
+  const [search, setSearch] = usePersistedState(TABLE_KEY, 'search', '');
+  const [showClosed, setShowClosed] = usePersistedState(TABLE_KEY, 'showClosed', false);
+  const [filterSeverities, setFilterSeverities] = usePersistedState<string[]>(TABLE_KEY, 'severities', []);
+  const [filterOrganizationIds, setFilterOrganizationIds] = usePersistedState<string[]>(TABLE_KEY, 'organizationIds', []);
+  const [filterApplicationId, setFilterApplicationId] = usePersistedState(TABLE_KEY, 'applicationId', '');
+  const [filterAssessmentId, setFilterAssessmentId] = usePersistedState(TABLE_KEY, 'assessmentId', '');
   // Opened-date range (date-only YYYY-MM-DD). Advanced filter — applied set below.
-  const [filterOpenedFrom, setFilterOpenedFrom] = useState('');
-  const [filterOpenedTo, setFilterOpenedTo] = useState('');
+  const [filterOpenedFrom, setFilterOpenedFrom] = usePersistedState(TABLE_KEY, 'openedFrom', '');
+  const [filterOpenedTo, setFilterOpenedTo] = usePersistedState(TABLE_KEY, 'openedTo', '');
   // Assessment, Opened range and Show Closed live in the advanced panel — staged here until Apply.
   const [draftAssessmentId, setDraftAssessmentId] = useState('');
   const [draftShowClosed, setDraftShowClosed] = useState(false);
   const [draftOpenedFrom, setDraftOpenedFrom] = useState('');
   const [draftOpenedTo, setDraftOpenedTo] = useState('');
-  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
-  const [tablePage, setTablePage] = useState(0);
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [filterStatuses, setFilterStatuses] = usePersistedState<string[]>(TABLE_KEY, 'statuses', []);
+  const [tablePage, setTablePage] = usePersistedState(TABLE_KEY, 'page', 0);
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
   const [exporting, setExporting] = useState(false);
 
   // Dropdown options (org loaded fully; app/assessment server-searched)
   const [orgOptions, setOrgOptions] = useState<SelectOption[]>([]);
   const [appOptions, setAppOptions] = useState<SelectOption[]>([]);
   const [appLoading, setAppLoading] = useState(false);
-  const [appLabels, setAppLabels] = useState<Record<string, string>>({});
+  // Labels for selected ids are saved with the filters, so a restored app/assessment shows its
+  // name rather than its id when it falls outside the starter option list.
+  const [appLabels, setAppLabels] = usePersistedState<Record<string, string>>(TABLE_KEY, 'appLabels', {});
   const [assessmentOptions, setAssessmentOptions] = useState<SelectOption[]>([]);
   const [assessmentLoading, setAssessmentLoading] = useState(false);
-  const [assessmentLabels, setAssessmentLabels] = useState<Record<string, string>>({});
+  const [assessmentLabels, setAssessmentLabels] = usePersistedState<Record<string, string>>(TABLE_KEY, 'assessmentLabels', {});
 
   // Retest multi-select + detail drawer. Keyed by id → row so the selection survives paging
   // (the current page's `vulns` no longer holds every selected row once you page away).
@@ -504,6 +511,7 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
         pagination={pagination}
         onPageChange={(p) => setTablePage(p)}
         onPageSizeChange={(size) => { setPageSize(size); setTablePage(0); }}
+        initialSearch={search}
         onSearchChange={(q) => { setSearch(q); setTablePage(0); }}
         searchPlaceholder="Search vulnerabilities"
         emptyMessage={showClosed ? 'No vulnerabilities found' : 'No open vulnerabilities found'}

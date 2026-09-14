@@ -3,6 +3,7 @@ import { Edit2, Trash2, Plus, X, Users as UsersIcon, Search } from 'lucide-react
 import { teamsApi, usersApi } from '../api';
 import type { Team, User, CreateTeamRequest, UpdateTeamRequest } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Modal,
   Button,
@@ -18,6 +19,9 @@ import {
 import Page from '../components/Page';
 import './Teams.css';
 
+// Table view state (search, filters, sort, page) is remembered under this key across navigation.
+const TABLE_KEY = 'teams';
+
 export default function Teams() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -32,15 +36,15 @@ export default function Teams() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
-  const [pagination, setPagination] = useState<PaginationInfo>({
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [searchQuery, setSearchQuery] = usePersistedState(TABLE_KEY, 'searchQuery', '');
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -326,6 +330,7 @@ export default function Teams() {
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
         onSearchChange={handleSearchChange}
+        initialSearch={searchQuery}
         searchPlaceholder="Search teams"
         emptyMessage="No teams found"
         idAccessor="id"
