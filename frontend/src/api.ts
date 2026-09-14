@@ -625,6 +625,10 @@ export const applicationsApi = {
       organizationId?: string;
       subOrganizationId?: string;
       status?: ApplicationStatus | '';
+      /** Multi-select forms, each matched as "any of"; sent comma-joined so Spring binds a list. */
+      organizationIds?: string[];
+      subOrganizationIds?: string[];
+      statuses?: ApplicationStatus[];
     } = {},
   ): Promise<PagedApiResponse<Application[]>> => {
     const params: Record<string, string | number> = { page, size };
@@ -635,7 +639,11 @@ export const applicationsApi = {
       params.sort = sort;
     }
     Object.entries(filters).forEach(([key, value]) => {
-      if (value) params[key] = value;
+      if (Array.isArray(value)) {
+        if (value.length) params[key] = value.join(',');
+      } else if (value) {
+        params[key] = value;
+      }
     });
     const response = await api.get<PagedApiResponse<Application[]>>('/applications', { params });
     return response.data;
