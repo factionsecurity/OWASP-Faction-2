@@ -8,15 +8,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.core.env.Environment;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.support.CronExpression;
 
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.within;
 
 /**
  * Integration tests for {@link AssessmentSchedulerJob} using a real MongoDB instance
@@ -29,6 +30,9 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
 
     @Autowired
     private AssessmentSchedulerJob job;
+
+    @Autowired
+    private Environment environment;
 
     @Autowired
     private AssessmentRepository assessmentRepository;
@@ -99,8 +103,8 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
         Assessment successor = assessmentRepository.findById(updated.getAutoScheduledSuccessorId()).orElseThrow();
         assertThat(successor.getName()).isEqualTo("Annual Pentest");
         assertThat(successor.getApplicationId()).isEqualTo(yearlyApp.getId());
-        assertThat(successor.getStartDate()).isCloseTo(
-                completedAt.plusDays(AssessmentSchedulerJob.YEARLY_SCHEDULE_DAYS), within(1, ChronoUnit.SECONDS));
+        assertThat(successor.getStartDate()).isNull();
+        assertThat(successor.getPlannedEndDate()).isNull();
         assertThat(successor.getAutoScheduledSuccessorId()).isNull();
     }
 
@@ -149,7 +153,7 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
         assertThat(updated.getAutoScheduledSuccessorId()).isNotNull();
 
         Assessment successor = assessmentRepository.findById(updated.getAutoScheduledSuccessorId()).orElseThrow();
-        assertThat(successor.getStartDate()).isCloseTo(completedAt.plusMonths(6), within(1, ChronoUnit.SECONDS));
+        assertThat(successor.getStartDate()).isNull();
     }
 
     @Test
@@ -253,8 +257,13 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
 
     // ── Successor content ───────────────────────────────────────────────────
 
+    /**
+     * A successor is a placeholder for work a year out: whoever ran the last one may have moved
+     * on, so nobody is assigned until someone schedules it properly. Copying the people would
+     * also fire assignment notifications for an engagement nobody has planned yet.
+     */
     @Test
-    void successor_inheritsAssessorsAndManagers() {
+    void successor_startsUnassigned() {
         Assessment original = assessmentRepository.save(
                 Assessment.builder()
                         .name("Annual Pentest")
@@ -276,9 +285,9 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
         Assessment updated = assessmentRepository.findById(original.getId()).orElseThrow();
         Assessment successor = assessmentRepository.findById(updated.getAutoScheduledSuccessorId()).orElseThrow();
 
-        assertThat(successor.getAssessorIds()).containsExactlyInAnyOrder("assessor-1", "assessor-2");
-        assertThat(successor.getEngagementManagerId()).isEqualTo("manager-1");
-        assertThat(successor.getRemediationManagerId()).isEqualTo("rem-1");
+        assertThat(successor.getAssessorIds()).isEmpty();
+        assertThat(successor.getEngagementManagerId()).isNull();
+        assertThat(successor.getRemediationManagerId()).isNull();
         assertThat(successor.getApplicationId()).isEqualTo(yearlyApp.getId());
         assertThat(successor.getAssessmentTypeId()).isEqualTo(assessmentType.getId());
     }
@@ -406,5 +415,25 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
                         .fieldValues(new HashMap<>())
                         .createdAt(LocalDateTime.now())
                         .build());
+    }
+
+    /**
+     * The run time is configuration, not code: a developer testing rescheduling sets
+     * ASSESSMENT_SCHEDULER_CRON to fire every minute instead of waiting for 01:00, exactly as the
+     * SLA digest already allows. The annotation must read the property, and the shipped default
+     * must be a cron Spring can parse.
+     */
+    @Test
+    void runTimeComesFromTheAssessmentSchedulerCronProperty() throws Exception {
+        String cron = AssessmentSchedulerJob.class
+                .getMethod("scheduleSuccessorAssessments")
+                .getAnnotation(Scheduled.class)
+                .cron();
+
+        assertThat(cron).contains("${app.scheduling.assessment-scheduler-cron");
+        String configured = environment.getProperty("app.scheduling.assessment-scheduler-cron");
+        assertThat(configured).isNotBlank();
+        assertThat(environment.resolvePlaceholders(cron)).isEqualTo(configured);
+        assertThat(CronExpression.isValidExpression(configured)).isTrue();
     }
 }

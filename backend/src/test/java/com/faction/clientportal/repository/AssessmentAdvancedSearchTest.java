@@ -90,6 +90,27 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
         assertThat(search(base().search("PENTEST").build())).extracting(Assessment::getName).containsExactly("Web App Pentest");
     }
 
+    /**
+     * The search box on the Scheduling and Assessments pages is where someone types the name of
+     * the application they are looking for at least as often as the assessment's own name, so the
+     * term matches either.
+     */
+    @Test
+    void search_matchesApplicationNameAsWellAsAssessmentName() {
+        String banking = application("APP-1", "Commercial Banking Portal");
+        String other = application("APP-2", "Payroll");
+        save(a("Q3 Pentest").applicationId(banking).status("IN_PROGRESS"));
+        save(a("Q3 Pentest").applicationId(other).status("IN_PROGRESS"));
+        save(a("Banking Mobile Review").applicationId(other).status("IN_PROGRESS"));
+
+        var result = search(base().search("banking").build());
+
+        assertThat(result).extracting(Assessment::getApplicationId, Assessment::getName)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple(banking, "Q3 Pentest"),
+                        org.assertj.core.groups.Tuple.tuple(other, "Banking Mobile Review"));
+    }
+
     @Test
     void search_treatsWildcardsLiterally() {
         save(a("app_01").status("IN_PROGRESS"));

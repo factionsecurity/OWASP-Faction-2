@@ -37,7 +37,10 @@ public class CreateAssessmentRequest {
     @NotBlank(message = "Assessment type ID is required")
     private String assessmentTypeId;
 
-    @NotBlank(message = "Report template ID is required")
+    /**
+     * Optional. Left blank, the assessment gets the default template for its type — see
+     * {@code DefaultReportTemplateService#resolveForAssessmentType}.
+     */
     private String reportTemplateId;
 
     private String teamId;

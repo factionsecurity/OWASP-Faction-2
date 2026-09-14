@@ -75,6 +75,10 @@ app:
     # deadline measured in days, and a finding entering its warning window at 02:00
     # does not need telling anyone about before the working day starts.
     vulnerability-digest-cron: ${VULNERABILITY_DIGEST_CRON:0 0 8 * * *}
+  scheduling:
+    # When the successor-assessment scheduler runs. Daily at 01:00: it schedules work months
+    # out, so a day's latency is invisible. Override (e.g. every minute) to test rescheduling.
+    assessment-scheduler-cron: ${ASSESSMENT_SCHEDULER_CRON:0 0 1 * * ?}
 
 sso:
   encryption-key: ${SSO_ENCRYPTION_KEY:}

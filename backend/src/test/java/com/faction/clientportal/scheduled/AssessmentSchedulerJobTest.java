@@ -37,6 +37,9 @@ class AssessmentSchedulerJobTest {
     @Mock
     private AssessmentService assessmentService;
 
+    @Mock
+    private com.faction.clientportal.repository.ReportTemplateRepository reportTemplateRepository;
+
     @InjectMocks
     private AssessmentSchedulerJob job;
 
@@ -119,8 +122,8 @@ class AssessmentSchedulerJobTest {
         CreateAssessmentRequest req = reqCaptor.getValue();
         assertThat(req.getName()).isEqualTo("Annual Pentest");
         assertThat(req.getApplicationId()).isEqualTo("app-1");
-        assertThat(req.getStartDate()).isEqualTo(
-                completedAssessment.getCompletedDate().plusDays(AssessmentSchedulerJob.YEARLY_SCHEDULE_DAYS));
+        // Due only decides *when* the successor appears; the engagement itself is unscheduled.
+        assertThat(req.getStartDate()).isNull();
 
         verify(assessmentRepository).save(completedAssessment);
         assertThat(completedAssessment.getAutoScheduledSuccessorId()).isEqualTo("successor-1");
@@ -144,8 +147,7 @@ class AssessmentSchedulerJobTest {
 
         ArgumentCaptor<CreateAssessmentRequest> reqCaptor = ArgumentCaptor.forClass(CreateAssessmentRequest.class);
         verify(assessmentService).createAssessment(reqCaptor.capture(), eq("system"));
-        assertThat(reqCaptor.getValue().getStartDate())
-                .isEqualTo(completedAssessment.getCompletedDate().plusMonths(3));
+        assertThat(reqCaptor.getValue().getStartDate()).isNull();
         assertThat(completedAssessment.getAutoScheduledSuccessorId()).isEqualTo("successor-custom");
     }
 
@@ -221,5 +223,43 @@ class AssessmentSchedulerJobTest {
         verify(assessmentRepository, times(1)).save(second);
         assertThat(completedAssessment.getAutoScheduledSuccessorId()).isNull();
         assertThat(second.getAutoScheduledSuccessorId()).isEqualTo("successor-2");
+    }
+
+    // ── Predecessor template no longer usable ────────────────────────────────
+
+    private CreateAssessmentRequest scheduleAndCapture() {
+        when(assessmentRepository.findCompletedWithNoSuccessor()).thenReturn(List.of(completedAssessment));
+        when(applicationRepository.findById("app-1")).thenReturn(Optional.of(yearlyApp));
+        when(assessmentService.createAssessment(any(), eq("system")))
+                .thenReturn(AssessmentDto.builder().id("successor-x").build());
+
+        job.scheduleSuccessorAssessments();
+
+        ArgumentCaptor<CreateAssessmentRequest> captor = ArgumentCaptor.forClass(CreateAssessmentRequest.class);
+        verify(assessmentService).createAssessment(captor.capture(), eq("system"));
+        return captor.getValue();
+    }
+
+    @Test
+    void keepsThePredecessorTemplateWhileItIsStillActive() {
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull("template-1")).thenReturn(Optional.of(
+                com.faction.clientportal.model.ReportTemplate.builder().id("template-1").active(true).build()));
+
+        assertThat(scheduleAndCapture().getReportTemplateId()).isEqualTo("template-1");
+    }
+
+    @Test
+    void dropsAPredecessorTemplateThatWasDeleted_soCreationFallsBackToTheDefault() {
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull("template-1")).thenReturn(Optional.empty());
+
+        assertThat(scheduleAndCapture().getReportTemplateId()).isNull();
+    }
+
+    @Test
+    void dropsAPredecessorTemplateThatWasDeactivated() {
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull("template-1")).thenReturn(Optional.of(
+                com.faction.clientportal.model.ReportTemplate.builder().id("template-1").active(false).build()));
+
+        assertThat(scheduleAndCapture().getReportTemplateId()).isNull();
     }
 }

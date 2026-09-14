@@ -1222,11 +1222,10 @@ export default function CreateAssessment() {
             <div className="form-section">
               <h5 className="section-title">Report Template</h5>
               <div className="form-group">
-                <FormLabel required>Template</FormLabel>
+                <FormLabel>Template</FormLabel>
                 <Select
                   value={formData.reportTemplateId}
                   onChange={(e) => setFormData({ ...formData, reportTemplateId: e.target.value })}
-                  required
                   // Locked when no assessment type is chosen yet, or when the lone
                   // template really is the current selection — an empty/stale
                   // selection (e.g. the previous template was deleted) must stay
@@ -1235,7 +1234,7 @@ export default function CreateAssessment() {
                     || (reportTemplates.length === 1
                       && formData.reportTemplateId === reportTemplates[0].id)}
                 >
-                  <option value="">Select template...</option>
+                  <option value="">Default template for this type</option>
                   {reportTemplates.map((template) => (
                     <option key={template.id} value={template.id}>
                       {template.name} (v{template.version})
@@ -1245,9 +1244,13 @@ export default function CreateAssessment() {
                 {!formData.assessmentTypeId ? (
                   <small className="text-muted d-block mt-1">Select an assessment type to choose a template</small>
                 ) : reportTemplates.length === 0 ? (
-                  <small className="text-muted d-block mt-1">No active templates for this assessment type</small>
+                  <small className="text-muted d-block mt-1">
+                    No active templates for this assessment type — the project's default template will be installed and used
+                  </small>
                 ) : reportTemplates.length === 1 && formData.reportTemplateId === reportTemplates[0].id ? (
                   <small className="text-muted d-block mt-1">Auto-selected (only one active template)</small>
+                ) : !formData.reportTemplateId ? (
+                  <small className="text-muted d-block mt-1">Leave blank to use the default template for this assessment type</small>
                 ) : null}
               </div>
             </div>
