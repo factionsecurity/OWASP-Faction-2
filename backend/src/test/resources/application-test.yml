@@ -20,6 +20,11 @@ faction:
     # template once per context — slow, and it makes the whole suite need network access.
     # DefaultReportTemplateServiceTest points the service at a local server instead.
     url: ""
+  sla:
+    # Off in tests: the recalculation runs on its own thread, so a PUT to the workflow config in one
+    # test would rewrite other tests' findings in the background. SlaRecalculationServiceTest calls it
+    # synchronously instead, and SlaRecalculationServiceListenerTest covers this switch.
+    recalculate-on-config-change: false
 
 jwt:
   secret: test-secret-key-for-testing-purposes-only-must-be-at-least-256-bits-long

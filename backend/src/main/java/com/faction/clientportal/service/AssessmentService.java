@@ -65,6 +65,7 @@ public class AssessmentService {
     private final com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
     private final com.faction.clientportal.service.email.EventNotificationEmailSender eventEmailSender;
     private final DefaultReportTemplateService defaultReportTemplateService;
+    private final SlaService slaService;
 
     /**
      * Create a new assessment from a report template
@@ -450,6 +451,7 @@ public class AssessmentService {
                         }
                     }
                 }
+                slaService.refreshAll(vulns);
                 vulnerabilityRepository.saveAll(vulns);
 
                 // Announce completion in the application's chat

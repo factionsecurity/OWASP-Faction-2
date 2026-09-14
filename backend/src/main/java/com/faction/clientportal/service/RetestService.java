@@ -49,6 +49,7 @@ public class RetestService {
     private final VulnerabilityEventService vulnerabilityEventService;
     private final com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
     private final com.faction.clientportal.service.email.EventNotificationEmailSender eventEmailSender;
+    private final SlaService slaService;
 
     /** Retest status for an app-owner request awaiting scheduling by staff. */
     public static final String RETEST_REQUESTED = "REQUESTED";
@@ -483,6 +484,7 @@ public class RetestService {
 
         vuln.setLastUpdatedBy(userId);
         vuln.setUpdatedAt(LocalDateTime.now());
+        slaService.refresh(vuln);
         vulnerabilityRepository.save(vuln);
 
         // System comments render as markdown, so a markdown table is enough — no inline styling

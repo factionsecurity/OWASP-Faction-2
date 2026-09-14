@@ -2,13 +2,18 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.model.AssessmentWorkflowConfig;
 import com.faction.clientportal.model.AssessmentWorkflowConfig.RemediationStage;
+import com.faction.clientportal.model.AssessmentWorkflowConfig.VulnerabilitySla;
 import com.faction.clientportal.repository.AssessmentWorkflowConfigRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +22,7 @@ public class AssessmentWorkflowConfigService {
     static final String SINGLETON_ID = "singleton";
 
     private final AssessmentWorkflowConfigRepository repository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** Returns the config, creating it with defaults on first access. */
     public AssessmentWorkflowConfig getConfig() {
@@ -31,7 +37,30 @@ public class AssessmentWorkflowConfigService {
     public AssessmentWorkflowConfig updateConfig(AssessmentWorkflowConfig config) {
         config.setId(SINGLETON_ID);
         config.setRemediationStages(normalizeStages(config.getRemediationStages()));
-        return repository.save(config);
+        // With no row yet, getConfig() would have seeded the defaults, so those are what changed from.
+        List<VulnerabilitySla> previousSlas = repository.findById(SINGLETON_ID)
+                .map(AssessmentWorkflowConfig::getVulnerabilitySlas)
+                .orElseGet(AssessmentWorkflowConfig::defaultVulnerabilitySlas);
+        AssessmentWorkflowConfig saved = repository.save(config);
+        if (!normalizedSlas(previousSlas).equals(normalizedSlas(saved.getVulnerabilitySlas()))) {
+            eventPublisher.publishEvent(new SlaConfigChangedEvent());
+        }
+        return saved;
+    }
+
+    /**
+     * The SLAs as SlaService reads them — severity trimmed and upper-cased, with its day counts — as
+     * an order-insensitive set, so reordering rows or retyping a severity's case is not a change.
+     */
+    static Set<String> normalizedSlas(List<VulnerabilitySla> slas) {
+        if (slas == null) {
+            return Set.of();
+        }
+        return slas.stream()
+                .filter(s -> s != null && s.getSeverity() != null && !s.getSeverity().isBlank())
+                .map(s -> s.getSeverity().trim().toUpperCase(Locale.ROOT)
+                        + ":" + s.getPastDueDays() + ":" + s.getWarningDays())
+                .collect(Collectors.toSet());
     }
 
     /**

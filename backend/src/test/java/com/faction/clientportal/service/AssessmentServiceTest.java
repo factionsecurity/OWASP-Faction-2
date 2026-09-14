@@ -97,6 +97,9 @@ class AssessmentServiceTest {
     @Mock
     private DefaultReportTemplateService defaultReportTemplateService;
 
+    @Mock
+    private SlaService slaService;
+
     @InjectMocks
     private AssessmentService assessmentService;
 
