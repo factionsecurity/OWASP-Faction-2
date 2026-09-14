@@ -170,6 +170,19 @@ export default function Organizations() {
       accessor: 'description',
     },
     {
+      header: 'Remediation Owners',
+      sortKey: 'remediationOwners',
+      render: (organization) => {
+        const owners = organization.remediationOwners || [];
+        if (owners.length === 0) return <span className="text-muted">—</span>;
+        return (
+          <span title={owners.map((o) => `${o.displayName} (${o.email})`).join('\n')}>
+            {owners.map((o) => o.displayName).join(', ')}
+          </span>
+        );
+      },
+    },
+    {
       header: 'Actions',
       width: '120px',
       render: (organization) => (

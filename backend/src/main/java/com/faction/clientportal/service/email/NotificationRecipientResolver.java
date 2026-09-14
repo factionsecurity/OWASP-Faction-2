@@ -44,6 +44,7 @@ public class NotificationRecipientResolver {
     private final ApplicationRepository applicationRepository;
     private final MentionQueueService mentionQueueService;
     private final AccessScopeService accessScopeService;
+    private final com.faction.clientportal.repository.OrganizationRepository organizationRepository;
 
     /**
      * Everyone who should receive this event's email for this assessment.
@@ -66,6 +67,11 @@ public class NotificationRecipientResolver {
         // dedup when they are on another audience too — "remediation owner" is the reason
         // that matters.
         addAll(byEmail, remediationOwnerRecipients(vulnerability));
+        // Likewise the organization's remediation owners: responsible for every finding under
+        // its applications, so they are copied on each finding's alerts without a switch.
+        if (vulnerability != null) {
+            addAll(byEmail, organizationRemediationOwnerRecipients(application));
+        }
 
         if (enabled(event, settings, EmailNotificationAudience.ASSESSORS)) {
             addAll(byEmail, assessorRecipients(assessment));
@@ -171,6 +177,21 @@ public class NotificationRecipientResolver {
                 .map(u -> recipient(u, EmailNotificationAudience.REMEDIATION_OWNER))
                 .orElse(null);
         return recipient == null ? List.of() : List.of(recipient);
+    }
+
+    /** The organization's remediation owners (live accounts only), for the application's organization. */
+    private List<Recipient> organizationRemediationOwnerRecipients(Application application) {
+        if (application == null || isBlank(application.getOrganizationId())) return List.of();
+        return organizationRepository.findById(application.getOrganizationId())
+                .map(org -> org.getRemediationOwnerIds() == null ? List.<String>of() : org.getRemediationOwnerIds())
+                .orElse(List.of())
+                .stream()
+                .map(id -> userRepository.findById(id)
+                        .filter(u -> u.getDeletedAt() == null && u.getDisabledAt() == null)
+                        .map(u -> recipient(u, EmailNotificationAudience.REMEDIATION_OWNER))
+                        .orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .toList();
     }
 
     /**

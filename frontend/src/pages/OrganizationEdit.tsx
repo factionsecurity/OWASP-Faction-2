@@ -7,9 +7,11 @@ import type { AssignedUser } from '../types';
 import RichTextEditor from '../components/RichTextEditor';
 import Page from '../components/Page';
 import SubOrganizationsPanel from '../components/SubOrganizationsPanel';
+import UserSelector from '../components/UserSelector';
 import {
   Button,
   FormGroup,
+  FormHint,
   FormLabel,
   Input,
   Select,
@@ -31,6 +33,7 @@ export default function OrganizationEdit() {
   const [fieldDefinitions, setFieldDefinitions] = useState<UserDefinedField[]>([]);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [assignedUsers, setAssignedUsers] = useState<AssignedUser[]>([]);
+  const [remediationOwnerIds, setRemediationOwnerIds] = useState<string[]>([]);
   const { setBreadcrumbs } = usePageTitle();
 
   useEffect(() => {
@@ -64,6 +67,7 @@ export default function OrganizationEdit() {
           setFormData({ name: orgRes.data.name, description: orgRes.data.description });
           setFieldValues(orgRes.data.fieldValues || {});
           setAssignedUsers(orgRes.data.assignedUsers || []);
+          setRemediationOwnerIds(orgRes.data.remediationOwnerIds || []);
         }
       })
       .catch((err: any) => {
@@ -98,6 +102,7 @@ export default function OrganizationEdit() {
         name: formData.name,
         description: formData.description,
         fieldValues: Object.keys(fieldValues).length > 0 ? fieldValues : undefined,
+        remediationOwnerIds,
       };
       await organizationsApi.update(id, updateData);
       navigate('/organizations');
@@ -219,6 +224,23 @@ export default function OrganizationEdit() {
             ))}
           </div>
         )}
+
+        <div className="form-panel">
+          <h3 className="form-section-title">Remediation Owners</h3>
+          <FormHint>
+            Staff responsible for fixing and tracking every finding under this {organizationLower}'s
+            applications. They are copied on each finding's alerts, see every comment, and are told when a
+            finding's status or owner changes. Internal users only.
+          </FormHint>
+          <UserSelector
+            label="Remediation owners"
+            placeholder="Search staff..."
+            selectedUserIds={remediationOwnerIds}
+            onChange={setRemediationOwnerIds}
+            disabled={!canWrite}
+            internalOnly
+          />
+        </div>
 
         {/* Divisions are managed independently of the organization form — each add, rename or
             delete is its own request, so they aren't part of this form's save. */}

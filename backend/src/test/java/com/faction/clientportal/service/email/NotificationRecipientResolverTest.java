@@ -40,6 +40,7 @@ class NotificationRecipientResolverTest {
     @Mock private ApplicationRepository applicationRepository;
     @Mock private MentionQueueService mentionQueueService;
     @Mock private AccessScopeService accessScopeService;
+    @Mock private com.faction.clientportal.repository.OrganizationRepository organizationRepository;
 
     @InjectMocks private NotificationRecipientResolver resolver;
 
@@ -274,6 +275,37 @@ class NotificationRecipientResolverTest {
         user.setOrganizationIds(new ArrayList<>(List.of("org-1")));
         user.setIsInternal(false);
         return user;
+    }
+
+    @Test
+    void organizationRemediationOwnersAreCopiedOnEveryFindingEmail_withoutAnySwitch() {
+        // Responsible for every finding in the organization, so they hear about each one
+        // whatever the routing table says — the same rule as the finding's own owner.
+        application.setOrganizationId("org-1");
+        User fixer = orgUser("u-40", "fixer", "fixer@staff.com");
+        fixer.setIsInternal(true);
+        fixer.setOrganizationIds(new ArrayList<>());
+        when(organizationRepository.findById("org-1")).thenReturn(Optional.of(
+                com.faction.clientportal.model.Organization.builder().id("org-1").name("Org")
+                        .remediationOwnerIds(new ArrayList<>(List.of("u-40"))).build()));
+        when(userRepository.findById("u-40")).thenReturn(Optional.of(fixer));
+        Vulnerability vuln = new Vulnerability();
+        vuln.setId("v-1");
+        vuln.setName("SQLi");
+
+        List<NotificationRecipientResolver.Recipient> recipients = resolver.resolve(
+                EmailNotificationEvent.VULNERABILITY_PAST_DUE,
+                EventSettings.builder().build(), // nothing switched on
+                assessment, vuln);
+
+        assertThat(recipients).singleElement().satisfies(r -> {
+            assertThat(r.email()).isEqualTo("fixer@staff.com");
+            assertThat(r.audience()).isEqualTo(EmailNotificationAudience.REMEDIATION_OWNER);
+        });
+
+        // Assessment-level events carry no finding, so organization owners are not copied.
+        assertThat(resolver.resolve(EmailNotificationEvent.ASSESSMENT_CREATED,
+                EventSettings.builder().build(), assessment, null)).isEmpty();
     }
 
     private void givenOrgUsers(User... users) {

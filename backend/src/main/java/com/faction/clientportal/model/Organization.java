@@ -43,4 +43,13 @@ public class Organization {
     @Builder.Default
     @JdbcTypeCode(SqlTypes.JSON)
     private List<AssignedUser> assignedUsers = new ArrayList<>();
+
+    /**
+     * Internal users responsible for fixing and tracking every finding under this organization's
+     * applications. Not copied onto findings: resolved at notification time, so the list is always
+     * current. Ids of {@link User}s with {@code isInternal = true}.
+     */
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<String> remediationOwnerIds = new ArrayList<>();
 }
