@@ -32,7 +32,7 @@ import java.util.Collection;
  * assessor.
  *
  * <p>Every field is optional: {@code null} (or an empty {@code applicationIds} / {@code statuses} /
- * {@code severityOrdinals} / {@code organizationIds}) = filter not applied. {@code applicationIds} being non-null-but-empty is the owned-scope "no apps →
+ * {@code severityOrdinals} / {@code organizationIds} / {@code assessmentIds}) = filter not applied. {@code applicationIds} being non-null-but-empty is the owned-scope "no apps →
  * match nothing" case and the service short-circuits before calling.
  */
 @Builder
@@ -40,11 +40,23 @@ public record RemediationQueueCriteria(
         String search,
         Collection<Integer> severityOrdinals,
         Collection<String> organizationIds,
+        /**
+         * Membership scope (the {@code :org} tier): applications granted through sub-organization
+         * membership, ORed with {@code organizationIds}. Null → plain organization filter; non-null
+         * (even empty) → membership predicate, and both empty → match nothing.
+         */
+        Collection<String> scopeAppIds,
         Collection<String> applicationIds,
         Collection<String> teamIds,
         String assessorId,
-        String assessmentId,
+        Collection<String> assessmentIds,
         Collection<String> statuses,
         String rowType,
+        /**
+         * Badge buckets to narrow to, matched as "any of": {@code PAST_DUE}, {@code DUE_SOON},
+         * {@code RETEST_REQUESTED}, {@code RETEST_SCHEDULED}, {@code RETEST_IN_PROGRESS}. Null or empty
+         * → no bucket filter.
+         */
+        Collection<String> buckets,
         boolean includeCompletedRetests
 ) {}

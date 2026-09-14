@@ -30,12 +30,14 @@ class SubOrganizationServiceTest extends TestContainersConfig {
     @Autowired private SubOrganizationRepository subOrganizationRepository;
     @Autowired private OrganizationRepository organizationRepository;
     @Autowired private ApplicationRepository applicationRepository;
+    @Autowired private com.faction.clientportal.repository.UserRepository userRepository;
 
     private String acmeId;
     private String globexId;
 
     @BeforeEach
     void setUp() {
+        userRepository.deleteAll();
         applicationRepository.deleteAll();
         subOrganizationRepository.deleteAll();
         organizationRepository.deleteAll();
@@ -110,6 +112,22 @@ class SubOrganizationServiceTest extends TestContainersConfig {
         assertThatThrownBy(() -> service.delete(acmeId, payments.getId()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("1 application is still assigned");
+
+        assertThat(subOrganizationRepository.findById(payments.getId())).isPresent();
+    }
+
+    @Test
+    void deletingIsBlockedWhileAUserIsStillAMember() {
+        var payments = create(acmeId, "Payments");
+        userRepository.save(com.faction.clientportal.model.User.builder()
+                .username("payments-member").email("pm@c.com").password("x")
+                .loginOption(com.faction.clientportal.model.LoginOption.NATIVE).isInternal(false)
+                .subOrganizationIds(new java.util.ArrayList<>(java.util.List.of(payments.getId())))
+                .createdAt(java.time.LocalDateTime.now()).failedLoginAttempts(0).build());
+
+        assertThatThrownBy(() -> service.delete(acmeId, payments.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("1 user is still a member");
 
         assertThat(subOrganizationRepository.findById(payments.getId())).isPresent();
     }

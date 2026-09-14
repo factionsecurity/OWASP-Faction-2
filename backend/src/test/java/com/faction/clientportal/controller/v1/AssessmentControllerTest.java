@@ -622,6 +622,54 @@ class AssessmentControllerTest extends TestContainersConfig {
     // ── Status and open-survey filters ─────────────────────────────────────────
 
     @Test
+    void testSearchAssessments_FilteredByCompletedDateRange() throws Exception {
+        Assessment recent = createTestAssessment("Recent", "COMPLETED");
+        recent.setCompletedDate(LocalDateTime.now().minusDays(2));
+        assessmentRepository.save(recent);
+        Assessment old = createTestAssessment("Old", "COMPLETED");
+        old.setCompletedDate(LocalDateTime.now().minusDays(60));
+        assessmentRepository.save(old);
+
+        mockMvc.perform(get("/api/v1/assessments")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .param("showCompleted", "true")
+                        .param("completedDateFrom", LocalDateTime.now().minusDays(7).toString())
+                        .param("completedDateTo", LocalDateTime.now().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].name").value("Recent"));
+    }
+
+    @Test
+    void testSearchAssessments_FilteredBySeveralTypes() throws Exception {
+        AssessmentType mobile = assessmentTypeRepository.save(AssessmentType.builder()
+                .name("Mobile").createdAt(LocalDateTime.now()).build());
+        AssessmentType cloud = assessmentTypeRepository.save(AssessmentType.builder()
+                .name("Cloud").createdAt(LocalDateTime.now()).build());
+        createTestAssessment("Web one", "IN_PROGRESS");
+        Assessment m = createTestAssessment("Mobile one", "IN_PROGRESS");
+        m.setAssessmentTypeId(mobile.getId());
+        assessmentRepository.save(m);
+        Assessment c = createTestAssessment("Cloud one", "IN_PROGRESS");
+        c.setAssessmentTypeId(cloud.getId());
+        assessmentRepository.save(c);
+
+        mockMvc.perform(get("/api/v1/assessments")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .param("assessmentTypeIds", mobile.getId(), cloud.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(2)))
+                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Mobile one", "Cloud one")));
+
+        // Comma-joined works too — that is how the UI sends a multi-select.
+        mockMvc.perform(get("/api/v1/assessments")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .param("assessmentTypeIds", mobile.getId() + "," + cloud.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(2)));
+    }
+
+    @Test
     void testSearchAssessments_FilteredBySeveralStatuses() throws Exception {
         createTestAssessment("Drafted", "DRAFT");
         createTestAssessment("Running", "IN_PROGRESS");

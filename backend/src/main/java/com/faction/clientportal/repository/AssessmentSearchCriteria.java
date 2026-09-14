@@ -20,16 +20,16 @@ import java.util.Collection;
  *       so empty means "no filter" (show all), not "match nothing".
  * </ul>
  *
+ * <p>{@code scopeOrgIds} / {@code scopeAppIds} carry the mandatory membership (ORG) read scope:
+ * the organizations the caller belongs to OR the applications their sub-organizations grant, ORed
+ * together. Null on both → not applied; non-null and both empty → match nothing.
+ *
  * <p>{@code statuses} is the multi-select status filter (empty or null → no filter), separate
  * from the single {@code status} the older callers pass; both are ANDed when both are set.
  *
  * <p>{@code restrictAssessmentIds} narrows to a pre-resolved id set — how filters that live in
  * another table (currently "has an unfinished survey") are applied. Null → not applied; empty →
  * match nothing, since a filter that resolved to no assessments must not fall through to "all".
- *
- * <p>{@code reopenableSince} is the reopen-window cutoff: with {@code excludeCompleted}, assessments
- * completed after it stay in the queue so the people who can still reopen them can find them.
- * Required whenever {@code excludeCompleted} is set.
  *
  * <p>{@code scopeAssessorId} and {@code scopeTeamIds} carry the caller's mandatory assessment read
  * scope (see {@code AccessScopeService.resolveAssessmentScope}) — distinct from the optional
@@ -43,7 +43,11 @@ public record AssessmentSearchCriteria(
         Collection<String> applicationIds,
         String organizationId,
         Collection<String> ownedAppIds,
+        Collection<String> scopeOrgIds,
+        Collection<String> scopeAppIds,
         String assessmentTypeId,
+        /** Multi-select type filter (UI); empty or null → no filter, like {@code applicationIds}. */
+        Collection<String> assessmentTypeIds,
         String assessorId,
         String status,
         Collection<String> statuses,
@@ -52,9 +56,10 @@ public record AssessmentSearchCriteria(
         LocalDateTime startDateTo,
         LocalDateTime endDateFrom,
         LocalDateTime endDateTo,
+        LocalDateTime completedDateFrom,
+        LocalDateTime completedDateTo,
         boolean pastDue,
         boolean excludeCompleted,
-        LocalDateTime reopenableSince,
         boolean assignedToMe,
         String currentUserId,
         Collection<String> teamMemberIds,

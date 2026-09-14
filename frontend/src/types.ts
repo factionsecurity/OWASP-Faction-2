@@ -9,7 +9,11 @@ export interface User {
   teamIds?: string[];
   roles?: Role[];
   isInternal: boolean;
-  organizationId?: string;
+  organizationIds?: string[];
+  subOrganizationIds?: string[];
+  /** Display names for the ids above, same order; sub-org names are "Org / Sub-org". */
+  organizationNames?: string[];
+  subOrganizationNames?: string[];
   createdAt: string;
   lastLogin?: string;
   disabledAt?: string;
@@ -136,7 +140,8 @@ export interface CreateUserRequest {
   roleIds: string[];
   teamIds?: string[];
   isInternal: boolean;
-  organizationId?: string;
+  organizationIds?: string[];
+  subOrganizationIds?: string[];
 }
 
 export interface UpdateUserRequest {
@@ -148,7 +153,8 @@ export interface UpdateUserRequest {
   roleIds: string[];
   teamIds?: string[];
   isInternal: boolean;
-  organizationId?: string;
+  organizationIds?: string[];
+  subOrganizationIds?: string[];
   /**
    * Disable or re-enable the account. Omit to leave the current state alone — the server treats
    * null as "no change", so an ordinary edit cannot silently re-enable someone. Re-enabling also
@@ -262,6 +268,16 @@ export interface Organization {
   fieldDefinitions?: UserDefinedField[];
   fieldValues?: Record<string, string>;
   assignedUsers?: AssignedUser[];
+  /** Internal users responsible for every finding under this organization's applications. */
+  remediationOwnerIds?: string[];
+  remediationOwners?: OrganizationRemediationOwner[];
+}
+
+export interface OrganizationRemediationOwner {
+  userId: string;
+  username: string;
+  displayName: string;
+  email: string;
 }
 
 export interface CreateOrganizationRequest {
@@ -274,6 +290,8 @@ export interface UpdateOrganizationRequest {
   name: string;
   description: string;
   fieldValues?: Record<string, string>;
+  /** Full replacement; omit to leave the list unchanged. */
+  remediationOwnerIds?: string[];
 }
 
 export interface EntityFieldConfig {
@@ -1459,6 +1477,22 @@ export interface RemediationQueueRow {
   vulnerabilityStatus?: string; // the underlying vulnerability's workflow status (both row types)
   retestStatus?: RetestStatus;
   lastRetestStatus?: 'PASSED' | 'FAILED';
+  /** Vuln rows: when that same last retest completed (its closed date, else its last update). */
+  lastRetestDate?: string;
+}
+
+/**
+ * Counts for the remediation queue's stat badges, computed server-side with the queue's current
+ * filters (but not its bucket selection or completed-retest toggle), so each badge shows how many
+ * rows selecting it would yield.
+ */
+export interface RemediationQueueSummary {
+  total: number;
+  pastDue: number;
+  dueSoon: number;
+  retestRequested: number;
+  retestScheduled: number;
+  retestInProgress: number;
 }
 
 // ── Email Configuration ───────────────────────────────────────────────────────
@@ -1499,6 +1533,8 @@ export type NotificationCategory =
   | 'MENTION'
   | 'ASSESSMENT_ASSIGNED'
   | 'RETEST_ASSIGNED'
+  | 'THREAD_COMMENT'
+  | 'RESPONSIBLE_FINDING'
   | 'OTHER';
 
 export interface NotificationPreference {

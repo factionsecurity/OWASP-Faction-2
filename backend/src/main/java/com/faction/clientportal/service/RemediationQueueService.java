@@ -1,5 +1,6 @@
 package com.faction.clientportal.service;
 
+import com.faction.clientportal.dto.RemediationQueueSummaryDto;
 import com.faction.clientportal.dto.RemediationRowDto;
 import com.faction.clientportal.model.AssessmentWorkflowConfig.VulnerabilitySla;
 import com.faction.clientportal.model.Retest;
@@ -40,24 +41,70 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RemediationQueueService {
 
-    private static final Set<String> OPEN_RETEST_STATUSES =
-            Set.of(RetestService.RETEST_REQUESTED, "SCHEDULED", "IN_PROGRESS");
-    private static final Set<String> COMPLETED_RETEST_STATUSES = Set.of("PASSED", "FAILED");
 
     private final VulnerabilityRepository vulnerabilityRepository;
     private final RetestRepository retestRepository;
     private final AssessmentWorkflowConfigService workflowConfigService;
     private final VulnerabilityScopeResolver scopeResolver;
 
+    /**
+     * The nav badge number for this caller: the rows of their queue, scoped exactly as {@link #list}
+     * scopes them. Counted from the queue's own query, so the badge, the page's Total and the table
+     * can never disagree.
+     */
+    public long queueCount(Authentication authentication) {
+        return summary(null, null, null, null, null, null, null, authentication).total();
+    }
+
+    /** Unscoped count of the whole queue, for internal callers with no user. */
     public long queueCount() {
-        long retestCount = retestRepository.countByStatusInAndDeletedAtIsNull(OPEN_RETEST_STATUSES);
+        return summarize(RemediationQueueCriteria.builder().build()).total();
+    }
 
+    /**
+     * The queue broken into its badge buckets, under the same scope and filters as {@link #list} —
+     * minus the bucket selection itself, so choosing a badge never shrinks its siblings' counts, and
+     * minus completed retests, which are no bucket's work.
+     */
+    public RemediationQueueSummaryDto summary(String search,
+                                              Collection<String> severities,
+                                              Collection<String> organizationIds,
+                                              Collection<String> applicationIds,
+                                              Collection<String> assessmentIds,
+                                              List<String> statuses,
+                                              String type,
+                                              Authentication authentication) {
+        var es = scopeResolver.effectiveScope(values(organizationIds), values(applicationIds), authentication);
+        if (es.denied()) {
+            return RemediationQueueSummaryDto.empty();
+        }
+        return summarize(RemediationQueueCriteria.builder()
+                .search(search)
+                .severityOrdinals(severityOrdinals(severities))
+                .organizationIds(es.orgIds())
+                .scopeAppIds(es.scopeAppIds())
+                .applicationIds(es.appIds())
+                .teamIds(es.teamIds())
+                .assessorId(es.assessorId())
+                .assessmentIds(values(assessmentIds))
+                .statuses(statuses)
+                .rowType(rowType(type))
+                .includeCompletedRetests(false)
+                .build());
+    }
+
+    private RemediationQueueSummaryDto summarize(RemediationQueueCriteria criteria) {
         var slas = workflowConfigService.getConfig().getVulnerabilitySlas();
-        long vulnCount = slas == null || slas.isEmpty()
-                ? 0
-                : vulnerabilityRepository.countRemediationWarningDue(warnDaysByOrdinal(slas));
-
-        return vulnCount + retestCount;
+        Integer[] warn = slas == null ? new Integer[0] : warnDaysByOrdinal(slas);
+        Integer[] due = slas == null ? new Integer[0] : dueDaysByOrdinal(slas);
+        java.util.Map<String, Long> counts = vulnerabilityRepository.countRemediationBuckets(warn, due, criteria);
+        long pastDue = counts.getOrDefault("PAST_DUE", 0L);
+        long dueSoon = counts.getOrDefault("DUE_SOON", 0L);
+        long requested = counts.getOrDefault("RETEST_REQUESTED", 0L);
+        long scheduled = counts.getOrDefault("RETEST_SCHEDULED", 0L);
+        long inProgress = counts.getOrDefault("RETEST_IN_PROGRESS", 0L);
+        return new RemediationQueueSummaryDto(pastDue + dueSoon + requested + scheduled + inProgress,
+                pastDue, dueSoon, requested, scheduled, inProgress);
     }
 
     /**
@@ -76,16 +123,17 @@ public class RemediationQueueService {
      * It never widens the vulnerability half: a closed finding is not a queue row.
      */
     public Page<RemediationRowDto> list(String search,
-                                        String severity,
-                                        String organizationId,
-                                        String applicationId,
-                                        String assessmentId,
+                                        Collection<String> severities,
+                                        Collection<String> organizationIds,
+                                        Collection<String> applicationIds,
+                                        Collection<String> assessmentIds,
                                         List<String> statuses,
                                         String type,
+                                        List<String> buckets,
                                         boolean includeCompletedRetests,
                                         Pageable pageable,
                                         Authentication authentication) {
-        var es = scopeResolver.effectiveScope(organizationId, applicationId, authentication);
+        var es = scopeResolver.effectiveScope(values(organizationIds), values(applicationIds), authentication);
         if (es.denied()) {
             return Page.empty(pageable);
         }
@@ -96,14 +144,16 @@ public class RemediationQueueService {
 
         var criteria = RemediationQueueCriteria.builder()
                 .search(search)
-                .severityOrdinals(severityOrdinals(severity))
+                .severityOrdinals(severityOrdinals(severities))
                 .organizationIds(es.orgIds())
+                .scopeAppIds(es.scopeAppIds())
                 .applicationIds(es.appIds())
                 .teamIds(es.teamIds())
                 .assessorId(es.assessorId())
-                .assessmentId(assessmentId)
+                .assessmentIds(values(assessmentIds))
                 .statuses(statuses)
                 .rowType(rowType(type))
+                .buckets(buckets)
                 .includeCompletedRetests(includeCompletedRetests)
                 .build();
 
@@ -123,17 +173,18 @@ public class RemediationQueueService {
      * outstanding items only and every completion column comes back blank.
      */
     public String exportCsv(String search,
-                            String severity,
-                            String organizationId,
-                            String applicationId,
-                            String assessmentId,
+                            Collection<String> severities,
+                            Collection<String> organizationIds,
+                            Collection<String> applicationIds,
+                            Collection<String> assessmentIds,
                             List<String> statuses,
                             String type,
+                            List<String> buckets,
                             boolean includeCompletedRetests,
                             Sort sort,
                             Authentication authentication) {
-        List<RemediationRowDto> rows = list(search, severity, organizationId, applicationId, assessmentId,
-                statuses, type, includeCompletedRetests,
+        List<RemediationRowDto> rows = list(search, severities, organizationIds, applicationIds, assessmentIds,
+                statuses, type, buckets, includeCompletedRetests,
                 Pageable.unpaged(sort == null ? Sort.unsorted() : sort), authentication).getContent();
 
         // The queue's union query doesn't carry a retest's completion fields (the table has no
@@ -142,7 +193,7 @@ public class RemediationQueueService {
 
         StringBuilder csv = new StringBuilder();
         csv.append("Type,Vulnerability,Severity,Status,Application,Organization,Due Date,")
-           .append("Scheduled Start,Scheduled End,Retest Status,Last Retest,")
+           .append("Scheduled Start,Scheduled End,Retest Status,Last Retest,Last Retest Date,")
            .append("Completed Date,Result,Completed By\n");
 
         for (RemediationRowDto row : rows) {
@@ -158,6 +209,7 @@ public class RemediationQueueService {
             csv.append(escapeCsv(formatTimestamp(row.getEndDate()))).append(",");
             csv.append(escapeCsv(row.getRetestStatus())).append(",");
             csv.append(escapeCsv(row.getLastRetestStatus())).append(",");
+            csv.append(escapeCsv(formatTimestamp(row.getLastRetestDate()))).append(",");
             csv.append(escapeCsv(retest != null ? formatTimestamp(retest.getClosedDate()) : "")).append(",");
             csv.append(escapeCsv(retest != null ? retest.getResult() : "")).append(",");
             csv.append(escapeCsv(retest != null ? retest.getCompletedBy() : "")).append("\n");
@@ -208,24 +260,36 @@ public class RemediationQueueService {
     /** Severity name (e.g. "HIGH") → the single-element ordinal set the query filters on; null (no
      *  filter) when absent or not a severity. The queue's filter is single-select, but the criteria
      *  it shares with the vulnerabilities list takes a set. */
-    private static Collection<Integer> severityOrdinals(String severity) {
-        if (severity == null || severity.isBlank()) {
+    /** Ordinals of the recognised severities; unknown names are ignored, and none left means no filter. */
+    private static Collection<Integer> severityOrdinals(Collection<String> severities) {
+        Set<String> names = values(severities);
+        if (names == null) {
             return null;
         }
-        try {
-            return Set.of(VulnerabilitySeverity.valueOf(severity.trim().toUpperCase()).ordinal());
-        } catch (IllegalArgumentException e) {
+        Set<Integer> ordinals = new java.util.LinkedHashSet<>();
+        for (String name : names) {
+            try {
+                ordinals.add(VulnerabilitySeverity.valueOf(name.toUpperCase()).ordinal());
+            } catch (IllegalArgumentException e) {
+                // not a severity: ignored, as a single unknown value always was
+            }
+        }
+        return ordinals.isEmpty() ? null : ordinals;
+    }
+
+    /** Trimmed, de-duplicated non-blank values; null when nothing is left, meaning "no filter". */
+    private static Set<String> values(Collection<String> raw) {
+        if (raw == null) {
             return null;
         }
+        Set<String> cleaned = raw.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+        return cleaned.isEmpty() ? null : cleaned;
     }
 
     private List<RemediationRowDto> toDtos(List<RemediationDueRow> rows) {
-        List<String> vulnIds = rows.stream()
-                .filter(r -> "VULNERABILITY".equals(r.rowType()))
-                .map(RemediationDueRow::vulnerabilityId)
-                .toList();
-        Map<String, String> lastRetestByVuln = latestCompletedRetestByVuln(vulnIds);
-
         return rows.stream().map(r -> {
             boolean isVuln = "VULNERABILITY".equals(r.rowType());
             return RemediationRowDto.builder()
@@ -249,26 +313,10 @@ public class RemediationQueueService {
                     // column always shows the vuln's status, not the retest's.
                     .vulnerabilityStatus(r.vulnerabilityStatus())
                     .retestStatus(isVuln ? null : r.retestStatus())
-                    .lastRetestStatus(isVuln ? lastRetestByVuln.get(r.vulnerabilityId()) : null)
+                    .lastRetestStatus(isVuln ? r.lastRetestStatus() : null)
+                    .lastRetestDate(isVuln ? r.lastRetestDate() : null)
                     .build();
         }).toList();
-    }
-
-    /** vulnId → its most recent (by updatedAt) PASSED/FAILED retest status, for the page's vuln rows only. */
-    private Map<String, String> latestCompletedRetestByVuln(Collection<String> vulnIds) {
-        if (vulnIds.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, Retest> latest = new HashMap<>();
-        for (Retest rt : retestRepository.findByVulnerabilityIdInAndStatusInAndDeletedAtIsNull(
-                vulnIds, COMPLETED_RETEST_STATUSES)) {
-            latest.merge(rt.getVulnerabilityId(), rt, (a, b) ->
-                    b.getUpdatedAt() != null
-                            && (a.getUpdatedAt() == null || b.getUpdatedAt().isAfter(a.getUpdatedAt()))
-                            ? b : a);
-        }
-        return latest.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getStatus()));
     }
 
     private static VulnerabilitySeverity severityFromOrdinal(Integer ordinal) {

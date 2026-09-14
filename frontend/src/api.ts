@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-import type { MentionableUser, AssessorAvailability, RetestCompletionLog, RetestActivitySummary, LoginRequest, LoginResponse, User, Role, ResourcePermissions, ApiResponse, PagedApiResponse, CreateUserRequest, UpdateUserRequest, Team, CreateTeamRequest, UpdateTeamRequest, CreateRoleRequest, UpdateRoleRequest, ApiKey, CreateApiKeyRequest, CreateApiKeyResponse, AssessmentType, CreateAssessmentTypeRequest, UpdateAssessmentTypeRequest, Organization, CreateOrganizationRequest, UpdateOrganizationRequest, Application, ApplicationStatus, ApplicationComment, ApplicationImportResult, CreateApplicationRequest, UpdateApplicationRequest, ApplicationConnection, CreateApplicationConnectionRequest, UpdateApplicationConnectionRequest, ReportTemplate, ReportTemplateSummary, CreateReportTemplateRequest, UpdateReportTemplateRequest, Assessment, CreateAssessmentRequest, UpdateAssessmentRequest, AssessmentMetrics, VulnerabilityCategory, CreateVulnerabilityCategoryRequest, UpdateVulnerabilityCategoryRequest, DefaultVulnerability, CreateDefaultVulnerabilityRequest, UpdateDefaultVulnerabilityRequest, DefaultVulnerabilityImportResult, UserDefinedField, Vulnerability, VulnerabilityListItem, VulnerabilityComment, CreateVulnerabilityRequest, UpdateVulnerabilityRequest, UpdateVulnerabilityExceptionRequest, AssessmentFile, EntityFieldConfig, FieldScope, PeerReview, UpdatePeerReviewRequest, AcceptPeerReviewRequest, AssessmentWorkflowConfig, ChecklistTemplate, CreateChecklistTemplateRequest, UpdateChecklistTemplateRequest, AssessmentChecklist, AddAssessmentChecklistRequest, UpdateAssessmentChecklistRequest, AssignedUser, AssignUserRequest, UserApplicationAssignment, SsoConfig, SsoStatus, AzureDirectoryUser, NotebookNode, NotebookSearchResult, CreateNotebookNodeRequest, UpdateNotebookNodeRequest, MoveNotebookNodeRequest, NotebookAttachment, Retest, CreateRetestRequest, UpdateRetestRequest, CompleteRetestRequest, EmailConfig, UpdateEmailConfigRequest, TestEmailRequest, TestEmailResponse, InboundEmailConfig, UpdateInboundEmailConfigRequest, Branding, BrandingAssetSlot, UpdateBrandingSizesRequest, EmailNotificationConfig, UpdateEmailNotificationConfigRequest, NotificationPreference, UpdateNotificationPreferencesRequest, AiProviderConfig, SaveAiProviderConfigRequest, TestAiProviderRequest, TestAiProviderResponse, AiPromptTemplate, SaveAiPromptTemplateRequest, AiPromptSummary, AiPromptScope, ExecuteAiPromptRequest, AskAiRequest, AiGenerationResponse, SuggestAiTitleRequest, WebSearchConfig, UpdateWebSearchConfigRequest, AiAnonymizationConfig, UpdateAiAnonymizationConfigRequest, AiLogConfig, UpdateAiLogConfigRequest, AiRequestLog, AiTokenUsageDay, Notification, NotificationTargetType, SurveyTemplate, CreateSurveyTemplateRequest, UpdateSurveyTemplateRequest, AssessmentSurvey, AddAssessmentSurveyRequest, UpdateAssessmentSurveyRequest, ApplicationIdConfig, ReportDocuments, Campaign, CreateCampaignRequest, UpdateCampaignRequest, ManagerDashboardSummary, ManagerDashboardStats, ManagerDashboardAssessment, ManagerDashboardVulnerability, ManagerDashboardVulnerabilityDetail, ManagerDashboardFilters, VulnerabilityTrendSummary, RemediationQueueRow, AssignableUser, SubOrganization, SubOrganizationRequest, VulnerabilityStageCompletion, Extension, ExtensionLog, UpdateExtensionRequest, ExternalApplication, EditionStatus, UpgradeRequired, ContentTemplate, ContentTemplateScope, SaveContentTemplateRequest,
+import type { MentionableUser, AssessorAvailability, RetestCompletionLog, RetestActivitySummary, LoginRequest, LoginResponse, User, Role, ResourcePermissions, ApiResponse, PagedApiResponse, CreateUserRequest, UpdateUserRequest, Team, CreateTeamRequest, UpdateTeamRequest, CreateRoleRequest, UpdateRoleRequest, ApiKey, CreateApiKeyRequest, CreateApiKeyResponse, AssessmentType, CreateAssessmentTypeRequest, UpdateAssessmentTypeRequest, Organization, CreateOrganizationRequest, UpdateOrganizationRequest, Application, ApplicationStatus, ApplicationComment, ApplicationImportResult, CreateApplicationRequest, UpdateApplicationRequest, ApplicationConnection, CreateApplicationConnectionRequest, UpdateApplicationConnectionRequest, ReportTemplate, ReportTemplateSummary, CreateReportTemplateRequest, UpdateReportTemplateRequest, Assessment, CreateAssessmentRequest, UpdateAssessmentRequest, AssessmentMetrics, VulnerabilityCategory, CreateVulnerabilityCategoryRequest, UpdateVulnerabilityCategoryRequest, DefaultVulnerability, CreateDefaultVulnerabilityRequest, UpdateDefaultVulnerabilityRequest, DefaultVulnerabilityImportResult, UserDefinedField, Vulnerability, VulnerabilityListItem, VulnerabilityComment, CreateVulnerabilityRequest, UpdateVulnerabilityRequest, UpdateVulnerabilityExceptionRequest, AssessmentFile, EntityFieldConfig, FieldScope, PeerReview, UpdatePeerReviewRequest, AcceptPeerReviewRequest, AssessmentWorkflowConfig, ChecklistTemplate, CreateChecklistTemplateRequest, UpdateChecklistTemplateRequest, AssessmentChecklist, AddAssessmentChecklistRequest, UpdateAssessmentChecklistRequest, AssignedUser, AssignUserRequest, UserApplicationAssignment, SsoConfig, SsoStatus, AzureDirectoryUser, NotebookNode, NotebookSearchResult, CreateNotebookNodeRequest, UpdateNotebookNodeRequest, MoveNotebookNodeRequest, NotebookAttachment, Retest, CreateRetestRequest, UpdateRetestRequest, CompleteRetestRequest, EmailConfig, UpdateEmailConfigRequest, TestEmailRequest, TestEmailResponse, InboundEmailConfig, UpdateInboundEmailConfigRequest, Branding, BrandingAssetSlot, UpdateBrandingSizesRequest, EmailNotificationConfig, UpdateEmailNotificationConfigRequest, NotificationPreference, UpdateNotificationPreferencesRequest, AiProviderConfig, SaveAiProviderConfigRequest, TestAiProviderRequest, TestAiProviderResponse, AiPromptTemplate, SaveAiPromptTemplateRequest, AiPromptSummary, AiPromptScope, ExecuteAiPromptRequest, AskAiRequest, AiGenerationResponse, SuggestAiTitleRequest, WebSearchConfig, UpdateWebSearchConfigRequest, AiAnonymizationConfig, UpdateAiAnonymizationConfigRequest, AiLogConfig, UpdateAiLogConfigRequest, AiRequestLog, AiTokenUsageDay, Notification, NotificationTargetType, SurveyTemplate, CreateSurveyTemplateRequest, UpdateSurveyTemplateRequest, AssessmentSurvey, AddAssessmentSurveyRequest, UpdateAssessmentSurveyRequest, ApplicationIdConfig, ReportDocuments, Campaign, CreateCampaignRequest, UpdateCampaignRequest, ManagerDashboardSummary, ManagerDashboardStats, ManagerDashboardAssessment, ManagerDashboardVulnerability, ManagerDashboardVulnerabilityDetail, ManagerDashboardFilters, VulnerabilityTrendSummary, RemediationQueueRow, RemediationQueueSummary, AssignableUser, SubOrganization, SubOrganizationRequest, VulnerabilityStageCompletion, Extension, ExtensionLog, UpdateExtensionRequest, ExternalApplication, EditionStatus, UpgradeRequired, ContentTemplate, ContentTemplateScope, SaveContentTemplateRequest,
   PasswordPolicy,
   TerminologyConfig,
 } from './types';
@@ -625,6 +625,10 @@ export const applicationsApi = {
       organizationId?: string;
       subOrganizationId?: string;
       status?: ApplicationStatus | '';
+      /** Multi-select forms, each matched as "any of"; sent comma-joined so Spring binds a list. */
+      organizationIds?: string[];
+      subOrganizationIds?: string[];
+      statuses?: ApplicationStatus[];
     } = {},
   ): Promise<PagedApiResponse<Application[]>> => {
     const params: Record<string, string | number> = { page, size };
@@ -635,7 +639,11 @@ export const applicationsApi = {
       params.sort = sort;
     }
     Object.entries(filters).forEach(([key, value]) => {
-      if (value) params[key] = value;
+      if (Array.isArray(value)) {
+        if (value.length) params[key] = value.join(',');
+      } else if (value) {
+        params[key] = value;
+      }
     });
     const response = await api.get<PagedApiResponse<Application[]>>('/applications', { params });
     return response.data;
@@ -974,6 +982,8 @@ export const assessmentsApi = {
     startDateTo?: string;
     endDateFrom?: string;
     endDateTo?: string;
+    completedDateFrom?: string;
+    completedDateTo?: string;
     pastDue?: boolean;
     showCompleted?: boolean;
     assignedToMe?: boolean;
@@ -985,6 +995,8 @@ export const assessmentsApi = {
     applicationId?: string;
     applicationIds?: string[];
     assessmentTypeId?: string;
+    /** Multi-select type filter; ORed with each other, ANDed with the rest. */
+    assessmentTypeIds?: string[];
     sort?: string;
   }): Promise<PagedApiResponse<Assessment[]>> => {
     const params: Record<string, string | number | boolean> = {
@@ -999,6 +1011,8 @@ export const assessmentsApi = {
     if (filters.startDateTo) params.startDateTo = filters.startDateTo;
     if (filters.endDateFrom) params.endDateFrom = filters.endDateFrom;
     if (filters.endDateTo) params.endDateTo = filters.endDateTo;
+    if (filters.completedDateFrom) params.completedDateFrom = filters.completedDateFrom;
+    if (filters.completedDateTo) params.completedDateTo = filters.completedDateTo;
     if (filters.pastDue !== undefined) params.pastDue = filters.pastDue;
     if (filters.showCompleted !== undefined) params.showCompleted = filters.showCompleted;
     if (filters.assignedToMe !== undefined) params.assignedToMe = filters.assignedToMe;
@@ -1010,6 +1024,8 @@ export const assessmentsApi = {
     // Comma-joined so Spring binds it to List<String> applicationIds.
     if (filters.applicationIds?.length) params.applicationIds = filters.applicationIds.join(',');
     if (filters.assessmentTypeId) params.assessmentTypeId = filters.assessmentTypeId;
+    // Comma-joined so Spring binds it to List<String> assessmentTypeIds.
+    if (filters.assessmentTypeIds?.length) params.assessmentTypeIds = filters.assessmentTypeIds.join(',');
 
     const response = await api.get<PagedApiResponse<Assessment[]>>('/assessments', { params });
     return response.data;
@@ -1741,9 +1757,10 @@ export const queueCountsApi = {
     api.get('/retests', { params: { assignedToMe: true, status: 'REQUESTED,SCHEDULED,IN_PROGRESS' } })
       .then(r => ((r.data?.data as unknown[] | undefined)?.length ?? 0)),
 
-  remediationQueue: (): Promise<number> =>
-    api.get('/remediation/queue-count')
-      .then(r => (r.data?.data as number | undefined) ?? 0),
+  // Open items on one remediation alerts page: the Total badge of its queue summary.
+  remediationAlerts: (type: 'VULNERABILITY' | 'RETEST'): Promise<number> =>
+    api.get('/remediation/queue-summary', { params: { type } })
+      .then(r => (r.data?.data?.total as number | undefined) ?? 0),
 
   // Findings past their SLA, summed across severities. Reuses the vulnerabilities summary
   // (already scoped server-side) rather than a dedicated count endpoint — the `pastDue`
@@ -1762,21 +1779,24 @@ export const remediationApi = {
    */
   getQueue: (params: {
     page?: number; size?: number; sort?: string; search?: string;
-    severity?: string; organizationId?: string; applicationId?: string; assessmentId?: string;
+    severities?: string[]; organizationIds?: string[]; applicationIds?: string[]; assessmentIds?: string[];
     statuses?: string[]; type?: string;
     /** Also show retests that have already been verified (PASSED/FAILED). */
     includeCompletedRetests?: boolean;
+    /** Stat-badge buckets (PAST_DUE, DUE_SOON, RETEST_REQUESTED, RETEST_SCHEDULED, RETEST_IN_PROGRESS). */
+    buckets?: string[];
   }): Promise<PagedApiResponse<RemediationQueueRow[]>> => {
     const q: Record<string, string | number> = { page: params.page ?? 0, size: params.size ?? 20 };
     if (params.sort) q.sort = params.sort;
     if (params.search) q.search = params.search;
-    if (params.severity) q.severity = params.severity;
-    if (params.organizationId) q.organizationId = params.organizationId;
-    if (params.applicationId) q.applicationId = params.applicationId;
-    if (params.assessmentId) q.assessmentId = params.assessmentId;
+    if (params.severities?.length) q.severities = params.severities.join(',');
+    if (params.organizationIds?.length) q.organizationIds = params.organizationIds.join(',');
+    if (params.applicationIds?.length) q.applicationIds = params.applicationIds.join(',');
+    if (params.assessmentIds?.length) q.assessmentIds = params.assessmentIds.join(',');
     if (params.statuses?.length) q.statuses = params.statuses.join(',');
     if (params.type) q.type = params.type;
     if (params.includeCompletedRetests) q.includeCompletedRetests = 'true';
+    if (params.buckets?.length) q.buckets = params.buckets.join(',');
     return api.get('/remediation/queue', { params: q }).then(r => r.data as PagedApiResponse<RemediationQueueRow[]>);
   },
 
@@ -1784,21 +1804,41 @@ export const remediationApi = {
    *  each retest's completed date / result / verifier, which the table has no column for. */
   exportQueueCsv: (params: {
     sort?: string; search?: string;
-    severity?: string; organizationId?: string; applicationId?: string; assessmentId?: string;
-    statuses?: string[]; type?: string; includeCompletedRetests?: boolean;
+    severities?: string[]; organizationIds?: string[]; applicationIds?: string[]; assessmentIds?: string[];
+    statuses?: string[]; type?: string; includeCompletedRetests?: boolean; buckets?: string[];
   }): Promise<Blob> => {
     const q: Record<string, string> = {};
     if (params.sort) q.sort = params.sort;
     if (params.search) q.search = params.search;
-    if (params.severity) q.severity = params.severity;
-    if (params.organizationId) q.organizationId = params.organizationId;
-    if (params.applicationId) q.applicationId = params.applicationId;
-    if (params.assessmentId) q.assessmentId = params.assessmentId;
+    if (params.severities?.length) q.severities = params.severities.join(',');
+    if (params.organizationIds?.length) q.organizationIds = params.organizationIds.join(',');
+    if (params.applicationIds?.length) q.applicationIds = params.applicationIds.join(',');
+    if (params.assessmentIds?.length) q.assessmentIds = params.assessmentIds.join(',');
     if (params.statuses?.length) q.statuses = params.statuses.join(',');
     if (params.type) q.type = params.type;
     if (params.includeCompletedRetests) q.includeCompletedRetests = 'true';
+    if (params.buckets?.length) q.buckets = params.buckets.join(',');
     return api.get('/remediation/export.csv', { params: q, responseType: 'blob' })
               .then(r => r.data as Blob);
+  },
+
+  /** Stat-badge counts for the queue under the same filters as getQueue. The server ignores
+   *  buckets and includeCompletedRetests, so they aren't accepted here. */
+  summary: (params: {
+    search?: string;
+    severities?: string[]; organizationIds?: string[]; applicationIds?: string[]; assessmentIds?: string[];
+    statuses?: string[]; type?: string;
+  }): Promise<ApiResponse<RemediationQueueSummary>> => {
+    const q: Record<string, string> = {};
+    if (params.search) q.search = params.search;
+    if (params.severities?.length) q.severities = params.severities.join(',');
+    if (params.organizationIds?.length) q.organizationIds = params.organizationIds.join(',');
+    if (params.applicationIds?.length) q.applicationIds = params.applicationIds.join(',');
+    if (params.assessmentIds?.length) q.assessmentIds = params.assessmentIds.join(',');
+    if (params.statuses?.length) q.statuses = params.statuses.join(',');
+    if (params.type) q.type = params.type;
+    return api.get('/remediation/queue-summary', { params: q })
+              .then(r => r.data as ApiResponse<RemediationQueueSummary>);
   },
 };
 

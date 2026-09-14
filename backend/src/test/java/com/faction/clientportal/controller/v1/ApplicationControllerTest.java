@@ -787,6 +787,210 @@ class ApplicationControllerTest extends TestContainersConfig {
     }
 
     @Test
+    void getAllApplications_FilteredBySeveralOrganizationsSubOrganizationsAndStatuses() throws Exception {
+        String paymentsId = seedFilterFixtures();
+        String platformId = subOrganizationRepository.findAll().stream()
+                .filter(s -> s.getName().equals("Platform")).findFirst().orElseThrow().getId();
+        String token = jwtService.generateToken(superAdminUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("super_admin")));
+
+        // Several organizations: any of them.
+        mockMvc.perform(get("/api/v1/applications")
+                        .param("organizationIds", testOrganization1.getId(), testOrganization2.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].name",
+                        containsInAnyOrder("Checkout", "Refunds", "Pipelines", "Ledger")));
+
+        // Several divisions, comma-joined the way the UI sends a multi-select.
+        mockMvc.perform(get("/api/v1/applications")
+                        .param("subOrganizationIds", paymentsId + "," + platformId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Checkout", "Refunds", "Pipelines")));
+
+        // Several statuses, case-insensitive, combined with a division.
+        mockMvc.perform(get("/api/v1/applications")
+                        .param("statuses", "production,DECOMMISSIONED")
+                        .param("subOrganizationIds", paymentsId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Checkout", "Refunds")));
+
+        // The single-value parameters still work, and combine with the list form.
+        mockMvc.perform(get("/api/v1/applications")
+                        .param("status", "PRODUCTION")
+                        .param("organizationIds", testOrganization2.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Ledger")));
+
+        mockMvc.perform(get("/api/v1/applications")
+                        .param("statuses", "PRODUCTION,retired")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getAllApplications_MultiValueFiltersApplyToOrgScopedUsersToo() throws Exception {
+        String paymentsId = seedFilterFixtures();
+        Role orgRole = roleRepository.save(Role.builder().name("OrgReader2")
+                .description("Org-scoped reader").permissions(List.of("applications:read:org")).build());
+        User orgUser = userRepository.save(User.builder()
+                .username("orguser2").email("orguser2@test.com").firstName("Org").lastName("User")
+                .password(passwordEncoder.encode("password")).loginOption(LoginOption.NATIVE)
+                .roleIds(List.of(orgRole.getId())).teamIds(new ArrayList<>())
+                .isInternal(false).organizationId(testOrganization1.getId())
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+        String token = jwtService.generateToken(orgUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("applications:read:org")));
+
+        mockMvc.perform(get("/api/v1/applications")
+                        .param("statuses", "PRODUCTION,DECOMMISSIONED")
+                        .param("subOrganizationIds", paymentsId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Checkout", "Refunds")));
+
+        // Asking for another organization never widens an org-scoped user's slice.
+        mockMvc.perform(get("/api/v1/applications")
+                        .param("organizationIds", testOrganization2.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    void getAllApplications_SearchIgnoresDescriptions() throws Exception {
+        seedFilterFixtures();
+        applicationRepository.save(Application.builder().name("Card Vault").appId("APP-UK-1")
+                .description("Tokenises cards for the checkout flow")
+                .organizationId(testOrganization1.getId())
+                .status(ApplicationStatus.PRODUCTION).createdAt(LocalDateTime.now()).build());
+        applicationRepository.save(Application.builder().name("Wire Gateway - UK")
+                .description("Payments rail").organizationId(testOrganization1.getId())
+                .status(ApplicationStatus.PRODUCTION).createdAt(LocalDateTime.now()).build());
+        String token = jwtService.generateToken(superAdminUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("super_admin")));
+
+        // "checkout" is in Card Vault's description but its name is "Checkout" only for the fixture
+        // app — the description match must not pull Card Vault in.
+        mockMvc.perform(get("/api/v1/applications").param("search", "checkout")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Checkout")));
+
+        // Name and application id still match.
+        mockMvc.perform(get("/api/v1/applications").param("search", "UK")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Card Vault", "Wire Gateway - UK")));
+    }
+
+    @Test
+    void getAllApplications_SearchIgnoresDescriptionsForOrgScopedUsersToo() throws Exception {
+        seedFilterFixtures();
+        applicationRepository.save(Application.builder().name("Card Vault")
+                .description("Tokenises cards for the checkout flow")
+                .organizationId(testOrganization1.getId())
+                .status(ApplicationStatus.PRODUCTION).createdAt(LocalDateTime.now()).build());
+        Role orgRole = roleRepository.save(Role.builder().name("OrgReader3")
+                .description("Org-scoped reader").permissions(List.of("applications:read:org")).build());
+        User orgUser = userRepository.save(User.builder()
+                .username("orguser3").email("orguser3@test.com").firstName("Org").lastName("User")
+                .password(passwordEncoder.encode("password")).loginOption(LoginOption.NATIVE)
+                .roleIds(List.of(orgRole.getId())).teamIds(new ArrayList<>())
+                .isInternal(false).organizationId(testOrganization1.getId())
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+        String token = jwtService.generateToken(orgUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("applications:read:org")));
+
+        mockMvc.perform(get("/api/v1/applications").param("search", "checkout")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Checkout")));
+    }
+
+    /**
+     * Seeds applications that each carry a distinctive term in exactly one searchable field, so a
+     * search for that term proves the field is searched on its own.
+     */
+    private void seedSearchFieldFixtures() {
+        Organization harbor = organizationRepository.save(Organization.builder()
+                .name("Harbor Holdings").description("Carries the term 'zephyr' only here").build());
+        applicationRepository.save(Application.builder().name("Treasury")
+                .organizationId(harbor.getId())
+                .status(ApplicationStatus.PRODUCTION).createdAt(LocalDateTime.now()).build());
+        applicationRepository.save(Application.builder().name("Card Vault")
+                .organizationId(testOrganization1.getId())
+                .technologies(new ArrayList<>(List.of("Kubernetes", "Redis")))
+                .status(ApplicationStatus.PRODUCTION).createdAt(LocalDateTime.now()).build());
+        applicationRepository.save(Application.builder().name("Statements")
+                .organizationId(testOrganization1.getId())
+                .appOwner(new AppOwner("Priya Natarajan", "priya@bank.example"))
+                .status(ApplicationStatus.PRODUCTION).createdAt(LocalDateTime.now()).build());
+        applicationRepository.save(Application.builder().name("Old Portal")
+                .organizationId(testOrganization1.getId())
+                .ownerName("Morgan Quill").ownerEmail("mquill@bank.example")
+                .status(ApplicationStatus.PRODUCTION).createdAt(LocalDateTime.now()).build());
+        applicationRepository.save(Application.builder().name("Loan Engine").appId("APP-ZX-42")
+                .description("zephyr kubernetes natarajan quill harbor")
+                .organizationId(testOrganization1.getId())
+                .status(ApplicationStatus.PRODUCTION).createdAt(LocalDateTime.now()).build());
+    }
+
+    private List<String> searchNames(String token, String term) throws Exception {
+        String json = mockMvc.perform(get("/api/v1/applications").param("search", term).param("size", "50")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return com.jayway.jsonpath.JsonPath.read(json, "$.data[*].name");
+    }
+
+    @Test
+    void getAllApplications_SearchCoversAppIdNameOrganizationStatusTechnologiesAndOwner() throws Exception {
+        seedFilterFixtures();
+        seedSearchFieldFixtures();
+        String token = jwtService.generateToken(superAdminUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("super_admin")));
+
+        assertThat(searchNames(token, "zx-42")).containsExactly("Loan Engine");          // app id
+        assertThat(searchNames(token, "treasu")).containsExactly("Treasury");           // name
+        assertThat(searchNames(token, "harbor")).containsExactly("Treasury");           // organization name
+        assertThat(searchNames(token, "decomm")).containsExactly("Refunds");            // status
+        assertThat(searchNames(token, "kubern")).containsExactly("Card Vault");         // technology
+        assertThat(searchNames(token, "natarajan")).containsExactly("Statements");      // owner name
+        assertThat(searchNames(token, "priya@bank")).containsExactly("Statements");     // owner email
+        assertThat(searchNames(token, "quill")).containsExactly("Old Portal");          // legacy owner
+        // Every term above also sits in Loan Engine's description, which must not match.
+        assertThat(searchNames(token, "zephyr")).isEmpty();
+    }
+
+    @Test
+    void getAllApplications_SearchFieldsMatchForOrgScopedUsersToo() throws Exception {
+        seedFilterFixtures();
+        seedSearchFieldFixtures();
+        Role orgRole = roleRepository.save(Role.builder().name("OrgReader4")
+                .description("Org-scoped reader").permissions(List.of("applications:read:org")).build());
+        User orgUser = userRepository.save(User.builder()
+                .username("orguser4").email("orguser4@test.com").firstName("Org").lastName("User")
+                .password(passwordEncoder.encode("password")).loginOption(LoginOption.NATIVE)
+                .roleIds(List.of(orgRole.getId())).teamIds(new ArrayList<>())
+                .isInternal(false).organizationId(testOrganization1.getId())
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+        String token = jwtService.generateToken(orgUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("applications:read:org")));
+
+        assertThat(searchNames(token, "zx-42")).containsExactly("Loan Engine");
+        assertThat(searchNames(token, "test organization 1")).contains("Checkout", "Card Vault");
+        assertThat(searchNames(token, "decomm")).containsExactly("Refunds");
+        assertThat(searchNames(token, "kubern")).containsExactly("Card Vault");
+        assertThat(searchNames(token, "natarajan")).containsExactly("Statements");
+        assertThat(searchNames(token, "quill")).containsExactly("Old Portal");
+        assertThat(searchNames(token, "harbor")).isEmpty(); // another organization's name: out of scope
+        assertThat(searchNames(token, "zephyr")).isEmpty(); // description only
+    }
+
+    @Test
     void getAllApplications_UnknownStatusIsRejected() throws Exception {
         String token = jwtService.generateToken(superAdminUser.getUsername(),
                 List.of(new SimpleGrantedAuthority("super_admin")));

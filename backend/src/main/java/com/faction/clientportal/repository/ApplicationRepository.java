@@ -48,49 +48,94 @@ public interface ApplicationRepository extends JpaRepository<Application, String
 
     boolean existsByName(String name);
 
-    // Case-insensitive substring ("contains") search over name/description/appId.
-    // Anchored 'term%' matching missed anything not at the start of the name. This default
-    // escapes LIKE wildcards (% and _) in the term so they match literally, then delegates
-    // to the query below (paired ESCAPE '!').
-    default Page<Application> searchByNameOrDescription(String searchTerm, Pageable pageable) {
-        return searchByNameOrDescriptionInternal(LikeEscaper.escape(searchTerm), pageable);
+    // Case-insensitive substring ("contains") search over name/appId. Descriptions are not
+    // searched: a term like "UK" matched prose in descriptions and buried the applications whose
+    // names actually carried it. Anchored 'term%' matching missed anything not at the start of the
+    // name. This default escapes LIKE wildcards (% and _) in the term so they match literally,
+    // then delegates to the query below (paired ESCAPE '!').
+    default Page<Application> searchByNameOrAppId(String searchTerm, Pageable pageable) {
+        return searchByNameOrAppIdInternal(LikeEscaper.escape(searchTerm), pageable);
     }
 
     @Query("""
             SELECT a FROM Application a WHERE
               LOWER(a.name) LIKE LOWER(CONCAT('%', ?1, '%')) ESCAPE '!'
-              OR LOWER(a.description) LIKE LOWER(CONCAT('%', ?1, '%')) ESCAPE '!'
               OR LOWER(a.appId) LIKE LOWER(CONCAT('%', ?1, '%')) ESCAPE '!'
             """)
-    Page<Application> searchByNameOrDescriptionInternal(String escapedTerm, Pageable pageable);
+    Page<Application> searchByNameOrAppIdInternal(String escapedTerm, Pageable pageable);
 
     /**
-     * The applications list with every filter optional — a null one is a no-op, so one query backs
-     * the unfiltered list and any combination of organization / division / status.
+     * The applications list with every filter optional — a null or empty set is a no-op, so one query
+     * backs the unfiltered list and any combination of organizations / divisions / statuses, each
+     * matched as "any of".
      *
-     * <p>Search matches the same three columns as {@link #searchByNameOrDescription}; callers pass
-     * an already-escaped {@code %term%} pattern, hence the paired {@code ESCAPE '!'}.
+     * <p>Search matches application id, name, organization name, status, technologies and owner
+     * (the owner object and the legacy owner name/email) — never the description; callers pass
+     * an already-escaped {@code %term%} pattern, hence the paired {@code ESCAPE '!'}. An unused set
+     * still needs a non-empty placeholder for the {@code IN} to parse; its flag keeps it inert.
      */
-    default Page<Application> searchFiltered(String searchTerm, String organizationId,
-                                             String subOrganizationId, ApplicationStatus status,
+    default Page<Application> searchFiltered(String searchTerm, java.util.Collection<String> organizationIds,
+                                             java.util.Collection<String> subOrganizationIds,
+                                             java.util.Collection<ApplicationStatus> statuses,
                                              Pageable pageable) {
-        String pattern = (searchTerm == null || searchTerm.isBlank())
-                ? null : "%" + LikeEscaper.escape(searchTerm.trim().toLowerCase()) + "%";
-        return searchFilteredInternal(pattern, organizationId, subOrganizationId, status, pageable);
+        String term = (searchTerm == null || searchTerm.isBlank()) ? null : searchTerm.trim().toLowerCase();
+        String pattern = term == null ? null : "%" + LikeEscaper.escape(term) + "%";
+        // Status is stored as an ordinal and technologies / the owner object as jsonb, none of which
+        // a JPQL LIKE can reach — resolve those matches first and hand them to the query as sets.
+        java.util.List<ApplicationStatus> statusMatches = term == null ? java.util.List.of() : statusesMatching(term);
+        java.util.List<String> jsonMatches = pattern == null ? java.util.List.of() : findIdsMatchingJsonSearch(pattern);
+        boolean byOrg = organizationIds != null && !organizationIds.isEmpty();
+        boolean bySub = subOrganizationIds != null && !subOrganizationIds.isEmpty();
+        boolean byStatus = statuses != null && !statuses.isEmpty();
+        return searchFilteredInternal(pattern,
+                !statusMatches.isEmpty(), statusMatches.isEmpty() ? java.util.List.of(ApplicationStatus.values()[0]) : statusMatches,
+                !jsonMatches.isEmpty(), jsonMatches.isEmpty() ? java.util.List.of("") : jsonMatches,
+                byOrg, byOrg ? organizationIds : java.util.List.of(""),
+                bySub, bySub ? subOrganizationIds : java.util.List.of(""),
+                byStatus, byStatus ? statuses : java.util.List.of(ApplicationStatus.values()[0]),
+                pageable);
     }
+
+    /** Statuses whose name contains the (lower-cased) search term, e.g. "decomm" → DECOMMISSIONED. */
+    static java.util.List<ApplicationStatus> statusesMatching(String lowerTerm) {
+        return java.util.Arrays.stream(ApplicationStatus.values())
+                .filter(s -> s.name().toLowerCase().contains(lowerTerm))
+                .toList();
+    }
+
+    /** Ids of applications whose technologies or owner object (name or email) contain the pattern. */
+    @Query(value = """
+            SELECT a.id FROM applications a
+            WHERE LOWER(a.app_owner ->> 'fullName') LIKE :pattern ESCAPE '!'
+               OR LOWER(a.app_owner ->> 'email') LIKE :pattern ESCAPE '!'
+               OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(
+                              CASE WHEN jsonb_typeof(a.technologies) = 'array'
+                                   THEN a.technologies ELSE '[]'::jsonb END) AS tech(value)
+                          WHERE LOWER(tech.value) LIKE :pattern ESCAPE '!')
+            """, nativeQuery = true)
+    java.util.List<String> findIdsMatchingJsonSearch(@org.springframework.data.repository.query.Param("pattern") String pattern);
 
     @Query("""
             SELECT a FROM Application a
             WHERE (:pattern IS NULL
                    OR LOWER(a.name) LIKE :pattern ESCAPE '!'
-                   OR LOWER(a.description) LIKE :pattern ESCAPE '!'
-                   OR LOWER(a.appId) LIKE :pattern ESCAPE '!')
-              AND (:organizationId IS NULL OR a.organizationId = :organizationId)
-              AND (:subOrganizationId IS NULL OR a.subOrganizationId = :subOrganizationId)
-              AND (:status IS NULL OR a.status = :status)
+                   OR LOWER(a.appId) LIKE :pattern ESCAPE '!'
+                   OR LOWER(a.ownerName) LIKE :pattern ESCAPE '!'
+                   OR LOWER(a.ownerEmail) LIKE :pattern ESCAPE '!'
+                   OR a.organizationId IN (SELECT o.id FROM Organization o
+                                           WHERE LOWER(o.name) LIKE :pattern ESCAPE '!')
+                   OR (:byStatusText = TRUE AND a.status IN :statusMatches)
+                   OR (:byJsonMatch = TRUE AND a.id IN :jsonMatches))
+              AND (:byOrg = FALSE OR a.organizationId IN :organizationIds)
+              AND (:bySub = FALSE OR a.subOrganizationId IN :subOrganizationIds)
+              AND (:byStatus = FALSE OR a.status IN :statuses)
             """)
-    Page<Application> searchFilteredInternal(String pattern, String organizationId,
-                                             String subOrganizationId, ApplicationStatus status,
+    Page<Application> searchFilteredInternal(String pattern,
+                                             boolean byStatusText, java.util.Collection<ApplicationStatus> statusMatches,
+                                             boolean byJsonMatch, java.util.Collection<String> jsonMatches,
+                                             boolean byOrg, java.util.Collection<String> organizationIds,
+                                             boolean bySub, java.util.Collection<String> subOrganizationIds,
+                                             boolean byStatus, java.util.Collection<ApplicationStatus> statuses,
                                              Pageable pageable);
 
     @Query(value = "SELECT * FROM applications WHERE assigned_users @> CAST(CONCAT('[{\"userId\":\"', ?1, '\"}]') AS jsonb) AND deleted_at IS NULL", nativeQuery = true)

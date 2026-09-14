@@ -126,8 +126,7 @@ public class SubOrganizationService {
             return accessScopeService.ownedOrganizationIds(resolveUserId(authentication));
         }
         if (authorities.contains("organizations:read:org")) {
-            String orgId = accessScopeService.resolveOrgId(authentication);
-            return orgId != null ? Set.of(orgId) : Set.of();
+            return accessScopeService.visibleOrganizationIds(accessScopeService.resolveOrgAccess(authentication));
         }
         return Set.of();
     }
@@ -186,6 +185,12 @@ public class SubOrganizationService {
                     "Cannot delete '" + sub.getName() + "': " + applications + " application"
                             + (applications == 1 ? " is" : "s are") + " still assigned to it. "
                             + "Reassign them first.");
+        }
+        long members = userRepository.countBySubOrganizationIdsContaining(id);
+        if (members > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot delete '" + sub.getName() + "': " + members + " user"
+                            + (members == 1 ? " is" : "s are") + " still a member. Remove them first.");
         }
         subOrganizationRepository.delete(sub);
         log.info("Deleted sub-organization {} from organization {}", sub.getName(), organizationId);

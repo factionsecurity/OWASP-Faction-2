@@ -121,9 +121,37 @@ public class OrganizationService {
         if (request.getFieldValues() != null) {
             organization.setFieldValues(request.getFieldValues());
         }
+        if (request.getRemediationOwnerIds() != null) {
+            organization.setRemediationOwnerIds(validateRemediationOwners(request.getRemediationOwnerIds()));
+        }
 
         Organization updatedOrganization = organizationRepository.save(organization);
         return toDto(updatedOrganization);
+    }
+
+    /**
+     * Remediation owners are staff: they fix and track findings, and their notifications link
+     * into internal views. An external account here is a mistake worth refusing loudly.
+     */
+    private List<String> validateRemediationOwners(List<String> ids) {
+        List<String> clean = new ArrayList<>();
+        List<String> external = new ArrayList<>();
+        for (String id : ids) {
+            if (id == null || id.isBlank() || clean.contains(id)) continue;
+            User user = userRepository.findById(id)
+                    .filter(u -> u.getDeletedAt() == null)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+            if (!Boolean.TRUE.equals(user.getIsInternal())) {
+                external.add(user.getUsername());
+                continue;
+            }
+            clean.add(id);
+        }
+        if (!external.isEmpty()) {
+            throw new IllegalArgumentException("Remediation owners must be internal users: "
+                    + String.join(", ", external));
+        }
+        return clean;
     }
 
     public void deleteOrganizationById(String id) {
@@ -137,6 +165,13 @@ public class OrganizationService {
                     "Cannot delete organization with " + applications.size() +
                     " assigned application(s). Please remove or reassign applications first."
             );
+        }
+
+        long members = userRepository.countByOrganizationIdsContaining(id);
+        if (members > 0) {
+            throw new IllegalArgumentException(
+                    "Cannot delete organization with " + members
+                    + " member user(s). Remove them from the organization first.");
         }
 
         organizationRepository.deleteById(id);
@@ -166,8 +201,8 @@ public class OrganizationService {
                         throw new ResourceNotFoundException("Organization not found with id: " + id);
                     }
                 } else if (hasReadOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    if (!id.equals(orgId)) {
+                    if (!accessScopeService.visibleOrganizationIds(
+                            accessScopeService.resolveOrgAccess(authentication)).contains(id)) {
                         throw new ResourceNotFoundException("Organization not found with id: " + id);
                     }
                 }
@@ -200,21 +235,20 @@ public class OrganizationService {
                             .flatMap(java.util.Optional::stream)
                             .toList();
                 } else if (hasReadOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    source = orgId != null
-                            ? organizationRepository.findById(orgId).map(List::of).orElse(List.of())
-                            : List.of();
+                    source = accessScopeService.visibleOrganizationIds(
+                                    accessScopeService.resolveOrgAccess(authentication)).stream()
+                            .map(organizationRepository::findById)
+                            .flatMap(java.util.Optional::stream)
+                            .toList();
                 } else {
                     source = List.of();
                 }
-                List<OrganizationDto> dtos = InMemorySort.apply(
-                        source.stream().map(this::toDto).collect(Collectors.toList()),
-                        pageable, SORTS, OrganizationDto::getId);
-                int start = (int) pageable.getOffset();
-                int end = Math.min(start + pageable.getPageSize(), dtos.size());
-                List<OrganizationDto> page = start > dtos.size() ? new ArrayList<>() : dtos.subList(start, end);
-                return new PageImpl<>(page, pageable, dtos.size());
+                return pageInMemory(source.stream().map(this::toDto).collect(Collectors.toList()), pageable);
             }
+        }
+        if (needsInMemorySort(pageable)) {
+            return pageInMemory(organizationRepository.findAll().stream().map(this::toDto)
+                    .collect(Collectors.toList()), pageable);
         }
         return organizationRepository.findAll(pageable).map(this::toDto);
     }
@@ -229,10 +263,43 @@ public class OrganizationService {
         return searchOrganizations(search, pageable, null);
     }
 
-    /** Sortable organization columns, for the scoped branch below that pages in memory. */
+    /**
+     * Sortable organization columns for the paths that page in memory: the scoped branches, and any
+     * sort on a display value the query cannot order by (remediation owner names come from a jsonb
+     * list of user ids).
+     */
     private static final Map<String, Comparator<OrganizationDto>> SORTS = Map.of(
             "name", InMemorySort.byText(OrganizationDto::getName),
-            "description", InMemorySort.byText(OrganizationDto::getDescription));
+            "description", InMemorySort.byText(OrganizationDto::getDescription),
+            "remediationOwners", InMemorySort.byText(dto -> dto.getRemediationOwners() == null
+                    || dto.getRemediationOwners().isEmpty() ? null
+                    : dto.getRemediationOwners().stream()
+                            .map(OrganizationDto.RemediationOwner::getDisplayName)
+                            .collect(Collectors.joining(", "))));
+
+    /** Sort keys the query cannot apply; the unrestricted paths fall back to in-memory ordering for them. */
+    private static final java.util.Set<String> IN_MEMORY_ONLY_SORTS = java.util.Set.of("remediationOwners");
+
+    private static boolean needsInMemorySort(Pageable pageable) {
+        return pageable.getSort().isSorted()
+                && IN_MEMORY_ONLY_SORTS.contains(pageable.getSort().iterator().next().getProperty());
+    }
+
+    /** Sort, then slice one page out of an already-materialized list. */
+    private Page<OrganizationDto> pageInMemory(List<OrganizationDto> dtos, Pageable pageable) {
+        dtos = InMemorySort.apply(dtos, pageable, SORTS, OrganizationDto::getId);
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), dtos.size());
+        List<OrganizationDto> page = start > dtos.size() ? new ArrayList<>() : dtos.subList(start, end);
+        return new PageImpl<>(page, pageable, dtos.size());
+    }
+
+    private static boolean matchesSearch(Organization o, String search) {
+        if (search == null || search.trim().isEmpty()) return true;
+        String lower = search.trim().toLowerCase();
+        return (o.getName() != null && o.getName().toLowerCase().contains(lower))
+                || (o.getDescription() != null && o.getDescription().toLowerCase().contains(lower));
+    }
 
     public Page<OrganizationDto> searchOrganizations(String search, Pageable pageable, Authentication authentication) {
         if (authentication != null) {
@@ -253,33 +320,28 @@ public class OrganizationService {
                             .flatMap(java.util.Optional::stream)
                             .toList();
                 } else if (hasReadOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    source = orgId != null
-                            ? organizationRepository.findById(orgId).map(List::of).orElse(List.of())
-                            : List.of();
+                    source = accessScopeService.visibleOrganizationIds(
+                                    accessScopeService.resolveOrgAccess(authentication)).stream()
+                            .map(organizationRepository::findById)
+                            .flatMap(java.util.Optional::stream)
+                            .toList();
                 } else {
                     source = List.of();
                 }
-                List<OrganizationDto> dtos;
-                if (search != null && !search.trim().isEmpty()) {
-                    String lower = search.trim().toLowerCase();
-                    dtos = source.stream()
-                            .filter(o -> (o.getName() != null && o.getName().toLowerCase().contains(lower))
-                                    || (o.getDescription() != null && o.getDescription().toLowerCase().contains(lower)))
-                            .map(this::toDto)
-                            .collect(Collectors.toList());
-                } else {
-                    dtos = source.stream().map(this::toDto).collect(Collectors.toList());
-                }
                 // Filtered and paged in Java, so the query never saw the sort — apply it here.
-                dtos = InMemorySort.apply(dtos, pageable, SORTS, OrganizationDto::getId);
-                int start = (int) pageable.getOffset();
-                int end = Math.min(start + pageable.getPageSize(), dtos.size());
-                List<OrganizationDto> page = start > dtos.size() ? new ArrayList<>() : dtos.subList(start, end);
-                return new PageImpl<>(page, pageable, dtos.size());
+                return pageInMemory(source.stream()
+                        .filter(o -> matchesSearch(o, search))
+                        .map(this::toDto)
+                        .collect(Collectors.toList()), pageable);
             }
         }
 
+        if (needsInMemorySort(pageable)) {
+            return pageInMemory(organizationRepository.findAll().stream()
+                    .filter(o -> matchesSearch(o, search))
+                    .map(this::toDto)
+                    .collect(Collectors.toList()), pageable);
+        }
         if (search == null || search.trim().isEmpty()) {
             return organizationRepository.findAll(pageable).map(this::toDto);
         }
@@ -356,12 +418,6 @@ public class OrganizationService {
                 .orElse(username);
     }
 
-    private String resolveOrgId(Authentication authentication) {
-        return userRepository.findByUsername(authentication.getName())
-                .map(User::getOrganizationId)
-                .orElse(null);
-    }
-
     private String buildDisplayName(User user) {
         String firstName = user.getFirstName() != null ? user.getFirstName() : "";
         String lastName = user.getLastName() != null ? user.getLastName() : "";
@@ -381,6 +437,17 @@ public class OrganizationService {
                 ? organization.getAssignedUsers().stream().map(AssignedUserDto::fromEntity).collect(Collectors.toList())
                 : new ArrayList<>();
 
+        List<String> ownerIds = organization.getRemediationOwnerIds() != null
+                ? organization.getRemediationOwnerIds() : List.of();
+        List<OrganizationDto.RemediationOwner> owners = ownerIds.stream()
+                .map(id -> userRepository.findById(id)
+                        .map(u -> OrganizationDto.RemediationOwner.builder()
+                                .userId(u.getId()).username(u.getUsername())
+                                .displayName(buildDisplayName(u)).email(u.getEmail()).build())
+                        .orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toList());
+
         return OrganizationDto.builder()
                 .id(organization.getId())
                 .name(organization.getName())
@@ -388,6 +455,8 @@ public class OrganizationService {
                 .fieldDefinitions(fieldDefs)
                 .fieldValues(organization.getFieldValues() != null ? organization.getFieldValues() : new HashMap<>())
                 .assignedUsers(assignedUserDtos)
+                .remediationOwnerIds(new ArrayList<>(ownerIds))
+                .remediationOwners(owners)
                 .build();
     }
 }

@@ -8,6 +8,7 @@ import DataTable, { sortParam } from '../components/DataTable';
 import type { Column, SortState } from '../components/DataTable';
 import { Modal } from '../components';
 import Page from '../components/Page';
+import { usePersistedState } from '../hooks/usePersistedState';
 import RetestActivityLog from './RetestActivityLog';
 import { CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 import './Logs.css';
@@ -27,6 +28,11 @@ const ACTION_LABELS: Record<string, string> = {
   SUGGEST_TITLE: 'Suggest Title',
 };
 
+// The page remembers its tab; each tab's table keeps its own state (the retests tab under
+// RetestActivityLog's key).
+const TABLE_KEY = 'logs';
+const AI_TABLE_KEY = 'logs.ai';
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? iso : d.toLocaleString();
@@ -39,13 +45,15 @@ export default function Logs() {
   const tabs = TABS.filter(t => !t.feature || hasFeature(t.feature));
   // Opening on a tab this build does not have would show an empty page, so the default is
   // whichever tab is actually first here rather than a hardcoded one.
-  const [activeTab, setActiveTab] = useState<LogTab>(tabs[0].key);
+  // A remembered tab this build no longer has falls back to the first one.
+  const [savedTab, setActiveTab] = usePersistedState<LogTab>(TABLE_KEY, 'activeTab', tabs[0].key);
+  const activeTab = tabs.some(t => t.key === savedTab) ? savedTab : tabs[0].key;
 
   const [logs, setLogs] = useState<AiRequestLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-  const [sort, setSort] = useState<SortState | null>(null);
-  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = usePersistedState(AI_TABLE_KEY, 'page', 0);
+  const [sort, setSort] = usePersistedState<SortState | null>(AI_TABLE_KEY, 'sort', null);
+  const [pageSize, setPageSize] = usePersistedState(AI_TABLE_KEY, 'pageSize', 25);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 

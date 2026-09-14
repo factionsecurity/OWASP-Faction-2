@@ -20,6 +20,7 @@ import {
   Select,
 } from '../components';
 import Page from '../components/Page';
+import { usePersistedState } from '../hooks/usePersistedState';
 import './Teams.css';
 
 const SCOPE_LABELS: Record<ContentTemplateScope, string> = {
@@ -62,13 +63,15 @@ const handleLibraryImageUpload = async (file: File): Promise<string> => {
   throw new Error('Image upload failed');
 };
 
+const TABLE_KEY = 'contentTemplates';
+
 export default function ContentTemplates() {
   const [templates, setTemplates] = useState<ContentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  const [search, setSearch] = usePersistedState(TABLE_KEY, 'search', '');
+  const [page, setPage] = usePersistedState(TABLE_KEY, 'page', 0);
+  const [pageSize, setPageSize] = usePersistedState(TABLE_KEY, 'pageSize', 10);
 
   const [showModal, setShowModal] = useState(false);
   const [editor, setEditor] = useState<EditorState>(emptyEditor());
@@ -257,6 +260,7 @@ export default function ContentTemplates() {
         onPageChange={setPage}
         onPageSizeChange={size => { setPageSize(size); setPage(0); }}
         onSearchChange={value => { setSearch(value); setPage(0); }}
+        initialSearch={search}
         searchPlaceholder="Search templates"
         emptyMessage="No templates yet. Create one to offer it in the editors."
         idAccessor="id"

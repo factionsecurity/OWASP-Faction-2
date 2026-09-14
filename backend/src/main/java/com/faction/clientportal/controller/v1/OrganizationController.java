@@ -39,7 +39,10 @@ public class OrganizationController {
     /** Sortable organization columns. */
     private static final Map<String, SortField> SORTABLE_FIELDS = Map.of(
             "name", SortField.text("name"),
-            "description", SortField.text("description"));
+            "description", SortField.text("description"),
+            // A display value resolved after the fetch (owner names from a jsonb id list), so the
+            // service orders it in memory — see OrganizationService.SORTS.
+            "remediationOwners", SortField.text("remediationOwners"));
 
     private static final Sort DEFAULT_SORT = Sort.by("name");
 

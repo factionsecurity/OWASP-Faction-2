@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarRange, Download, Eye, Pencil, Search, Trash2, XCircle, AlertTriangle } from 'lucide-react';
+import { CalendarRange, Download, Eye, Pencil, Trash2, XCircle, AlertTriangle } from 'lucide-react';
+import GliderIcon from '../components/icons/GliderIcon';
 import {
   vulnerabilitiesApi, retestApi, assessmentsApi, applicationsApi, organizationsApi,
   workflowConfigApi, remediationApi,
 } from '../api';
-import type { Assessment, Vulnerability, RemediationQueueRow } from '../types';
+import type { Assessment, Vulnerability, RemediationQueueRow, RemediationQueueSummary } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import { Badge, FormLabel, Checkbox } from '../components';
-import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
+import { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
 import { Button } from '../components/Button';
@@ -19,18 +20,54 @@ import RichTextEditor from '../components/RichTextEditor';
 import Page from '../components/Page';
 import './RemediationPage.css';
 import { useTerminology } from '../context/TerminologyContext';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 // 10 matches the app-wide default and is one of DataTable's page-size options.
 const PAGE_SIZE = 10;
 // App/assessment dropdowns default to a starter list; typing server-searches the rest
 // (same contract as the vulnerabilities list's header filters).
 const OPTION_LIMIT = 250;
+/**
+ * The queue's two row kinds, each with its own page: Vuln Alerts and Retest Alerts. A page is locked
+ * to one kind, so the server's `type` filter is always set and the table never mixes the two.
+ */
+export type RemediationAlertKind = 'VULNERABILITY' | 'RETEST';
 
-// The queue's two row kinds — a filter the vulnerabilities list has no equivalent for.
-const TYPE_OPTIONS: SelectOption[] = [
-  { value: 'VULNERABILITY', label: 'Vulnerability' },
-  { value: 'RETEST', label: 'Retest' },
-];
+// localStorage key per kind, so each page keeps its own saved search, filters, sort and paging.
+const TABLE_KEYS: Record<RemediationAlertKind, string> = {
+  VULNERABILITY: 'remediation.vulnerabilities',
+  RETEST: 'remediation.retests',
+};
+
+// Stat badges above the table, in display order. Each (except Total) toggles a server-side bucket;
+// `count` picks the matching figure out of the summary response.
+const EMPTY_SUMMARY: RemediationQueueSummary = {
+  total: 0, pastDue: 0, dueSoon: 0, retestRequested: 0, retestScheduled: 0, retestInProgress: 0,
+};
+type BucketBadge = { bucket: string; label: string; color: string; count: keyof RemediationQueueSummary };
+const BUCKET_BADGES: Record<RemediationAlertKind, BucketBadge[]> = {
+  VULNERABILITY: [
+    { bucket: 'PAST_DUE', label: 'Past Due', color: '#ef4444', count: 'pastDue' },
+    { bucket: 'DUE_SOON', label: 'Due Soon', color: '#f59e0b', count: 'dueSoon' },
+  ],
+  RETEST: [
+    { bucket: 'RETEST_REQUESTED', label: 'Requested', color: '#8b5cf6', count: 'retestRequested' },
+    { bucket: 'RETEST_SCHEDULED', label: 'Scheduled', color: '#3b82f6', count: 'retestScheduled' },
+    { bucket: 'RETEST_IN_PROGRESS', label: 'In Progress', color: '#0ea5e9', count: 'retestInProgress' },
+  ],
+};
+
+// The Retest Status column on Retest Alerts. Passed and Failed only appear with completed retests shown.
+const RETEST_STATUS_BADGES: Record<string, { label: string; variant: 'primary' | 'info' | 'success' | 'danger' }> = {
+  REQUESTED: { label: 'Requested', variant: 'primary' },
+  SCHEDULED: { label: 'Scheduled', variant: 'info' },
+  IN_PROGRESS: { label: 'In Progress', variant: 'info' },
+  PASSED: { label: 'Passed', variant: 'success' },
+  FAILED: { label: 'Failed', variant: 'danger' },
+};
+
+/** A column that only belongs on one kind's page; columns without `kind` show on both. */
+type AlertColumn = Column<RemediationQueueRow> & { kind?: RemediationAlertKind };
 
 const formatAssessmentLabel = (a: Assessment): SelectOption => {
   const raw = a.startDate ?? a.createdAt;
@@ -40,7 +77,19 @@ const formatAssessmentLabel = (a: Assessment): SelectOption => {
   return { value: a.id, label: date ? `${a.name}: ${date}` : a.name };
 };
 
-export default function RemediationPage() {
+export default function RemediationPage({ kind }: { kind: RemediationAlertKind }) {
+  // Both alert routes render this page in the same spot, so React would otherwise keep one kind's
+  // state (restored from its own saved filters) when you switch to the other. The key remounts it.
+  return <RemediationAlerts key={kind} kind={kind} />;
+}
+
+function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
+  const isRetest = kind === 'RETEST';
+  const tableKey = TABLE_KEYS[kind];
+  // Handed to the assessment page so its breadcrumb leads back here instead of to Your Assessments.
+  const alertsCrumb = isRetest
+    ? { label: 'Retest Alerts', to: '/remediation/retests' }
+    : { label: 'Vuln Alerts', to: '/remediation/vulnerabilities' };
   const { severityOptions, organizationPlural, organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
@@ -58,40 +107,46 @@ export default function RemediationPage() {
   const requestOnly = userPerms.canRequestRetestOnly || isExternal;
 
   const [rows, setRows] = useState<RemediationQueueRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Starts true so DataTable doesn't clamp a restored page against the empty pre-load total.
+  const [loading, setLoading] = useState(true);
 
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
-  const [sort, setSort] = useState<SortState | null>(null);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const [search, setSearch] = usePersistedState(tableKey, 'search', '');
+  const [page, setPage] = usePersistedState(tableKey, 'page', 0);
+  const [sort, setSort] = usePersistedState<SortState | null>(tableKey, 'sort', null);
+  const [pageSize, setPageSize] = usePersistedState(tableKey, 'pageSize', PAGE_SIZE);
   const [total, setTotal] = useState(0);
 
   // Header filters — the same set the vulnerabilities list offers, minus "show closed" (a closed
   // vulnerability is never a queue row on its own). Statuses filter on the vulnerability's status,
   // which is what the Status column shows for both row types.
-  const [filterSeverity, setFilterSeverity] = useState('');
-  const [filterOrganizationId, setFilterOrganizationId] = useState('');
-  const [filterApplicationId, setFilterApplicationId] = useState('');
-  const [filterAssessmentId, setFilterAssessmentId] = useState('');
-  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
-  const [filterType, setFilterType] = useState('');
+  // Every filter is multi-select: several values in one filter match any of them, and separate
+  // filters must all match.
+  const [filterSeverities, setFilterSeverities] = usePersistedState<string[]>(tableKey, 'severities', []);
+  const [filterOrganizationIds, setFilterOrganizationIds] = usePersistedState<string[]>(tableKey, 'organizationIds', []);
+  const [filterApplicationIds, setFilterApplicationIds] = usePersistedState<string[]>(tableKey, 'applicationIds', []);
+  const [filterAssessmentIds, setFilterAssessmentIds] = usePersistedState<string[]>(tableKey, 'assessmentIds', []);
+  const [filterStatuses, setFilterStatuses] = usePersistedState<string[]>(tableKey, 'statuses', []);
   const [exporting, setExporting] = useState(false);
   // The queue is a worklist, so verified retests are off by default; on, it becomes a record of
   // what has been checked as well as what is outstanding.
-  const [showCompletedRetests, setShowCompletedRetests] = useState(false);
-  // Assessment, Type, and Show Completed Retests live in the advanced panel — staged until Apply.
-  const [draftAssessmentId, setDraftAssessmentId] = useState('');
-  const [draftType, setDraftType] = useState('');
+  const [showCompletedRetests, setShowCompletedRetests] = usePersistedState(tableKey, 'showCompletedRetests', false);
+  // Assessment and (on Retest Alerts) Show Completed Retests live in the advanced panel — staged until Apply.
+  const [draftAssessmentIds, setDraftAssessmentIds] = useState<string[]>([]);
   const [draftShowCompletedRetests, setDraftShowCompletedRetests] = useState(false);
+  // Stat-badge selection: empty means "Total" (no bucket narrowing); several may be active at once.
+  const [buckets, setBuckets] = usePersistedState<string[]>(tableKey, 'buckets', []);
+  const [summary, setSummary] = useState<RemediationQueueSummary>(EMPTY_SUMMARY);
 
   // Dropdown options (orgs loaded fully; apps/assessments server-searched)
   const [orgOptions, setOrgOptions] = useState<SelectOption[]>([]);
   const [appOptions, setAppOptions] = useState<SelectOption[]>([]);
   const [appLoading, setAppLoading] = useState(false);
-  const [appLabels, setAppLabels] = useState<Record<string, string>>({});
+  // Labels for selected ids are saved with the filters, so a restored app/assessment shows its
+  // name rather than its id when it falls outside the starter option list.
+  const [appLabels, setAppLabels] = usePersistedState<Record<string, string>>(tableKey, 'appLabels', {});
   const [assessmentOptions, setAssessmentOptions] = useState<SelectOption[]>([]);
   const [assessmentLoading, setAssessmentLoading] = useState(false);
-  const [assessmentLabels, setAssessmentLabels] = useState<Record<string, string>>({});
+  const [assessmentLabels, setAssessmentLabels] = usePersistedState<Record<string, string>>(tableKey, 'assessmentLabels', {});
 
   // Vulnerability detail drawer (full vuln + assessment fetched on demand)
   const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
@@ -120,13 +175,14 @@ export default function RemediationPage() {
         page, size: pageSize,
         sort: sortParam(sort),
         search: search || undefined,
-        severity: filterSeverity || undefined,
-        organizationId: filterOrganizationId || undefined,
-        applicationId: filterApplicationId || undefined,
-        assessmentId: filterAssessmentId || undefined,
+        severities: filterSeverities.length ? filterSeverities : undefined,
+        organizationIds: filterOrganizationIds.length ? filterOrganizationIds : undefined,
+        applicationIds: filterApplicationIds.length ? filterApplicationIds : undefined,
+        assessmentIds: filterAssessmentIds.length ? filterAssessmentIds : undefined,
         statuses: filterStatuses.length ? filterStatuses : undefined,
-        type: filterType || undefined,
+        type: kind,
         includeCompletedRetests: showCompletedRetests || undefined,
+        buckets: buckets.length ? buckets : undefined,
       });
       if (reqId !== loadPageReq.current) return; // superseded by a newer load
       const data = res.data || [];
@@ -141,15 +197,45 @@ export default function RemediationPage() {
     } finally {
       if (reqId === loadPageReq.current) setLoading(false);
     }
-  }, [page, pageSize, search, filterSeverity, filterOrganizationId, filterApplicationId,
-      filterAssessmentId, filterStatuses, filterType, showCompletedRetests, sort]);
+  }, [page, pageSize, search, filterSeverities, filterOrganizationIds, filterApplicationIds,
+      filterAssessmentIds, filterStatuses, kind, showCompletedRetests, buckets, sort]);
 
   useEffect(() => { loadPage(); }, [loadPage]);
 
+  // Badge counts follow the header filters but deliberately not the bucket selection or the
+  // completed-retests toggle — otherwise selecting a badge would zero out all the others.
+  const loadSummaryReq = useRef(0);
+  const loadSummary = useCallback(async () => {
+    const reqId = ++loadSummaryReq.current;
+    try {
+      const res = await remediationApi.summary({
+        search: search || undefined,
+        severities: filterSeverities.length ? filterSeverities : undefined,
+        organizationIds: filterOrganizationIds.length ? filterOrganizationIds : undefined,
+        applicationIds: filterApplicationIds.length ? filterApplicationIds : undefined,
+        assessmentIds: filterAssessmentIds.length ? filterAssessmentIds : undefined,
+        statuses: filterStatuses.length ? filterStatuses : undefined,
+        type: kind,
+      });
+      if (reqId === loadSummaryReq.current && res.data) setSummary(res.data);
+    } catch {
+      // Keep the previous counts — the badges are informational and must not break the page.
+    }
+  }, [search, filterSeverities, filterOrganizationIds, filterApplicationIds, filterAssessmentIds,
+      filterStatuses, kind]);
+
+  useEffect(() => { loadSummary(); }, [loadSummary]);
+
+  // Total clears the selection; any other badge toggles its bucket. Either way, back to page 0.
+  const handleBadgeClick = (bucket: string | null) => {
+    if (bucket === null) setBuckets([]);
+    else setBuckets(prev => prev.includes(bucket) ? prev.filter(b => b !== bucket) : [...prev, bucket]);
+    setPage(0);
+  };
+
   // Keep the advanced panel's drafts aligned with the applied values when they change from
   // elsewhere (chip removal, clear-all, or an application/org change that clears the assessment).
-  useEffect(() => { setDraftAssessmentId(filterAssessmentId); }, [filterAssessmentId]);
-  useEffect(() => { setDraftType(filterType); }, [filterType]);
+  useEffect(() => { setDraftAssessmentIds(filterAssessmentIds); }, [filterAssessmentIds]);
   useEffect(() => { setDraftShowCompletedRetests(showCompletedRetests); }, [showCompletedRetests]);
 
   // One-time: vulnerability status labels for the detail drawer, plus the organization options.
@@ -191,7 +277,7 @@ export default function RemediationPage() {
       const res = await assessmentsApi.search({
         page: 0, size: OPTION_LIMIT,
         search: query || undefined,
-        applicationId: filterApplicationId || undefined, // scope to the selected application
+        applicationIds: filterApplicationIds.length ? filterApplicationIds : undefined, // scope to the selected applications
       });
       if (reqId !== assessmentReq.current) return;
       setAssessmentOptions((res.data || []).map(formatAssessmentLabel));
@@ -206,18 +292,24 @@ export default function RemediationPage() {
   useEffect(() => {
     searchAssessments('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterApplicationId]);
+  }, [filterApplicationIds]);
 
-  // Merge the selected app/assessment into its option list so its label stays visible
-  // once a server search narrows away from it.
-  const withSelected = (options: SelectOption[], id: string, labels: Record<string, string>): SelectOption[] => {
-    if (!id || options.some(o => o.value === id)) return options;
-    const label = labels[id];
-    return label ? [{ value: id, label }, ...options] : options;
+  // Merge the selected apps/assessments into their option list so their labels stay visible
+  // once a server search narrows away from them.
+  const withSelected = (options: SelectOption[], ids: string[], labels: Record<string, string>): SelectOption[] => {
+    const missing = ids.filter(id => !options.some(o => o.value === id))
+      .map(id => ({ value: id, label: labels[id] ?? id }));
+    return missing.length ? [...missing, ...options] : options;
   };
-  const appOptionsMerged = withSelected(appOptions, filterApplicationId, appLabels);
-  // The advanced panel's Assessment select shows the *draft* value, so merge that one in.
-  const assessmentOptionsForDraft = withSelected(assessmentOptions, draftAssessmentId, assessmentLabels);
+  // Remember the name behind each picked id, so a restored selection shows names rather than ids.
+  const labelsFor = (prev: Record<string, string>, ids: string[], options: SelectOption[]) => {
+    const next = { ...prev };
+    ids.forEach(id => { const o = options.find(x => x.value === id); if (o) next[id] = o.label; });
+    return next;
+  };
+  const appOptionsMerged = withSelected(appOptions, filterApplicationIds, appLabels);
+  // The advanced panel's Assessment select shows the *draft* values, so merge those in.
+  const assessmentOptionsForDraft = withSelected(assessmentOptions, draftAssessmentIds, assessmentLabels);
   // The drawer's status list doubles as the filter's — every status a queue row can carry.
   const statusOptions: SelectOption[] = configuredStatuses.map(s => ({ value: s, label: s }));
 
@@ -246,7 +338,7 @@ export default function RemediationPage() {
     try {
       const res = await retestApi.getById(r.id);
       const retest = res.data;
-      if (!retest) { loadPage(); return; }
+      if (!retest) { loadPage(); loadSummary(); return; }
       navigate('/retests/schedule', {
         state: {
           retestId: retest.id,
@@ -263,12 +355,14 @@ export default function RemediationPage() {
     } catch {
       // retest gone — refresh so it drops off the queue.
       loadPage();
+      loadSummary();
     }
   };
 
   const handleVulnUpdate = (updated: Vulnerability) => {
     setSelectedVuln(prev => prev?.id === updated.id ? updated : prev);
     loadPage();
+    loadSummary();
   };
 
   // Cancel retest: add the reason as a comment on the vulnerability, then move the retest to
@@ -292,6 +386,7 @@ export default function RemediationPage() {
       setCancelRetestRow(null);
       setCancelReason('');
       loadPage();
+      loadSummary();
     } catch {
       setCancelError('Failed to cancel retest. Please try again.');
     } finally {
@@ -308,6 +403,7 @@ export default function RemediationPage() {
       setShowDeleteConfirm(false);
       setDeleteVulnRow(null);
       loadPage();
+      loadSummary();
     } catch {
       // error handled silently; could surface via toast
     } finally {
@@ -332,6 +428,10 @@ export default function RemediationPage() {
   // fall back to the id so the row is never blank.
   const displayName = (r: RemediationQueueRow) => r.vulnerabilityName || r.vulnerabilityId;
 
+  /** URGENT on the name: past its SLA, or a retest someone has asked for and nobody has scheduled yet. */
+  const isUrgent = (r: RemediationQueueRow) =>
+    r.urgent || (r.type === 'RETEST' && r.retestStatus === 'REQUESTED');
+
   /** A retest row that has already been verified — only shown when "Show Completed Retests" is
    *  on, and read-only: rescheduling or cancelling a finished retest is not a move. */
   const isCompletedRetest = (r: RemediationQueueRow) =>
@@ -346,19 +446,20 @@ export default function RemediationPage() {
     try {
       const blob = await remediationApi.exportQueueCsv({
         search: search || undefined,
-        severity: filterSeverity || undefined,
-        organizationId: filterOrganizationId || undefined,
-        applicationId: filterApplicationId || undefined,
-        assessmentId: filterAssessmentId || undefined,
+        severities: filterSeverities.length ? filterSeverities : undefined,
+        organizationIds: filterOrganizationIds.length ? filterOrganizationIds : undefined,
+        applicationIds: filterApplicationIds.length ? filterApplicationIds : undefined,
+        assessmentIds: filterAssessmentIds.length ? filterAssessmentIds : undefined,
         statuses: filterStatuses.length ? filterStatuses : undefined,
-        type: filterType || undefined,
+        type: kind,
         includeCompletedRetests: showCompletedRetests || undefined,
+        buckets: buckets.length ? buckets : undefined,
         sort: sortParam(sort),
       });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `remediation-queue-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `${isRetest ? 'retest' : 'vulnerability'}-alerts-${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -367,15 +468,15 @@ export default function RemediationPage() {
     finally { setExporting(false); }
   };
 
-  const columns: Column<RemediationQueueRow>[] = [
+  const allColumns: AlertColumn[] = [
     {
       header: 'Vulnerability Name',
       sortKey: 'name',
       render: r => (
         <span className="remediation-vuln-name">
           <span style={{ fontWeight: 500 }}>{displayName(r)}</span>
-          {r.urgent && <span className="remediation-badge remediation-badge--urgent">URGENT</span>}
-          {r.warning && <span className="remediation-badge remediation-badge--warning">WARNING</span>}
+          {isUrgent(r) && <span className="remediation-badge remediation-badge--urgent">URGENT</span>}
+          {r.warning && !isUrgent(r) && <span className="remediation-badge remediation-badge--warning">WARNING</span>}
         </span>
       ),
     },
@@ -390,30 +491,18 @@ export default function RemediationPage() {
       render: r => r.organizationName || '—',
     },
     {
-      header: 'Type',
-      sortKey: 'rowType',
+      // The retest's own progress. No sort key: the queue query has no retest-status ordering.
+      kind: 'RETEST',
+      header: 'Retest Status',
       render: r => {
-        if (r.type === 'RETEST' && r.retestStatus === 'REQUESTED') {
-          return <Badge variant="primary">Retest Requested</Badge>;
-        }
-        if (r.type === 'RETEST' && isCompletedRetest(r)) {
-          return (
-            <Badge variant={r.retestStatus === 'PASSED' ? 'success' : 'danger'}>
-              {r.retestStatus === 'PASSED' ? 'Retest Passed' : 'Retest Failed'}
-            </Badge>
-          );
-        }
-        return (
-          <Badge variant={r.type === 'RETEST' ? 'info' : 'warning'}>
-            {r.type === 'RETEST' ? 'Retest' : 'Vulnerability'}
-          </Badge>
-        );
+        const s = RETEST_STATUS_BADGES[r.retestStatus ?? ''];
+        return s ? <Badge variant={s.variant}>{s.label}</Badge> : (r.retestStatus || '—');
       },
     },
     {
       // Always the underlying vulnerability's status — on a retest row too — so it reads the same
       // as the Vulnerabilities table (same labels, same badge colors).
-      header: 'Status',
+      header: isRetest ? 'Vulnerability Status' : 'Status',
       sortKey: 'vulnerabilityStatus',
       render: r => {
         const s = r.vulnerabilityStatus || 'None';
@@ -421,9 +510,11 @@ export default function RemediationPage() {
       },
     },
     {
+      kind: 'VULNERABILITY',
       header: 'Last Retest',
+      sortKey: 'lastRetestStatus',
       render: r => {
-        if (r.type !== 'VULNERABILITY' || !r.lastRetestStatus) return '—';
+        if (!r.lastRetestStatus) return '—';
         return (
           <Badge variant={r.lastRetestStatus === 'PASSED' ? 'success' : 'danger'}>
             {r.lastRetestStatus === 'PASSED' ? 'Passed' : 'Failed'}
@@ -432,14 +523,22 @@ export default function RemediationPage() {
       },
     },
     {
-      header: 'Start Date',
-      sortKey: 'startDate',
-      render: r => r.type === 'RETEST' ? fmt(r.startDate) : '—',
+      kind: 'VULNERABILITY',
+      header: 'Last Retest Date',
+      sortKey: 'lastRetestDate',
+      render: r => (r.lastRetestDate ? fmt(r.lastRetestDate) : '—'),
     },
     {
+      kind: 'RETEST',
+      header: 'Start Date',
+      sortKey: 'startDate',
+      render: r => fmt(r.startDate),
+    },
+    {
+      kind: 'RETEST',
       header: 'End Date',
       sortKey: 'endDate',
-      render: r => r.type === 'RETEST' ? fmt(r.endDate) : '—',
+      render: r => fmt(r.endDate),
     },
     {
       header: 'Due Date',
@@ -479,13 +578,13 @@ export default function RemediationPage() {
               : r.retestStatus === 'REQUESTED' ? 'Schedule Retest' : 'Edit'}
             onClick={() => {
               if (r.type === 'VULNERABILITY') {
-                if (r.assessmentId) navigate(`/assessments/${r.assessmentId}`);
+                if (r.assessmentId) navigate(`/assessments/${r.assessmentId}`, { state: { from: alertsCrumb } });
               } else {
                 openRetestSchedule(r);
               }
             }}
           >
-            {r.type === 'VULNERABILITY' ? <Search size={15} />
+            {r.type === 'VULNERABILITY' ? <GliderIcon size={15} />
               : r.retestStatus === 'REQUESTED' ? <CalendarRange size={15} /> : <Pencil size={15} />}
           </button>
           )}
@@ -512,46 +611,43 @@ export default function RemediationPage() {
       ),
     },
   ];
+  const columns: Column<RemediationQueueRow>[] = allColumns.filter(c => !c.kind || c.kind === kind);
 
-  const anyFilterActive = !!(search || filterSeverity || filterOrganizationId
-    || filterApplicationId || filterAssessmentId || filterStatuses.length || filterType
-    || showCompletedRetests);
+  const anyFilterActive = !!(search || filterSeverities.length || filterOrganizationIds.length
+    || filterApplicationIds.length || filterAssessmentIds.length || filterStatuses.length
+    || showCompletedRetests || buckets.length > 0);
 
   // ── Toolbar zones ─────────────────────────────────────────────────────────
-  // Assessment, Type, and Show Completed Retests are the advanced (Apply-based) filters.
+  // Assessment and (on Retest Alerts) Show Completed Retests are the advanced (Apply-based) filters.
   const applyAdvanced = () => {
-    setFilterAssessmentId(draftAssessmentId);
-    setFilterType(draftType);
+    setFilterAssessmentIds(draftAssessmentIds);
     setShowCompletedRetests(draftShowCompletedRetests);
     setPage(0);
   };
 
   // Clear every filter across all zones (inline dropdowns + advanced drafts).
   const clearAllFilters = () => {
-    setFilterOrganizationId(''); setFilterSeverity(''); setFilterApplicationId('');
+    setFilterOrganizationIds([]); setFilterSeverities([]); setFilterApplicationIds([]);
     setFilterStatuses([]);
-    setFilterAssessmentId(''); setDraftAssessmentId('');
-    setFilterType(''); setDraftType('');
+    setFilterAssessmentIds([]); setDraftAssessmentIds([]);
     setShowCompletedRetests(false); setDraftShowCompletedRetests(false);
+    setBuckets([]);
     setPage(0);
   };
 
   // Only the advanced (hidden) filters get chips; the inline dropdowns show their own active state.
   const filterChips: FilterChip[] = [];
-  if (filterAssessmentId) {
+  // One chip per chosen assessment, so each can be removed on its own.
+  filterAssessmentIds.forEach(id => {
     filterChips.push({
-      key: 'assessment',
-      label: `Assessment: ${assessmentLabels[filterAssessmentId] ?? filterAssessmentId}`,
-      onRemove: () => { setFilterAssessmentId(''); setDraftAssessmentId(''); setPage(0); },
+      key: `assessment-${id}`,
+      label: `Assessment: ${assessmentLabels[id] ?? id}`,
+      onRemove: () => {
+        const next = filterAssessmentIds.filter(x => x !== id);
+        setFilterAssessmentIds(next); setDraftAssessmentIds(next); setPage(0);
+      },
     });
-  }
-  if (filterType) {
-    filterChips.push({
-      key: 'type',
-      label: `Type: ${TYPE_OPTIONS.find(o => o.value === filterType)?.label ?? filterType}`,
-      onRemove: () => { setFilterType(''); setDraftType(''); setPage(0); },
-    });
-  }
+  });
   if (showCompletedRetests) {
     filterChips.push({
       key: 'showCompletedRetests', label: 'Show completed retests',
@@ -561,27 +657,26 @@ export default function RemediationPage() {
 
   const headerFilters = (
     <div className="ss-filter-bar">
-      <SearchableSelect
-        value={filterOrganizationId}
-        onChange={(v) => {
-          setFilterOrganizationId(v); setFilterApplicationId('');
-          setFilterAssessmentId(''); setDraftAssessmentId(''); setPage(0);
-        }}
+      {/* Picking more values never clears another filter: with several choices allowed, wiping the
+          applications on every organization tick would throw away selections. */}
+      <MultiSelect
+        selected={filterOrganizationIds}
+        onChange={(vals) => { setFilterOrganizationIds(vals); setPage(0); }}
         options={orgOptions}
         placeholder={`All ${organizationPlural}`}
       />
-      <SearchableSelect
-        value={filterSeverity}
-        onChange={(v) => { setFilterSeverity(v); setPage(0); }}
+      <MultiSelect
+        selected={filterSeverities}
+        onChange={(vals) => { setFilterSeverities(vals); setPage(0); }}
         options={severityOptions}
         searchable={false}
         placeholder="All Severities"
       />
-      <SearchableSelect
-        value={filterApplicationId}
-        onChange={(v) => {
-          setFilterApplicationId(v); setFilterAssessmentId(''); setDraftAssessmentId(''); setPage(0);
-          if (v) { const o = appOptionsMerged.find(x => x.value === v); if (o) setAppLabels(p => ({ ...p, [v]: o.label })); }
+      <MultiSelect
+        selected={filterApplicationIds}
+        onChange={(vals) => {
+          setFilterApplicationIds(vals); setPage(0);
+          setAppLabels(p => labelsFor(p, vals, appOptionsMerged));
         }}
         options={appOptionsMerged}
         onQueryChange={searchApps}
@@ -608,6 +703,27 @@ export default function RemediationPage() {
 
   return (
     <Page className="remediation-page">
+      <div className="rq-stats-bar">
+        <button
+          type="button"
+          className={`rq-stat${buckets.length === 0 ? ' active' : ''}`}
+          onClick={() => handleBadgeClick(null)}
+        >
+          <span className="rq-stat-dot" style={{ background: '#94a3b8' }} />
+          Total <strong>{summary.total}</strong>
+        </button>
+        {BUCKET_BADGES[kind].map(b => (
+          <button
+            key={b.bucket}
+            type="button"
+            className={`rq-stat${buckets.includes(b.bucket) ? ' active' : ''}`}
+            onClick={() => handleBadgeClick(b.bucket)}
+          >
+            <span className="rq-stat-dot" style={{ background: b.color }} />
+            {b.label} <strong>{summary[b.count]}</strong>
+          </button>
+        ))}
+      </div>
       <DataTable
         columns={columns}
         data={rows}
@@ -615,12 +731,16 @@ export default function RemediationPage() {
         pagination={pagination}
         onPageChange={setPage}
         onPageSizeChange={handlePageSizeChange}
+        initialSearch={search}
         onSearchChange={handleSearchChange}
-        searchPlaceholder="Search remediation queue"
+        searchPlaceholder={isRetest ? 'Search retest alerts' : 'Search vulnerability alerts'}
         emptyMessage={anyFilterActive
-          ? 'No remediation items match these filters.'
-          : 'No items currently require remediation.'}
+          ? `No ${isRetest ? 'retest' : 'vulnerability'} alerts match these filters.`
+          : isRetest ? 'No retests are waiting on anyone.' : 'No vulnerabilities currently need attention.'}
         idAccessor="key"
+        // A row click opens the vulnerability panel: the finding itself, or on a retest row the
+        // finding being retested. The Actions cell stops its clicks from reaching the row.
+        onRowClick={openVulnDrawer}
         headerChildren={headerFilters}
         advancedActiveCount={filterChips.length}
         filterChips={filterChips}
@@ -630,11 +750,11 @@ export default function RemediationPage() {
           <>
             <div className="filter-field">
               <FormLabel>Assessment</FormLabel>
-              <SearchableSelect
-                value={draftAssessmentId}
-                onChange={(v) => {
-                  setDraftAssessmentId(v);
-                  if (v) { const o = assessmentOptionsForDraft.find(x => x.value === v); if (o) setAssessmentLabels(p => ({ ...p, [v]: o.label })); }
+              <MultiSelect
+                selected={draftAssessmentIds}
+                onChange={(vals) => {
+                  setDraftAssessmentIds(vals);
+                  setAssessmentLabels(p => labelsFor(p, vals, assessmentOptionsForDraft));
                 }}
                 options={assessmentOptionsForDraft}
                 onQueryChange={searchAssessments}
@@ -642,27 +762,19 @@ export default function RemediationPage() {
                 placeholder="All Assessments"
               />
             </div>
-            <div className="filter-field">
-              <FormLabel>Type</FormLabel>
-              <SearchableSelect
-                value={draftType}
-                onChange={(v) => setDraftType(v)}
-                options={TYPE_OPTIONS}
-                searchable={false}
-                placeholder="All Types"
-              />
-            </div>
-            <div className="filter-field">
-              <FormLabel>Options</FormLabel>
-              <div className="filter-field-checks">
-                <Checkbox
-                  id="showCompletedRetests"
-                  checked={draftShowCompletedRetests}
-                  onChange={(e) => setDraftShowCompletedRetests(e.target.checked)}
-                  label="Show Completed Retests"
-                />
+            {isRetest && (
+              <div className="filter-field">
+                <FormLabel>Options</FormLabel>
+                <div className="filter-field-checks">
+                  <Checkbox
+                    id="showCompletedRetests"
+                    checked={draftShowCompletedRetests}
+                    onChange={(e) => setDraftShowCompletedRetests(e.target.checked)}
+                    label="Show Completed Retests"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </>
         }
         sort={sort}
@@ -768,7 +880,7 @@ export default function RemediationPage() {
                   const vulnId = deleteVulnRow.vulnerabilityId;
                   const assessmentId = deleteVulnRow.assessmentId;
                   setDeleteVulnRow(null);
-                  navigate(`/assessments/${assessmentId}`, { state: { editVulnId: vulnId } });
+                  navigate(`/assessments/${assessmentId}`, { state: { editVulnId: vulnId, from: alertsCrumb } });
                 }
               }}
             >

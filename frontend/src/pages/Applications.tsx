@@ -8,7 +8,8 @@ import { applicationsApi, organizationsApi, entityFieldsApi, regionConfigApi, su
 import type { Application, CreateApplicationRequest, UpdateApplicationRequest, ApplicationStatus, ApplicationUrl, Stakeholder, AppOwner, Organization, SubOrganization, ApplicationImportResult, UserDefinedField } from '../types';
 import RichTextEditor from '../components/RichTextEditor';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
-import SearchableSelect from '../components/SearchableSelect';
+import { usePersistedState } from '../hooks/usePersistedState';
+import { MultiSelect } from '../components/SearchableSelect';
 import Page from '../components/Page';
 import {
   Modal,
@@ -48,6 +49,9 @@ const COMMON_TECHNOLOGIES = [
 
 type ApplicationsTab = 'applications' | 'assessments' | 'vulnerabilities';
 
+// Table view state (search, filters, sort, page) is remembered under this key across navigation.
+const TABLE_KEY = 'applications';
+
 export default function Applications() {
   const { organizationPlural, organizationSingular, subOrganizationPlural } = useTerminology();
   const navigate = useNavigate();
@@ -67,18 +71,20 @@ export default function Applications() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const authorities: string[] = user.authorities || [];
 
-  const [pagination, setPagination] = useState<PaginationInfo>({
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sort, setSort] = useState<SortState | null>(null);
-  const [filterOrganization, setFilterOrganization] = useState('');
-  const [filterSubOrganization, setFilterSubOrganization] = useState('');
-  const [filterStatus, setFilterStatus] = useState<ApplicationStatus | ''>('');
+  const [searchQuery, setSearchQuery] = usePersistedState(TABLE_KEY, 'searchQuery', '');
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  // Multi-select filters, each matched as "any of". New field names, so a single value saved by the
+  // earlier single-select build is simply ignored rather than mis-read.
+  const [filterOrganizations, setFilterOrganizations] = usePersistedState<string[]>(TABLE_KEY, 'filterOrganizations', []);
+  const [filterSubOrganizations, setFilterSubOrganizations] = usePersistedState<string[]>(TABLE_KEY, 'filterSubOrganizations', []);
+  const [filterStatuses, setFilterStatuses] = usePersistedState<ApplicationStatus[]>(TABLE_KEY, 'filterStatuses', []);
   // Every division the user can see, so the picker works with or without an organization chosen.
   const [subOrganizations, setSubOrganizations] = useState<SubOrganization[]>([]);
 
@@ -126,7 +132,7 @@ export default function Applications() {
     loadOrganizations();
     loadFieldDefinitions();
   }, [pagination.page, pagination.pageSize, searchQuery, sort,
-      filterOrganization, filterSubOrganization, filterStatus]);
+      filterOrganizations, filterSubOrganizations, filterStatuses]);
 
   useEffect(() => {
     subOrganizationsApi.listAll()
@@ -141,9 +147,9 @@ export default function Applications() {
       const response = await applicationsApi.getAll(
         pagination.page, pagination.pageSize, searchQuery, sortParam(sort),
         {
-          organizationId: filterOrganization,
-          subOrganizationId: filterSubOrganization,
-          status: filterStatus,
+          organizationIds: filterOrganizations,
+          subOrganizationIds: filterSubOrganizations,
+          statuses: filterStatuses,
         });
       if (response.data) {
         setApplications(response.data);
@@ -399,16 +405,16 @@ export default function Applications() {
   // Divisions belong to an organization, so once one is picked only its own are offered. With no
   // organization chosen the names are ambiguous across organizations, so they carry the owner.
   const subOrgOptions = useMemo(() => {
-    const scoped = filterOrganization
-      ? subOrganizations.filter((sub) => sub.organizationId === filterOrganization)
+    const scoped = filterOrganizations.length > 0
+      ? subOrganizations.filter((sub) => filterOrganizations.includes(sub.organizationId))
       : subOrganizations;
     return scoped.map((sub) => ({
       value: sub.id,
-      label: filterOrganization || !sub.organizationName
+      label: filterOrganizations.length === 1 || !sub.organizationName
         ? sub.name
         : `${sub.name} — ${sub.organizationName}`,
     }));
-  }, [subOrganizations, filterOrganization]);
+  }, [subOrganizations, filterOrganizations]);
 
   const orgNameById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -574,7 +580,8 @@ export default function Applications() {
           onPageChange={handlePageChange}
           onPageSizeChange={handlePageSizeChange}
           onSearchChange={handleSearchChange}
-          searchPlaceholder="Search applications"
+          initialSearch={searchQuery}
+          searchPlaceholder="Search name, app ID, organization, status, technology or owner"
           emptyMessage="No applications found"
           idAccessor="id"
           sort={sort}
@@ -582,32 +589,37 @@ export default function Applications() {
           onRowClick={(canEdit || canView) ? handleEdit : undefined}
           headerChildren={
             <div className="ss-filter-bar">
-              <SearchableSelect
-                value={filterOrganization}
-                onChange={(value) => {
-                  setFilterOrganization(value);
-                  // The chosen division belongs to the old organization — drop it rather than
-                  // filter by something outside the new one.
-                  setFilterSubOrganization('');
+              <MultiSelect
+                selected={filterOrganizations}
+                onChange={(values) => {
+                  setFilterOrganizations(values);
+                  // A chosen division outside every selected organization can no longer match —
+                  // drop it rather than filter by something the organization filter excludes.
+                  if (values.length > 0) {
+                    setFilterSubOrganizations((prev) => prev.filter((id) => {
+                      const sub = subOrganizations.find((s) => s.id === id);
+                      return !sub || values.includes(sub.organizationId);
+                    }));
+                  }
                   setPagination((prev) => ({ ...prev, page: 0 }));
                 }}
                 options={organizations.map((org) => ({ value: org.id, label: org.name }))}
                 placeholder={`All ${organizationPlural}`}
               />
-              <SearchableSelect
-                value={filterSubOrganization}
-                onChange={(value) => {
-                  setFilterSubOrganization(value);
+              <MultiSelect
+                selected={filterSubOrganizations}
+                onChange={(values) => {
+                  setFilterSubOrganizations(values);
                   setPagination((prev) => ({ ...prev, page: 0 }));
                 }}
                 options={subOrgOptions}
                 placeholder={`All ${subOrganizationPlural}`}
                 searchable={false}
               />
-              <SearchableSelect
-                value={filterStatus}
-                onChange={(value) => {
-                  setFilterStatus(value as ApplicationStatus | '');
+              <MultiSelect
+                selected={filterStatuses}
+                onChange={(values) => {
+                  setFilterStatuses(values as ApplicationStatus[]);
                   setPagination((prev) => ({ ...prev, page: 0 }));
                 }}
                 options={APPLICATION_STATUSES.map((s) => ({ value: s, label: s }))}

@@ -89,15 +89,35 @@ public class ApplicationController {
             @Parameter(hidden = true) @RequestParam(required = false) String search,
             @Parameter(hidden = true) @RequestParam(defaultValue = "name,asc") String sort,
             @Parameter(hidden = true) @RequestParam(required = false) String organizationId,
+            @Parameter(hidden = true) @RequestParam(required = false) List<String> organizationIds,
             @Parameter(hidden = true) @RequestParam(required = false) String subOrganizationId,
+            @Parameter(hidden = true) @RequestParam(required = false) List<String> subOrganizationIds,
             @Parameter(hidden = true) @RequestParam(required = false) String status,
+            @Parameter(hidden = true) @RequestParam(required = false) List<String> statuses,
             Authentication authentication) {
 
+        // Each filter is a multi-select (repeatable or comma-separated). The single-value parameters
+        // are still accepted and folded into the same set, so older clients and links keep working.
         Pageable pageable = PageableUtil.of(page, size, sort, DEFAULT_SORT, SORTABLE_FIELDS);
+        java.util.Set<ApplicationStatus> statusFilter = new java.util.LinkedHashSet<>();
+        for (String value : merge(status, statuses)) {
+            statusFilter.add(parseStatus(value));
+        }
         Page<ApplicationDto> applicationPage = applicationService.searchApplications(
-                search, organizationId, subOrganizationId, parseStatus(status), pageable, authentication);
+                search, merge(organizationId, organizationIds), merge(subOrganizationId, subOrganizationIds),
+                statusFilter, pageable, authentication);
 
         return ResponseUtil.paginated("Applications retrieved successfully", applicationPage);
+    }
+
+    /** The single-value form plus the list form, blanks dropped; empty means "no filter". */
+    private static java.util.Set<String> merge(String single, List<String> many) {
+        java.util.Set<String> values = new java.util.LinkedHashSet<>();
+        if (single != null && !single.isBlank()) values.add(single.trim());
+        if (many != null) {
+            many.stream().filter(v -> v != null && !v.isBlank()).map(String::trim).forEach(values::add);
+        }
+        return values;
     }
 
     /** Blank/absent → no status filter; an unknown value is a 400 rather than an empty list. */

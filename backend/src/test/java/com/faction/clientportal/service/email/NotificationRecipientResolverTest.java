@@ -40,6 +40,7 @@ class NotificationRecipientResolverTest {
     @Mock private ApplicationRepository applicationRepository;
     @Mock private MentionQueueService mentionQueueService;
     @Mock private AccessScopeService accessScopeService;
+    @Mock private com.faction.clientportal.repository.OrganizationRepository organizationRepository;
 
     @InjectMocks private NotificationRecipientResolver resolver;
 
@@ -271,16 +272,83 @@ class NotificationRecipientResolverTest {
         user.setId(id);
         user.setUsername(username);
         user.setEmail(email);
-        user.setOrganizationId("org-1");
+        user.setOrganizationIds(new ArrayList<>(List.of("org-1")));
         user.setIsInternal(false);
         return user;
     }
 
+    @Test
+    void organizationRemediationOwnersAreCopiedOnEveryFindingEmail_withoutAnySwitch() {
+        // Responsible for every finding in the organization, so they hear about each one
+        // whatever the routing table says — the same rule as the finding's own owner.
+        application.setOrganizationId("org-1");
+        User fixer = orgUser("u-40", "fixer", "fixer@staff.com");
+        fixer.setIsInternal(true);
+        fixer.setOrganizationIds(new ArrayList<>());
+        when(organizationRepository.findById("org-1")).thenReturn(Optional.of(
+                com.faction.clientportal.model.Organization.builder().id("org-1").name("Org")
+                        .remediationOwnerIds(new ArrayList<>(List.of("u-40"))).build()));
+        when(userRepository.findById("u-40")).thenReturn(Optional.of(fixer));
+        Vulnerability vuln = new Vulnerability();
+        vuln.setId("v-1");
+        vuln.setName("SQLi");
+
+        List<NotificationRecipientResolver.Recipient> recipients = resolver.resolve(
+                EmailNotificationEvent.VULNERABILITY_PAST_DUE,
+                EventSettings.builder().build(), // nothing switched on
+                assessment, vuln);
+
+        assertThat(recipients).singleElement().satisfies(r -> {
+            assertThat(r.email()).isEqualTo("fixer@staff.com");
+            assertThat(r.audience()).isEqualTo(EmailNotificationAudience.REMEDIATION_OWNER);
+        });
+
+        // Assessment-level events carry no finding, so organization owners are not copied.
+        assertThat(resolver.resolve(EmailNotificationEvent.ASSESSMENT_CREATED,
+                EventSettings.builder().build(), assessment, null)).isEmpty();
+    }
+
     private void givenOrgUsers(User... users) {
         application.setOrganizationId("org-1");
-        when(userRepository
-                .findByOrganizationIdAndIsInternalFalseAndDeletedAtIsNullAndDisabledAtIsNull("org-1"))
-                .thenReturn(List.of(users));
+        when(userRepository.findLiveExternalByOrganizationId("org-1")).thenReturn(List.of(users));
+    }
+
+    @Test
+    void subOrganizationMembersOfTheApplicationsSubOrgAreResolvedToo() {
+        // The application belongs to org-1 and is attributed to sub-org "emea". Members of org-1
+        // and of emea both hear about it; the member of a different division does not.
+        application.setSubOrganizationId("emea");
+        User orgMember = orgUser("u-30", "orgmember", "org@example.com");
+        User emeaMember = orgUser("u-31", "emea", "emea@example.com");
+        emeaMember.setOrganizationIds(new ArrayList<>());
+        emeaMember.setSubOrganizationIds(new ArrayList<>(List.of("emea")));
+        givenOrgUsers(orgMember);
+        when(userRepository.findLiveExternalBySubOrganizationId("emea")).thenReturn(List.of(emeaMember));
+        when(accessScopeService.ownsApplication("u-30", application)).thenReturn(true);
+        when(accessScopeService.ownsApplication("u-31", application)).thenReturn(true);
+
+        List<NotificationRecipientResolver.Recipient> recipients = resolver.resolve(
+                EmailNotificationEvent.VULNERABILITY_PAST_DUE,
+                EventSettings.builder().notifyOrgUsers(true).build(),
+                assessment, null);
+
+        assertThat(recipients).extracting(NotificationRecipientResolver.Recipient::email)
+                .containsExactlyInAnyOrder("org@example.com", "emea@example.com");
+    }
+
+    @Test
+    void aUserInBothTheOrganizationAndItsSubOrganizationIsResolvedOnce() {
+        application.setSubOrganizationId("emea");
+        User both = orgUser("u-32", "both", "both@example.com");
+        both.setSubOrganizationIds(new ArrayList<>(List.of("emea")));
+        givenOrgUsers(both);
+        when(userRepository.findLiveExternalBySubOrganizationId("emea")).thenReturn(List.of(both));
+        when(accessScopeService.ownsApplication("u-32", application)).thenReturn(true);
+
+        assertThat(resolver.resolve(EmailNotificationEvent.VULNERABILITY_PAST_DUE,
+                EventSettings.builder().notifyOrgUsers(true).build(), assessment, null))
+                .extracting(NotificationRecipientResolver.Recipient::email)
+                .containsExactly("both@example.com");
     }
 
     @Test

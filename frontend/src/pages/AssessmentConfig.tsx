@@ -32,6 +32,11 @@ import SurveyConfig from './SurveyConfig';
 import Campaigns from './Campaigns';
 import './AssessmentConfig.css';
 import { useTerminology } from '../context/TerminologyContext';
+import { usePersistedState } from '../hooks/usePersistedState';
+
+const TYPES_TABLE_KEY = 'assessmentConfig.assessmentTypes';
+const CATEGORIES_TABLE_KEY = 'assessmentConfig.vulnerabilityCategories';
+const CHECKLISTS_TABLE_KEY = 'assessmentConfig.checklistTemplates';
 
 export default function AssessmentConfig() {
   const { permissions } = usePermissions();
@@ -44,19 +49,19 @@ export default function AssessmentConfig() {
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedType, setSelectedType] = useState<AssessmentType | null>(null);
-  const [showInactive, setShowInactive] = useState(false);
+  const [showInactive, setShowInactive] = usePersistedState(TYPES_TABLE_KEY, 'showInactive', false);
 
-  const [pagination, setPagination] = useState<PaginationInfo>({
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TYPES_TABLE_KEY, 'pagination', {
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [typeSort, setTypeSort] = useState<SortState | null>(null);
-  const [catSort, setCatSort] = useState<SortState | null>(null);
-  const [checklistSort, setChecklistSort] = useState<SortState | null>(null);
+  const [searchQuery, setSearchQuery] = usePersistedState(TYPES_TABLE_KEY, 'search', '');
+  const [typeSort, setTypeSort] = usePersistedState<SortState | null>(TYPES_TABLE_KEY, 'sort', null);
+  const [catSort, setCatSort] = usePersistedState<SortState | null>(CATEGORIES_TABLE_KEY, 'sort', null);
+  const [checklistSort, setChecklistSort] = usePersistedState<SortState | null>(CHECKLISTS_TABLE_KEY, 'sort', null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -71,8 +76,8 @@ export default function AssessmentConfig() {
   const [showCatModal, setShowCatModal] = useState(false);
   const [catModalMode, setCatModalMode] = useState<'create' | 'edit'>('create');
   const [selectedCategory, setSelectedCategory] = useState<VulnerabilityCategory | null>(null);
-  const [catSearchQuery, setCatSearchQuery] = useState('');
-  const [catPagination, setCatPagination] = useState<PaginationInfo>({
+  const [catSearchQuery, setCatSearchQuery] = usePersistedState(CATEGORIES_TABLE_KEY, 'search', '');
+  const [catPagination, setCatPagination] = usePersistedState<PaginationInfo>(CATEGORIES_TABLE_KEY, 'pagination', {
     page: 0,
     pageSize: 10,
     total: 0,
@@ -132,7 +137,7 @@ export default function AssessmentConfig() {
   const [selectedChecklist, setSelectedChecklist] = useState<ChecklistTemplate | null>(null);
   const [checklistToDelete, setChecklistToDelete] = useState<string | null>(null);
   const [deletingChecklist, setDeletingChecklist] = useState(false);
-  const [checklistTypeFilter, setChecklistTypeFilter] = useState('');
+  const [checklistTypeFilter, setChecklistTypeFilter] = usePersistedState(CHECKLISTS_TABLE_KEY, 'typeFilter', '');
   const [checklistFormData, setChecklistFormData] = useState({
     name: '',
     assessmentTypeId: '',
@@ -913,6 +918,7 @@ export default function AssessmentConfig() {
           onPageChange={handlePageChange}
           onPageSizeChange={handlePageSizeChange}
           onSearchChange={handleSearchChange}
+          initialSearch={searchQuery}
           searchPlaceholder="Search assessment types"
           idAccessor="id"
           sort={typeSort}
@@ -1000,6 +1006,7 @@ export default function AssessmentConfig() {
           onPageChange={handleCatPageChange}
           onPageSizeChange={handleCatPageSizeChange}
           onSearchChange={handleCatSearchChange}
+          initialSearch={catSearchQuery}
           searchPlaceholder="Search vulnerability categories"
           emptyMessage="No vulnerability categories found."
           idAccessor="id"

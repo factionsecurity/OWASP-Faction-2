@@ -109,27 +109,6 @@
   padding-right: 0.5rem;
 }
 
-/* UserSelector Dropdown Background Fix */
-.create-assessment-page .user-selector .dropdown-menu {
-  background-color: #ffffff;
-  border: 1px solid var(--border-color, #dee2e6);
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-}
-
-.create-assessment-page .user-selector .dropdown-item {
-  background-color: transparent;
-}
-
-.create-assessment-page .user-selector .dropdown-item:hover {
-  background-color: #f8f9fa;
-}
-
-.create-assessment-page .user-selector .dropdown-item.active {
-  background-color: var(--primary-color, #0d6efd);
-  color: white;
-}
-
-
 /* Split View Layout */
 .create-assessment-page .split-view {
   display: grid;

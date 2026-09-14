@@ -14,9 +14,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * {@code searchByNameOrDescription} must be a substring ("contains") match across
- * name/description/appId — a prefix-anchored match silently missed anything not at
- * the start of the name (e.g. searching "HIGHVULN" for "SA-HIGHVULN-v50").
+ * Application search must be a substring ("contains") match across name and appId — a
+ * prefix-anchored match silently missed anything not at the start of the name (e.g. searching
+ * "HIGHVULN" for "SA-HIGHVULN-v50"). Descriptions are deliberately not searched.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -37,7 +37,7 @@ class ApplicationRepositoryTest extends TestContainersConfig {
     }
 
     private List<String> searchNames(String term) {
-        return applicationRepository.searchByNameOrDescription(term, PageRequest.of(0, 20))
+        return applicationRepository.searchByNameOrAppId(term, PageRequest.of(0, 20))
                 .map(Application::getName).getContent();
     }
 
@@ -53,10 +53,24 @@ class ApplicationRepositoryTest extends TestContainersConfig {
     }
 
     @Test
-    void search_isCaseInsensitive_andMatchesDescriptionAndAppId() {
+    void search_isCaseInsensitive_matchesAppId_butNotDescription() {
         assertThat(searchNames("highvuln")).containsExactly("SA-HIGHVULN-v50");   // case-insensitive
-        assertThat(searchNames("showcase")).containsExactly("SA-HIGHVULN-v50");   // description
         assertThat(searchNames("APP-002")).containsExactly("MA-001-a881-v4928");  // appId
+        assertThat(searchNames("showcase")).isEmpty();                            // description only
+    }
+
+    /** The applications list search: name and application id only — descriptions are not searched. */
+    private List<String> listSearchNames(String term) {
+        return applicationRepository.searchFiltered(term, null, null, null, PageRequest.of(0, 20))
+                .map(Application::getName).getContent();
+    }
+
+    @Test
+    void listSearch_matchesNameAndAppId_butNotDescription() {
+        assertThat(listSearchNames("highvuln")).containsExactly("SA-HIGHVULN-v50");  // name
+        assertThat(listSearchNames("APP-002")).containsExactly("MA-001-a881-v4928"); // appId
+        // "showcase" appears only in a description, so it finds nothing.
+        assertThat(listSearchNames("showcase")).isEmpty();
     }
 
     @Test

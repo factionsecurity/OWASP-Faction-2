@@ -73,13 +73,14 @@ class UserRepositoryTest extends TestContainersConfig {
     }
 
     @Test
-    void saveExternalUser_WithOrganizationId() {
+    void saveExternalUser_WithOrganizationMemberships() {
         User externalUser = User.builder()
                 .username("externaluser")
                 .password("hashedPassword")
                 .loginOption(LoginOption.SAML2)
                 .isInternal(false)
-                .organizationId("org123")
+                .organizationIds(new java.util.ArrayList<>(java.util.List.of("org123", "org456")))
+                .subOrganizationIds(new java.util.ArrayList<>(java.util.List.of("sub789")))
                 .createdAt(LocalDateTime.now())
                 .failedLoginAttempts(0)
                 .build();
@@ -87,7 +88,24 @@ class UserRepositoryTest extends TestContainersConfig {
         User savedUser = userRepository.save(externalUser);
         assertThat(savedUser.getId()).isNotNull();
         assertThat(savedUser.getIsInternal()).isFalse();
-        assertThat(savedUser.getOrganizationId()).isEqualTo("org123");
+        assertThat(userRepository.findById(savedUser.getId()).orElseThrow().getOrganizationIds())
+                .containsExactly("org123", "org456");
+        assertThat(userRepository.findExternalByOrganizationId("org456")).extracting(User::getUsername)
+                .containsExactly("externaluser");
+        assertThat(userRepository.findExternalBySubOrganizationId("sub789")).extracting(User::getUsername)
+                .containsExactly("externaluser");
+        assertThat(userRepository.findExternalByOrganizationId("other")).isEmpty();
+        assertThat(userRepository.countByOrganizationIdsContaining("org123")).isEqualTo(1);
+        assertThat(userRepository.countBySubOrganizationIdsContaining("sub789")).isEqualTo(1);
+    }
+
+    /** The single-organization builder shorthand still works and lands in the list. */
+    @Test
+    void builderOrganizationIdShorthand_populatesOrganizationIds() {
+        User u = User.builder().username("shorthand").password("x").loginOption(LoginOption.NATIVE)
+                .isInternal(false).organizationId("org1").createdAt(LocalDateTime.now()).failedLoginAttempts(0).build();
+        assertThat(u.getOrganizationIds()).containsExactly("org1");
+        assertThat(userRepository.save(u).getOrganizationIds()).containsExactly("org1");
     }
 
     @Test

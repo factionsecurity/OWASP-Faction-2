@@ -8,10 +8,11 @@ import type {
   AssessmentType,
 } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
-import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
+import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import { Button, Badge, FormLabel, Input, Checkbox } from '../components';
 import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
+import { usePersistedState } from '../hooks/usePersistedState';
 import './Assessments.css';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
@@ -23,6 +24,9 @@ const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 
   APPROVED: 'success',
   ARCHIVED: 'secondary',
 };
+
+// localStorage key for this table's saved search, filters, sort and paging.
+const TABLE_KEY = 'assessments';
 
 export default function Assessments() {
   const navigate = useNavigate();
@@ -39,18 +43,18 @@ export default function Assessments() {
   const [statusColors, setStatusColors] = useState<Record<string, string>>({});
   const [wfStatuses, setWfStatuses] = useState<string[]>([]);
 
-  const [pagination, setPagination] = useState<PaginationInfo>({
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
 
   // Applied filters — what actually drives the query. Inline filters (search, application, type,
   // status) write here directly (live-apply); advanced filters land here only on Apply.
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = usePersistedState(TABLE_KEY, 'filters', {
     search: '',
     startDateFrom: '',
     startDateTo: '',
@@ -59,9 +63,9 @@ export default function Assessments() {
     pastDue: false,
     showCompleted: false, // Default to hiding completed assessments
     assignedToMe: false, // Default to showing all assessments
-    status: '',
+    statuses: [] as string[],
     applicationId: '',
-    assessmentTypeId: '',
+    assessmentTypeIds: [] as string[],
   });
 
   // Draft state for the advanced panel — staged until the user presses Apply.
@@ -101,7 +105,7 @@ export default function Assessments() {
   const clearAllFilters = () => {
     setDraft(ADVANCED_DEFAULTS);
     setFilters((prev) => ({
-      ...prev, ...ADVANCED_DEFAULTS, status: '', applicationId: '', assessmentTypeId: '',
+      ...prev, ...ADVANCED_DEFAULTS, statuses: [], applicationId: '', assessmentTypeIds: [],
     }));
     setPagination((prev) => ({ ...prev, page: 0 }));
   };
@@ -162,9 +166,9 @@ export default function Assessments() {
         pastDue: filters.pastDue,
         showCompleted: filters.showCompleted,
         assignedToMe: filters.assignedToMe,
-        status: filters.status || undefined,
+        statuses: filters.statuses,
         applicationId: filters.applicationId || undefined,
-        assessmentTypeId: filters.assessmentTypeId || undefined,
+        assessmentTypeIds: filters.assessmentTypeIds,
         sort: sortParam(sort),
       });
 
@@ -217,10 +221,12 @@ export default function Assessments() {
   const handleExportCsv = async () => {
     setExporting(true);
     try {
+      // The export endpoint takes one type and one status; pass them through only when the
+      // multi-select has exactly one, otherwise export unfiltered on that dimension.
       const blob = await assessmentsApi.exportToCsv({
         applicationId: filters.applicationId || undefined,
-        assessmentTypeId: filters.assessmentTypeId || undefined,
-        status: filters.status || undefined,
+        assessmentTypeId: filters.assessmentTypeIds.length === 1 ? filters.assessmentTypeIds[0] : undefined,
+        status: filters.statuses.length === 1 ? filters.statuses[0] : undefined,
         name: filters.search || undefined,
       });
 
@@ -378,6 +384,7 @@ export default function Assessments() {
         pagination={pagination}
         onPageChange={(page) => setPagination({ ...pagination, page })}
         onPageSizeChange={(pageSize) => setPagination({ ...pagination, pageSize, page: 0 })}
+        initialSearch={filters.search}
         onSearchChange={(search) => {
           setFilters((prev) => ({ ...prev, search }));
           setPagination((prev) => ({ ...prev, page: 0 }));
@@ -400,16 +407,16 @@ export default function Assessments() {
               options={appOptions}
               placeholder="All Applications"
             />
-            <SearchableSelect
-              value={filters.assessmentTypeId}
-              onChange={(v) => applyInline({ assessmentTypeId: v })}
+            <MultiSelect
+              selected={filters.assessmentTypeIds}
+              onChange={(vals) => applyInline({ assessmentTypeIds: vals })}
               options={typeOptions}
               placeholder="All Types"
               searchable={false}
             />
-            <SearchableSelect
-              value={filters.status}
-              onChange={(v) => applyInline({ status: v })}
+            <MultiSelect
+              selected={filters.statuses}
+              onChange={(vals) => applyInline({ statuses: vals })}
               options={statusOptions}
               placeholder="All Statuses"
               searchable={false}

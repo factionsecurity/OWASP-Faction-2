@@ -24,9 +24,6 @@ public interface RetestRepository extends JpaRepository<Retest, String> {
     List<Retest> findByDeletedAtIsNull();
     List<Retest> findByScheduledStartDateBetweenAndDeletedAtIsNull(LocalDateTime from, LocalDateTime to);
 
-    /** Count of non-deleted retests in any of the given statuses — the retest half of the remediation queue badge. */
-    long countByStatusInAndDeletedAtIsNull(Collection<String> statuses);
-
     /** Non-deleted retests for the given vulns in any of the given statuses — used to overlay each
      *  remediation-queue vuln row with its most recent PASSED/FAILED retest result. */
     List<Retest> findByVulnerabilityIdInAndStatusInAndDeletedAtIsNull(

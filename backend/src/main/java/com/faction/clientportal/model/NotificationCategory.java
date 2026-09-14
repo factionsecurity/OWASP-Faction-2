@@ -27,6 +27,10 @@ public enum NotificationCategory {
     THREAD_COMMENT("Comments on items you follow",
             "When someone comments on a finding you are assigned to.",
             "COMMENT_ADDED"),
+    RESPONSIBLE_FINDING("Findings you're responsible for",
+            "When the status or remediation owner changes on a finding you own, or on one in an "
+                    + "organization where you are a remediation owner.",
+            "FINDING_STATUS_CHANGED", "FINDING_OWNER_CHANGED"),
 
     /** Anything not mapped above, so a new type is never silently unswitchable. */
     OTHER("Other notifications",

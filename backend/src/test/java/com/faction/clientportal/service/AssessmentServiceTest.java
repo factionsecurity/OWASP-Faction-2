@@ -1819,13 +1819,14 @@ class AssessmentServiceTest {
 
     @Test
     void searchAssessmentsAdvanced_orgScopedUser_isForcedToOwnOrg() {
-        // An org-scoped caller who passes a different organizationId must still be scoped to
-        // their own org — they can't query another org's assessments.
+        // An org-scoped caller who passes a different organizationId is still confined to their
+        // memberships: the scope is applied as its own predicate, so the requested org only ever
+        // narrows within it (org-B AND {org-A} matches nothing rather than widening to org-B).
         var auth = new UsernamePasswordAuthenticationToken("org-user", null,
                 List.of(new SimpleGrantedAuthority(Permission.ASSESSMENTS_READ_ORG.getPermission())));
         when(accessScopeService.resolveAssessmentScope(auth)).thenReturn(
                 new AccessScopeService.AssessmentScope(
-                        AccessScopeService.AssessmentScopeKind.ORG, "org-A", null, null, null));
+                        AccessScopeService.AssessmentScopeKind.ORG, java.util.Set.of("org-A"), java.util.Set.of(), null, null));
         when(assessmentRepository.searchAdvanced(any(), any())).thenReturn(Page.empty());
 
         assessmentService.searchAssessmentsAdvanced(
@@ -1834,7 +1835,8 @@ class AssessmentServiceTest {
 
         var captor = ArgumentCaptor.forClass(AssessmentSearchCriteria.class);
         verify(assessmentRepository).searchAdvanced(captor.capture(), any());
-        assertThat(captor.getValue().organizationId()).isEqualTo("org-A"); // forced to own org, not "org-B"
+        assertThat(captor.getValue().scopeOrgIds()).containsExactly("org-A"); // membership scope always applied
+        assertThat(captor.getValue().organizationId()).isEqualTo("org-B");   // the request narrows within it
     }
 
     // ── Editing the completed date of an already-completed assessment ─────────────────────

@@ -94,6 +94,22 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
         if (c.organizationId() != null) {
             clauses.add(Clause.of("AND a.organization_id = :orgId", q -> q.setParameter("orgId", c.organizationId())));
         }
+        if (c.scopeOrgIds() != null || c.scopeAppIds() != null) {
+            var orgs = c.scopeOrgIds() == null ? List.<String>of() : c.scopeOrgIds();
+            var apps = c.scopeAppIds() == null ? List.<String>of() : c.scopeAppIds();
+            if (orgs.isEmpty() && apps.isEmpty()) {
+                clauses.add(Clause.of("AND 1 = 0")); // membership scope granting nothing → match nothing
+            } else if (apps.isEmpty()) {
+                clauses.add(Clause.of("AND a.organization_id IN (:scopeOrgIds)",
+                        q -> q.setParameter("scopeOrgIds", orgs)));
+            } else if (orgs.isEmpty()) {
+                clauses.add(Clause.of("AND a.application_id IN (:scopeAppIds)",
+                        q -> q.setParameter("scopeAppIds", apps)));
+            } else {
+                clauses.add(Clause.of("AND (a.organization_id IN (:scopeOrgIds) OR a.application_id IN (:scopeAppIds))",
+                        q -> { q.setParameter("scopeOrgIds", orgs); q.setParameter("scopeAppIds", apps); }));
+            }
+        }
         if (c.ownedAppIds() != null) {
             if (c.ownedAppIds().isEmpty()) {
                 clauses.add(Clause.of("AND 1 = 0")); // owned scope with no apps → match nothing
@@ -104,6 +120,10 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
         }
         if (c.assessmentTypeId() != null) {
             clauses.add(Clause.of("AND a.assessment_type_id = :typeId", q -> q.setParameter("typeId", c.assessmentTypeId())));
+        }
+        if (c.assessmentTypeIds() != null && !c.assessmentTypeIds().isEmpty()) {
+            clauses.add(Clause.of("AND a.assessment_type_id IN (:typeIds)",
+                    q -> q.setParameter("typeIds", c.assessmentTypeIds())));
         }
         if (c.assessorId() != null) {
             clauses.add(Clause.of("""
@@ -145,6 +165,14 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
             clauses.add(Clause.of("AND a.planned_end_date <= :endTo",
                     q -> q.setParameter("endTo", c.endDateTo())));
         }
+        if (c.completedDateFrom() != null) {
+            clauses.add(Clause.of("AND a.completed_date >= :completedFrom",
+                    q -> q.setParameter("completedFrom", c.completedDateFrom())));
+        }
+        if (c.completedDateTo() != null) {
+            clauses.add(Clause.of("AND a.completed_date <= :completedTo",
+                    q -> q.setParameter("completedTo", c.completedDateTo())));
+        }
         if (c.pastDue()) {
             clauses.add(Clause.of("""
                     AND a.planned_end_date IS NOT NULL AND a.planned_end_date < :now
@@ -152,15 +180,10 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
                     q -> { q.setParameter("now", c.now()); q.setParameter("completed", c.completedStatuses()); }));
         }
         if (c.excludeCompleted()) {
-            // A completed assessment stays in the queue for its reopen window, so the people who
-            // can still reopen it can find it without switching the list to "show completed".
-            clauses.add(Clause.of("""
-                    AND (a.status IS NULL OR a.status NOT IN (:completed)
-                         OR (a.completed_date IS NOT NULL AND a.completed_date > :reopenableSince))""",
-                    q -> {
-                        q.setParameter("completed", c.completedStatuses());
-                        q.setParameter("reopenableSince", c.reopenableSince());
-                    }));
+            // Completed assessments leave the list entirely; "show completed" is how to see them,
+            // reopen window or not.
+            clauses.add(Clause.of("AND (a.status IS NULL OR a.status NOT IN (:completed))",
+                    q -> q.setParameter("completed", c.completedStatuses())));
         }
         if (c.assignedToMe() && c.currentUserId() != null) {
             clauses.add(Clause.of("""

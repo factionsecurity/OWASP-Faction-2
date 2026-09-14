@@ -236,3 +236,23 @@
   border-color: rgba(245, 158, 11, 0.5);
   background-color: rgba(245, 158, 11, 0.12);
 }
+
+/* Organization / sub-organization membership picker for external users. */
+.membership-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.membership-org {
+  padding: 0.25rem 0;
+}
+
+.membership-sub {
+  padding-left: 1.75rem;
+  font-size: 0.9em;
+}
+
+/* Covered by its checked parent organization: shown ticked but not separately editable. */
+.membership-sub.is-covered {
+  opacity: 0.55;
+}

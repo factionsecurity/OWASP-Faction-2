@@ -29,20 +29,28 @@ const RATING_FIELDS: { key: RatingKey; label: string; clearable: boolean }[] = [
 /**
  * What a passing retest closes. The options come from the configured remediation stages: only the
  * terminal (last) stage closes the finding; earlier stages record that the fix is confirmed there
- * while it stays open, and "retest only" simply ends the retest and leaves the vulnerability in
- * the remediation queue.
+ * while it stays open.
+ *
+ * "Close retest only" is deliberately not offered here, though the API still accepts it (and treats
+ * an omitted closure the same way) — so with no stages configured the picker is hidden and a pass
+ * simply ends the retest.
  */
+/**
+ * The environment a stage refers to, for the confirmation copy: "Closed In Prod" → "Prod". A stage
+ * not named "Closed in …" is used as-is.
+ */
+function environmentName(stageName: string): string {
+  const match = /^\s*closed\s+in\s+(.+)$/i.exec(stageName);
+  return match ? match[1].trim() : stageName;
+}
+
 function closureOptions(stages: RemediationStage[]): { value: RetestClosure; label: string; hint: string }[] {
   // Stage labels are the configured names verbatim — nothing prepended, since names are often
   // already phrases like "Closed in Dev".
-  return [
-    { value: 'RETEST_ONLY', label: 'Close retest only',
-      hint: 'The finding stays open and remains in the remediation queue.' },
-    ...stages.map((s, i) => i === stages.length - 1
-      ? { value: s.id, label: s.name, hint: 'Closes the vulnerability.' }
-      : { value: s.id, label: s.name,
-          hint: "Records this stage's remediation date. The finding stays open." }),
-  ];
+  return stages.map((s, i) => i === stages.length - 1
+    ? { value: s.id, label: s.name, hint: 'Closes the vulnerability.' }
+    : { value: s.id, label: s.name,
+        hint: "Records this stage's remediation date. The finding stays open." });
 }
 
 import '../components/VulnerabilityDetailDrawer.css';
@@ -77,7 +85,7 @@ export default function RetestDetailPage() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: 'Retests', to: '/retests' },
+      { label: 'Your Retests', to: '/retests' },
       { label: vuln?.name || retest?.vulnerabilityName || 'Retest' },
     ]);
     return () => setBreadcrumbs(null);
@@ -89,7 +97,10 @@ export default function RetestDetailPage() {
   // The retest can re-rate the finding; the vulnerability's severity is the source of truth and is
   // only written on save. `originalSeverity` is what it was when the page loaded, so the note
   // always contrasts against the recorded severity rather than the previous unsaved pick.
-  const [closure, setClosure] = useState<RetestClosure>('RETEST_ONLY');
+  // No default: the last stage closes the finding, so a pass must name a stage on purpose.
+  const [closure, setClosure] = useState<RetestClosure>('');
+  // A pass that closes at a stage is confirmed first — see the closure ConfirmDialog below.
+  const [confirmClosureOpen, setConfirmClosureOpen] = useState(false);
   const [remediationStages, setRemediationStages] = useState<RemediationStage[]>([]);
   useEffect(() => {
     workflowConfigApi.getConfig()
@@ -230,7 +241,7 @@ export default function RetestDetailPage() {
         result: selectedResult,
         comment: commentDraft,
         // Only meaningful on a pass; the server ignores it on a fail.
-        ...(selectedResult === 'PASS' ? { closure } : {}),
+        ...(selectedResult === 'PASS' && closure ? { closure } : {}),
       });
       if (res.success && res.data) {
         navigate('/retests');
@@ -573,7 +584,7 @@ export default function RetestDetailPage() {
                   </button>
                 </div>
 
-                {selectedResult === 'PASS' && (
+                {selectedResult === 'PASS' && remediationStages.length > 0 && (
                   <div className="retest-closure">
                     <div className="retest-detail-field-label" style={{ marginBottom: '0.5rem' }}>
                       What does this close?
@@ -599,6 +610,33 @@ export default function RetestDetailPage() {
                   </div>
                 )}
 
+                {(() => {
+                  // The last stage closes the finding: it reports the fix as mitigated there and the
+                  // finding leaves tracking, so it gets the red warning. Earlier stages only record a
+                  // date and keep the finding open, so a yellow confirmation is enough.
+                  const index = remediationStages.findIndex((st) => st.id === closure);
+                  if (index < 0) return null;
+                  const env = environmentName(remediationStages[index].name);
+                  const closesFinding = index === remediationStages.length - 1;
+                  return (
+                    <ConfirmDialog
+                      isOpen={confirmClosureOpen}
+                      onClose={() => setConfirmClosureOpen(false)}
+                      onConfirm={async () => {
+                        await handleSaveAndClose();
+                        setConfirmClosureOpen(false);
+                      }}
+                      title={`Close in ${env}?`}
+                      message={closesFinding
+                        ? `This will report the vulnerability as mitigated in ${env} and will stop tracking it. Are you sure you want to close in ${env}?`
+                        : `Are you sure you want to close in ${env}?`}
+                      confirmText={`Close in ${env}`}
+                      variant={closesFinding ? 'danger' : 'warning'}
+                      isLoading={completing}
+                    />
+                  );
+                })()}
+
                 <div className="retest-detail-field-label" style={{ marginBottom: '0.5rem' }}>Comment</div>
                 <RichTextEditor
                   value={commentDraft}
@@ -618,8 +656,11 @@ export default function RetestDetailPage() {
                   <button
                     type="button"
                     className="retest-btn retest-btn--primary"
-                    onClick={handleSaveAndClose}
-                    disabled={completing || !selectedResult}
+                    onClick={() => (selectedResult === 'PASS' && closure
+                      ? setConfirmClosureOpen(true)
+                      : handleSaveAndClose())}
+                    disabled={completing || !selectedResult
+                      || (selectedResult === 'PASS' && remediationStages.length > 0 && !closure)}
                   >
                     {completing ? 'Completing…' : 'Save & Close'}
                   </button>

@@ -120,6 +120,38 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
         assertThat(search(base().search("app_0").build())).extracting(Assessment::getName).containsExactly("app_01");
     }
 
+    // ── Membership (ORG) scope: organizations OR sub-organization-granted applications ──
+
+    @Test
+    void orgScope_matchesOrganizationOrScopedApplication() {
+        String appX = application("APP-X", "X");
+        String appY = application("APP-Y", "Y");
+        save(a("In org").organizationId("org-1").applicationId(appY).status("IN_PROGRESS"));
+        save(a("Scoped app").organizationId("org-2").applicationId(appX).status("IN_PROGRESS"));
+        save(a("Neither").organizationId("org-2").applicationId(appY).status("IN_PROGRESS"));
+
+        var result = search(base().scopeOrgIds(Set.of("org-1")).scopeAppIds(Set.of(appX)).build());
+        assertThat(result).extracting(Assessment::getName).containsExactlyInAnyOrder("In org", "Scoped app");
+
+        assertThat(search(base().scopeOrgIds(Set.of("org-1")).scopeAppIds(Set.of()).build()))
+                .extracting(Assessment::getName).containsExactly("In org");
+        assertThat(search(base().scopeOrgIds(Set.of()).scopeAppIds(Set.of(appX)).build()))
+                .extracting(Assessment::getName).containsExactly("Scoped app");
+        // A membership scope that grants nothing matches nothing — never falls through to "all".
+        assertThat(search(base().scopeOrgIds(Set.of()).scopeAppIds(Set.of()).build())).isEmpty();
+    }
+
+    @Test
+    void assessmentTypeIds_matchesAny_emptyMeansNoFilter() {
+        save(a("Web").assessmentTypeId("type-web").status("IN_PROGRESS"));
+        save(a("Mobile").assessmentTypeId("type-mobile").status("IN_PROGRESS"));
+        save(a("Cloud").assessmentTypeId("type-cloud").status("IN_PROGRESS"));
+
+        assertThat(search(base().assessmentTypeIds(List.of("type-web", "type-cloud")).build()))
+                .extracting(Assessment::getName).containsExactlyInAnyOrder("Web", "Cloud");
+        assertThat(search(base().assessmentTypeIds(List.of()).build())).hasSize(3);
+    }
+
     // ── Equality filters ────────────────────────────────────────────────────────
 
     @Test
@@ -176,12 +208,27 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
         assertThat(result).extracting(Assessment::getName).containsExactly("InRange");
     }
 
+    @Test
+    void completedDateRange_excludesOutOfRangeAndUndated() {
+        var now = LocalDateTime.now();
+        save(a("InRange").status("COMPLETED").completedDate(now.minusDays(1)));
+        save(a("TooEarly").status("COMPLETED").completedDate(now.minusDays(30)));
+        save(a("NeverCompleted").status("IN_PROGRESS").completedDate(null));
+
+        var result = search(base().completedDateFrom(now.minusDays(5)).completedDateTo(now).build());
+
+        assertThat(result).extracting(Assessment::getName).containsExactly("InRange");
+    }
+
     // ── Completed / past due ────────────────────────────────────────────────────
 
     @Test
     void excludeCompleted_dropsCompletedStatuses_butKeepsNullStatus() {
         save(a("Active").status("IN_PROGRESS"));
         save(a("Done").status("COMPLETED"));
+        // Just completed: still inside the reopen window, and still hidden — "show completed" is
+        // the only way a completed assessment reaches the list.
+        save(a("JustDone").status("COMPLETED").completedDate(LocalDateTime.now().minusDays(1)));
         save(a("NoStatus").status(null));
 
         var result = search(base().excludeCompleted(true).build());
