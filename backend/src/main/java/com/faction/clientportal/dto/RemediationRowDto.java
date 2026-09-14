@@ -40,4 +40,5 @@ public class RemediationRowDto {
     private String vulnerabilityStatus; // the vulnerability's workflow status, on both row types
     private String retestStatus;        // retest rows only
     private String lastRetestStatus;    // vuln rows only: "PASSED" | "FAILED"
+    private LocalDateTime lastRetestDate; // vuln rows only: when that last retest completed
 }

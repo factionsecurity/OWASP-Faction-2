@@ -52,5 +52,11 @@ public record RemediationQueueCriteria(
         String assessmentId,
         Collection<String> statuses,
         String rowType,
+        /**
+         * Badge buckets to narrow to, matched as "any of": {@code PAST_DUE}, {@code DUE_SOON},
+         * {@code RETEST_REQUESTED}, {@code RETEST_SCHEDULED}, {@code RETEST_IN_PROGRESS}. Null or empty
+         * → no bucket filter.
+         */
+        Collection<String> buckets,
         boolean includeCompletedRetests
 ) {}

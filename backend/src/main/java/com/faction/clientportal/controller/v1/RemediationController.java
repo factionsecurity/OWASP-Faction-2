@@ -37,28 +37,57 @@ public class RemediationController {
 
     /**
      * Columns the queue table can order by, mapped onto the keys
-     * {@code VulnerabilityRepositoryImpl.orderByRemediation} understands. The "Last Retest" column
-     * is absent because it is resolved in Java after the page is fetched, not in the union query.
+     * {@code VulnerabilityRepositoryImpl.orderByRemediation} understands, including the "Last Retest"
+     * column, which the union query computes per row.
      */
-    private static final Map<String, SortField> SORTABLE_FIELDS = Map.of(
-            "name", SortField.text("name"),
-            "applicationName", SortField.text("applicationName"),
-            "organizationName", SortField.text("organizationName"),
-            "rowType", SortField.text("rowType"),
-            "severity", SortField.value("severity"),
-            "vulnerabilityStatus", SortField.text("vulnerabilityStatus"),
-            "startDate", SortField.value("startDate"),
-            "endDate", SortField.value("endDate"),
-            "dueDate", SortField.value("dueDate"));
+    private static final Map<String, SortField> SORTABLE_FIELDS = Map.ofEntries(
+            Map.entry("name", SortField.text("name")),
+            Map.entry("applicationName", SortField.text("applicationName")),
+            Map.entry("organizationName", SortField.text("organizationName")),
+            Map.entry("rowType", SortField.text("rowType")),
+            Map.entry("severity", SortField.value("severity")),
+            Map.entry("vulnerabilityStatus", SortField.text("vulnerabilityStatus")),
+            Map.entry("startDate", SortField.value("startDate")),
+            Map.entry("endDate", SortField.value("endDate")),
+            Map.entry("dueDate", SortField.value("dueDate")),
+            Map.entry("lastRetestStatus", SortField.text("lastRetestStatus")),
+            Map.entry("lastRetestDate", SortField.value("lastRetestDate")));
 
     @GetMapping("/queue-count")
     @RequiresPermission({Permission.VULNERABILITIES_READ_ALL, Permission.VULNERABILITIES_READ_TEAM})
     @Operation(summary = "Get the number of items in the remediation queue",
             description = "Counts open tracked vulnerabilities at or past their SLA warning threshold "
                     + "plus requested/scheduled/in-progress retests — the rows the remediation queue shows.")
-    public ResponseEntity<JsonApiResponse<Long>> getQueueCount() {
+    public ResponseEntity<JsonApiResponse<Long>> getQueueCount(Authentication authentication) {
+        // Scoped to the caller, so the nav badge always equals the Total on the page it opens.
         return ResponseUtil.success("Remediation queue count retrieved successfully",
-                remediationQueueService.queueCount());
+                remediationQueueService.queueCount(authentication));
+    }
+
+    @GetMapping("/queue-summary")
+    @RequiresPermission({
+            Permission.VULNERABILITIES_READ_ALL,
+            Permission.VULNERABILITIES_READ_TEAM,
+            Permission.VULNERABILITIES_READ_ORG,
+            Permission.VULNERABILITIES_READ_OWNED
+    })
+    @Operation(summary = "Break the remediation queue down into its badge buckets",
+            description = "Counts the caller's remediation queue per bucket — past due, due soon, and retests "
+                    + "requested / scheduled / in progress — under the same scope and filters as "
+                    + "`GET /remediation/queue` (`search`, `severity`, `organizationId`, `applicationId`, "
+                    + "`assessmentId`, `statuses`, `type`). The buckets add up to `total`.")
+    public ResponseEntity<JsonApiResponse<com.faction.clientportal.dto.RemediationQueueSummaryDto>> getQueueSummary(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String severity,
+            @RequestParam(required = false) String organizationId,
+            @RequestParam(required = false) String applicationId,
+            @RequestParam(required = false) String assessmentId,
+            @RequestParam(required = false) List<String> statuses,
+            @RequestParam(required = false) String type,
+            Authentication authentication) {
+        return ResponseUtil.success("Remediation queue summary retrieved successfully",
+                remediationQueueService.summary(search, severity, organizationId, applicationId,
+                        assessmentId, statuses, type, authentication));
     }
 
     @GetMapping(value = "/export.csv", produces = MediaType.TEXT_PLAIN_VALUE)
@@ -85,12 +114,13 @@ public class RemediationController {
             @RequestParam(required = false) String assessmentId,
             @RequestParam(required = false) List<String> statuses,
             @RequestParam(required = false) String type,
+            @RequestParam(required = false) List<String> buckets,
             @RequestParam(defaultValue = "false") boolean includeCompletedRetests,
             Authentication authentication) {
         // Reuse the queue's sort whitelist so an unknown key can't reach the query.
         Sort resolved = PageableUtil.of(0, 1, sort, Sort.unsorted(), SORTABLE_FIELDS).getSort();
         String csv = remediationQueueService.exportCsv(search, severity, organizationId, applicationId,
-                assessmentId, statuses, type, includeCompletedRetests, resolved, authentication);
+                assessmentId, statuses, type, buckets, includeCompletedRetests, resolved, authentication);
         return ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=remediation-queue.csv")
                 .body(csv);
@@ -132,13 +162,14 @@ public class RemediationController {
             @RequestParam(required = false) String assessmentId,
             @RequestParam(required = false) List<String> statuses,
             @RequestParam(required = false) String type,
+            @RequestParam(required = false) List<String> buckets,
             @RequestParam(defaultValue = "false") boolean includeCompletedRetests,
             Authentication authentication) {
         // Absent sort keeps the queue's canonical order (tier, then due date), which the query owns.
         Pageable pageable = PageableUtil.of(page, size, sort, Sort.unsorted(), SORTABLE_FIELDS);
         Page<RemediationRowDto> result = remediationQueueService.list(
                 search, severity, organizationId, applicationId, assessmentId, statuses, type,
-                includeCompletedRetests, pageable, authentication);
+                buckets, includeCompletedRetests, pageable, authentication);
         return ResponseUtil.paginated("Remediation queue retrieved successfully", result);
     }
 }

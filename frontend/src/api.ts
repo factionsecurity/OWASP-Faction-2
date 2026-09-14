@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-import type { MentionableUser, AssessorAvailability, RetestCompletionLog, RetestActivitySummary, LoginRequest, LoginResponse, User, Role, ResourcePermissions, ApiResponse, PagedApiResponse, CreateUserRequest, UpdateUserRequest, Team, CreateTeamRequest, UpdateTeamRequest, CreateRoleRequest, UpdateRoleRequest, ApiKey, CreateApiKeyRequest, CreateApiKeyResponse, AssessmentType, CreateAssessmentTypeRequest, UpdateAssessmentTypeRequest, Organization, CreateOrganizationRequest, UpdateOrganizationRequest, Application, ApplicationStatus, ApplicationComment, ApplicationImportResult, CreateApplicationRequest, UpdateApplicationRequest, ApplicationConnection, CreateApplicationConnectionRequest, UpdateApplicationConnectionRequest, ReportTemplate, ReportTemplateSummary, CreateReportTemplateRequest, UpdateReportTemplateRequest, Assessment, CreateAssessmentRequest, UpdateAssessmentRequest, AssessmentMetrics, VulnerabilityCategory, CreateVulnerabilityCategoryRequest, UpdateVulnerabilityCategoryRequest, DefaultVulnerability, CreateDefaultVulnerabilityRequest, UpdateDefaultVulnerabilityRequest, DefaultVulnerabilityImportResult, UserDefinedField, Vulnerability, VulnerabilityListItem, VulnerabilityComment, CreateVulnerabilityRequest, UpdateVulnerabilityRequest, UpdateVulnerabilityExceptionRequest, AssessmentFile, EntityFieldConfig, FieldScope, PeerReview, UpdatePeerReviewRequest, AcceptPeerReviewRequest, AssessmentWorkflowConfig, ChecklistTemplate, CreateChecklistTemplateRequest, UpdateChecklistTemplateRequest, AssessmentChecklist, AddAssessmentChecklistRequest, UpdateAssessmentChecklistRequest, AssignedUser, AssignUserRequest, UserApplicationAssignment, SsoConfig, SsoStatus, AzureDirectoryUser, NotebookNode, NotebookSearchResult, CreateNotebookNodeRequest, UpdateNotebookNodeRequest, MoveNotebookNodeRequest, NotebookAttachment, Retest, CreateRetestRequest, UpdateRetestRequest, CompleteRetestRequest, EmailConfig, UpdateEmailConfigRequest, TestEmailRequest, TestEmailResponse, InboundEmailConfig, UpdateInboundEmailConfigRequest, Branding, BrandingAssetSlot, UpdateBrandingSizesRequest, EmailNotificationConfig, UpdateEmailNotificationConfigRequest, NotificationPreference, UpdateNotificationPreferencesRequest, AiProviderConfig, SaveAiProviderConfigRequest, TestAiProviderRequest, TestAiProviderResponse, AiPromptTemplate, SaveAiPromptTemplateRequest, AiPromptSummary, AiPromptScope, ExecuteAiPromptRequest, AskAiRequest, AiGenerationResponse, SuggestAiTitleRequest, WebSearchConfig, UpdateWebSearchConfigRequest, AiAnonymizationConfig, UpdateAiAnonymizationConfigRequest, AiLogConfig, UpdateAiLogConfigRequest, AiRequestLog, AiTokenUsageDay, Notification, NotificationTargetType, SurveyTemplate, CreateSurveyTemplateRequest, UpdateSurveyTemplateRequest, AssessmentSurvey, AddAssessmentSurveyRequest, UpdateAssessmentSurveyRequest, ApplicationIdConfig, ReportDocuments, Campaign, CreateCampaignRequest, UpdateCampaignRequest, ManagerDashboardSummary, ManagerDashboardStats, ManagerDashboardAssessment, ManagerDashboardVulnerability, ManagerDashboardVulnerabilityDetail, ManagerDashboardFilters, VulnerabilityTrendSummary, RemediationQueueRow, AssignableUser, SubOrganization, SubOrganizationRequest, VulnerabilityStageCompletion, Extension, ExtensionLog, UpdateExtensionRequest, ExternalApplication, EditionStatus, UpgradeRequired, ContentTemplate, ContentTemplateScope, SaveContentTemplateRequest,
+import type { MentionableUser, AssessorAvailability, RetestCompletionLog, RetestActivitySummary, LoginRequest, LoginResponse, User, Role, ResourcePermissions, ApiResponse, PagedApiResponse, CreateUserRequest, UpdateUserRequest, Team, CreateTeamRequest, UpdateTeamRequest, CreateRoleRequest, UpdateRoleRequest, ApiKey, CreateApiKeyRequest, CreateApiKeyResponse, AssessmentType, CreateAssessmentTypeRequest, UpdateAssessmentTypeRequest, Organization, CreateOrganizationRequest, UpdateOrganizationRequest, Application, ApplicationStatus, ApplicationComment, ApplicationImportResult, CreateApplicationRequest, UpdateApplicationRequest, ApplicationConnection, CreateApplicationConnectionRequest, UpdateApplicationConnectionRequest, ReportTemplate, ReportTemplateSummary, CreateReportTemplateRequest, UpdateReportTemplateRequest, Assessment, CreateAssessmentRequest, UpdateAssessmentRequest, AssessmentMetrics, VulnerabilityCategory, CreateVulnerabilityCategoryRequest, UpdateVulnerabilityCategoryRequest, DefaultVulnerability, CreateDefaultVulnerabilityRequest, UpdateDefaultVulnerabilityRequest, DefaultVulnerabilityImportResult, UserDefinedField, Vulnerability, VulnerabilityListItem, VulnerabilityComment, CreateVulnerabilityRequest, UpdateVulnerabilityRequest, UpdateVulnerabilityExceptionRequest, AssessmentFile, EntityFieldConfig, FieldScope, PeerReview, UpdatePeerReviewRequest, AcceptPeerReviewRequest, AssessmentWorkflowConfig, ChecklistTemplate, CreateChecklistTemplateRequest, UpdateChecklistTemplateRequest, AssessmentChecklist, AddAssessmentChecklistRequest, UpdateAssessmentChecklistRequest, AssignedUser, AssignUserRequest, UserApplicationAssignment, SsoConfig, SsoStatus, AzureDirectoryUser, NotebookNode, NotebookSearchResult, CreateNotebookNodeRequest, UpdateNotebookNodeRequest, MoveNotebookNodeRequest, NotebookAttachment, Retest, CreateRetestRequest, UpdateRetestRequest, CompleteRetestRequest, EmailConfig, UpdateEmailConfigRequest, TestEmailRequest, TestEmailResponse, InboundEmailConfig, UpdateInboundEmailConfigRequest, Branding, BrandingAssetSlot, UpdateBrandingSizesRequest, EmailNotificationConfig, UpdateEmailNotificationConfigRequest, NotificationPreference, UpdateNotificationPreferencesRequest, AiProviderConfig, SaveAiProviderConfigRequest, TestAiProviderRequest, TestAiProviderResponse, AiPromptTemplate, SaveAiPromptTemplateRequest, AiPromptSummary, AiPromptScope, ExecuteAiPromptRequest, AskAiRequest, AiGenerationResponse, SuggestAiTitleRequest, WebSearchConfig, UpdateWebSearchConfigRequest, AiAnonymizationConfig, UpdateAiAnonymizationConfigRequest, AiLogConfig, UpdateAiLogConfigRequest, AiRequestLog, AiTokenUsageDay, Notification, NotificationTargetType, SurveyTemplate, CreateSurveyTemplateRequest, UpdateSurveyTemplateRequest, AssessmentSurvey, AddAssessmentSurveyRequest, UpdateAssessmentSurveyRequest, ApplicationIdConfig, ReportDocuments, Campaign, CreateCampaignRequest, UpdateCampaignRequest, ManagerDashboardSummary, ManagerDashboardStats, ManagerDashboardAssessment, ManagerDashboardVulnerability, ManagerDashboardVulnerabilityDetail, ManagerDashboardFilters, VulnerabilityTrendSummary, RemediationQueueRow, RemediationQueueSummary, AssignableUser, SubOrganization, SubOrganizationRequest, VulnerabilityStageCompletion, Extension, ExtensionLog, UpdateExtensionRequest, ExternalApplication, EditionStatus, UpgradeRequired, ContentTemplate, ContentTemplateScope, SaveContentTemplateRequest,
   PasswordPolicy,
   TerminologyConfig,
 } from './types';
@@ -1782,6 +1782,8 @@ export const remediationApi = {
     statuses?: string[]; type?: string;
     /** Also show retests that have already been verified (PASSED/FAILED). */
     includeCompletedRetests?: boolean;
+    /** Stat-badge buckets (PAST_DUE, DUE_SOON, RETEST_REQUESTED, RETEST_SCHEDULED, RETEST_IN_PROGRESS). */
+    buckets?: string[];
   }): Promise<PagedApiResponse<RemediationQueueRow[]>> => {
     const q: Record<string, string | number> = { page: params.page ?? 0, size: params.size ?? 20 };
     if (params.sort) q.sort = params.sort;
@@ -1793,6 +1795,7 @@ export const remediationApi = {
     if (params.statuses?.length) q.statuses = params.statuses.join(',');
     if (params.type) q.type = params.type;
     if (params.includeCompletedRetests) q.includeCompletedRetests = 'true';
+    if (params.buckets?.length) q.buckets = params.buckets.join(',');
     return api.get('/remediation/queue', { params: q }).then(r => r.data as PagedApiResponse<RemediationQueueRow[]>);
   },
 
@@ -1801,7 +1804,7 @@ export const remediationApi = {
   exportQueueCsv: (params: {
     sort?: string; search?: string;
     severity?: string; organizationId?: string; applicationId?: string; assessmentId?: string;
-    statuses?: string[]; type?: string; includeCompletedRetests?: boolean;
+    statuses?: string[]; type?: string; includeCompletedRetests?: boolean; buckets?: string[];
   }): Promise<Blob> => {
     const q: Record<string, string> = {};
     if (params.sort) q.sort = params.sort;
@@ -1813,8 +1816,28 @@ export const remediationApi = {
     if (params.statuses?.length) q.statuses = params.statuses.join(',');
     if (params.type) q.type = params.type;
     if (params.includeCompletedRetests) q.includeCompletedRetests = 'true';
+    if (params.buckets?.length) q.buckets = params.buckets.join(',');
     return api.get('/remediation/export.csv', { params: q, responseType: 'blob' })
               .then(r => r.data as Blob);
+  },
+
+  /** Stat-badge counts for the queue under the same filters as getQueue. The server ignores
+   *  buckets and includeCompletedRetests, so they aren't accepted here. */
+  summary: (params: {
+    search?: string;
+    severity?: string; organizationId?: string; applicationId?: string; assessmentId?: string;
+    statuses?: string[]; type?: string;
+  }): Promise<ApiResponse<RemediationQueueSummary>> => {
+    const q: Record<string, string> = {};
+    if (params.search) q.search = params.search;
+    if (params.severity) q.severity = params.severity;
+    if (params.organizationId) q.organizationId = params.organizationId;
+    if (params.applicationId) q.applicationId = params.applicationId;
+    if (params.assessmentId) q.assessmentId = params.assessmentId;
+    if (params.statuses?.length) q.statuses = params.statuses.join(',');
+    if (params.type) q.type = params.type;
+    return api.get('/remediation/queue-summary', { params: q })
+              .then(r => r.data as ApiResponse<RemediationQueueSummary>);
   },
 };
 
