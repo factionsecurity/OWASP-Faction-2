@@ -208,6 +208,18 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
         assertThat(result).extracting(Assessment::getName).containsExactly("InRange");
     }
 
+    @Test
+    void completedDateRange_excludesOutOfRangeAndUndated() {
+        var now = LocalDateTime.now();
+        save(a("InRange").status("COMPLETED").completedDate(now.minusDays(1)));
+        save(a("TooEarly").status("COMPLETED").completedDate(now.minusDays(30)));
+        save(a("NeverCompleted").status("IN_PROGRESS").completedDate(null));
+
+        var result = search(base().completedDateFrom(now.minusDays(5)).completedDateTo(now).build());
+
+        assertThat(result).extracting(Assessment::getName).containsExactly("InRange");
+    }
+
     // ── Completed / past due ────────────────────────────────────────────────────
 
     @Test

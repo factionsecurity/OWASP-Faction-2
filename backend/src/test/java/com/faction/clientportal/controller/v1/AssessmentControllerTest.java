@@ -622,6 +622,25 @@ class AssessmentControllerTest extends TestContainersConfig {
     // ── Status and open-survey filters ─────────────────────────────────────────
 
     @Test
+    void testSearchAssessments_FilteredByCompletedDateRange() throws Exception {
+        Assessment recent = createTestAssessment("Recent", "COMPLETED");
+        recent.setCompletedDate(LocalDateTime.now().minusDays(2));
+        assessmentRepository.save(recent);
+        Assessment old = createTestAssessment("Old", "COMPLETED");
+        old.setCompletedDate(LocalDateTime.now().minusDays(60));
+        assessmentRepository.save(old);
+
+        mockMvc.perform(get("/api/v1/assessments")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .param("showCompleted", "true")
+                        .param("completedDateFrom", LocalDateTime.now().minusDays(7).toString())
+                        .param("completedDateTo", LocalDateTime.now().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].name").value("Recent"));
+    }
+
+    @Test
     void testSearchAssessments_FilteredBySeveralTypes() throws Exception {
         AssessmentType mobile = assessmentTypeRepository.save(AssessmentType.builder()
                 .name("Mobile").createdAt(LocalDateTime.now()).build());

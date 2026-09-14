@@ -974,6 +974,8 @@ export const assessmentsApi = {
     startDateTo?: string;
     endDateFrom?: string;
     endDateTo?: string;
+    completedDateFrom?: string;
+    completedDateTo?: string;
     pastDue?: boolean;
     showCompleted?: boolean;
     assignedToMe?: boolean;
@@ -1001,6 +1003,8 @@ export const assessmentsApi = {
     if (filters.startDateTo) params.startDateTo = filters.startDateTo;
     if (filters.endDateFrom) params.endDateFrom = filters.endDateFrom;
     if (filters.endDateTo) params.endDateTo = filters.endDateTo;
+    if (filters.completedDateFrom) params.completedDateFrom = filters.completedDateFrom;
+    if (filters.completedDateTo) params.completedDateTo = filters.completedDateTo;
     if (filters.pastDue !== undefined) params.pastDue = filters.pastDue;
     if (filters.showCompleted !== undefined) params.showCompleted = filters.showCompleted;
     if (filters.assignedToMe !== undefined) params.assignedToMe = filters.assignedToMe;
