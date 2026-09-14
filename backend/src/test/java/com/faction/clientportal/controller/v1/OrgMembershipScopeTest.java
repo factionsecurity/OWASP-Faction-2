@@ -108,7 +108,7 @@ class OrgMembershipScopeTest extends TestContainersConfig {
     private void assessment(Application a) {
         assessmentRepository.save(Assessment.builder()
                 .name(a.getName() + " test").applicationId(a.getId()).organizationId(a.getOrganizationId())
-                .assessmentTypeId(typeId).status("IN_PROGRESS")
+                .assessmentTypeId(typeId).status("Testing")
                 .fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>())
                 .createdAt(LocalDateTime.now()).build());
     }

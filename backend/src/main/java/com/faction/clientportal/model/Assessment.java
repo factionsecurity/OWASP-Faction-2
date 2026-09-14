@@ -140,7 +140,7 @@ public class Assessment {
      * Current status of the assessment (free-form string; see AssessmentWorkflowConfig)
      */
     @Builder.Default
-    private String status = "DRAFT";
+    private String status = AssessmentWorkflowConfig.DEFAULT_NEW_STATUS;
 
     /**
      * User ID of the assessor conducting this assessment (legacy - use assessorIds)
@@ -249,7 +249,7 @@ public class Assessment {
     private LocalDateTime deletedAt;
 
     /**
-     * Peer review sub-status (independent of the main AssessmentStatus).
+     * Peer review sub-status (independent of the assessment's workflow status).
      */
     @Builder.Default
     private AssessmentPeerReviewStatus peerReviewStatus = AssessmentPeerReviewStatus.IN_PROGRESS;

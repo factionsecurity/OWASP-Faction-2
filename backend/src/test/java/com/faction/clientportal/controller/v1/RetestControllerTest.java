@@ -93,7 +93,7 @@ class RetestControllerTest extends TestContainersConfig {
                 .applicationId("app-retest-1")
                 .assessmentTypeId("type-1")
                 .organizationId("org-1")
-                .status("COMPLETED")
+                .status("Completed")
                 .createdAt(LocalDateTime.now())
                 .build());
 
@@ -710,7 +710,7 @@ class RetestControllerTest extends TestContainersConfig {
     void savingARetestAppliesRevisedRatingsEvenThoughTheAssessmentIsFinalized() throws Exception {
         // The whole point: retests run on completed assessments, and the vulnerability API refuses
         // to modify one. Going through the retest is what makes re-rating possible at all.
-        testAssessment.setStatus("COMPLETED");
+        testAssessment.setStatus("Completed");
         testAssessment.setCompletedDate(LocalDateTime.now());
         assessmentRepository.save(testAssessment);
 

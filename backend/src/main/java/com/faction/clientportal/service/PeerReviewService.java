@@ -493,6 +493,9 @@ public class PeerReviewService {
         }
         assessment.setPeerReviewStatus(AssessmentPeerReviewStatus.COMPLETE);
         assessment.setActivePeerReviewId(null);
+        // Accepting a completed review is when the assessment has been peer reviewed; the Finalize
+        // tab's "Peer reviewed" step reads this.
+        assessment.setPeerReviewedAt(java.time.LocalDateTime.now());
         assessmentRepository.save(assessment);
 
         // Apply accepted vulnerability changes

@@ -63,17 +63,9 @@ public class AssessmentWorkflowConfigService {
         return normalized.isEmpty() ? AssessmentWorkflowConfig.defaultRemediationStages() : normalized;
     }
 
-    /**
-     * Returns true if the given status string represents a "completed" state.
-     * Checks both the configured completedStatus and legacy enum string values for
-     * backwards compatibility with data created before this feature was added.
-     */
+    /** Whether the given status is the workflow's configured completed status. */
     public boolean isCompletedStatus(String status) {
         if (status == null) return false;
-        String configured = getConfig().getCompletedStatus();
-        return (configured != null && configured.equals(status))
-                || "COMPLETED".equals(status)
-                || "APPROVED".equals(status)
-                || "ARCHIVED".equals(status);
+        return status.equals(getConfig().getCompletedStatus());
     }
 }

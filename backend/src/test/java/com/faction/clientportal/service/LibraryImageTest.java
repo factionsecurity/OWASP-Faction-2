@@ -191,7 +191,7 @@ class LibraryImageTest extends TestContainersConfig {
     private Assessment assessment(String name) {
         return Assessment.builder()
                 .name(name).applicationId("app-1").organizationId("org-1")
-                .assessmentTypeId("t").status("IN_PROGRESS")
+                .assessmentTypeId("t").status("Testing")
                 .createdAt(LocalDateTime.now()).build();
     }
 }

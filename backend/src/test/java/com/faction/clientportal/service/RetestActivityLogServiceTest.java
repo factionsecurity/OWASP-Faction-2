@@ -75,7 +75,7 @@ class RetestActivityLogServiceTest extends TestContainersConfig {
 
         Assessment assessment = assessmentRepository.save(Assessment.builder()
                 .name("Q3 Pentest").applicationId(app.getId()).organizationId(org.getId())
-                .status("COMPLETED").createdAt(LocalDateTime.now()).build());
+                .status("Completed").createdAt(LocalDateTime.now()).build());
         assessmentId = assessment.getId();
 
         vulnId = vulnerabilityRepository.save(Vulnerability.builder()

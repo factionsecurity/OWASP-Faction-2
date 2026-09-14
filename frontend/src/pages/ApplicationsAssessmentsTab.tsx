@@ -10,16 +10,6 @@ import ReportPreviewDrawer from '../components/ReportPreviewDrawer';
 import SurveyDrawer from '../components/SurveyDrawer';
 import '../components/SearchableSelect.css';
 
-const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  DRAFT: 'secondary',
-  IN_PROGRESS: 'info',
-  ON_HOLD: 'warning',
-  PENDING_REVIEW: 'info',
-  COMPLETED: 'success',
-  APPROVED: 'success',
-  ARCHIVED: 'secondary',
-};
-
 const PAGE_SIZE = 10;
 // App-filter dropdown only shows a starter list; server-side search reaches the rest, so a
 // small limit keeps the default load fast and the list short.
@@ -175,7 +165,7 @@ export default function ApplicationsAssessmentsTab() {
         const custom = statusColors[a.status];
         return (
           <Badge
-            variant={custom ? undefined : (STATUS_COLORS[a.status] || 'secondary')}
+            variant={custom ? undefined : 'secondary'}
             customColor={custom}
           >
             {a.status}
@@ -198,8 +188,7 @@ export default function ApplicationsAssessmentsTab() {
       render: (a) => {
         // Counts only apply once the assessment is finalized (its vulns are opened); read the
         // server-computed per-assessment summary on the DTO instead of a client-side fan-out.
-        const isFinalized = a.status === completedStatus
-          || ['COMPLETED', 'APPROVED', 'ARCHIVED'].includes(a.status);
+        const isFinalized = !!completedStatus && a.status === completedStatus;
         if (!isFinalized) return <span className="text-muted">-</span>;
         const vs = a.vulnerabilitySummary;
         const critical = vs?.critical ?? 0;

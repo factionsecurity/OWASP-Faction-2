@@ -24,16 +24,6 @@ const toApiDate = (dt: Date): string => {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T00:00:00`;
 };
 
-const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  DRAFT: 'secondary',
-  IN_PROGRESS: 'info',
-  ON_HOLD: 'warning',
-  PENDING_REVIEW: 'info',
-  COMPLETED: 'success',
-  APPROVED: 'success',
-  ARCHIVED: 'secondary',
-};
-
 // localStorage key for the list view's saved search, filters, sort and paging.
 const TABLE_KEY = 'scheduling';
 
@@ -449,7 +439,7 @@ export default function Engagements() {
       render: (assessment) => {
         const custom = statusColors[assessment.status];
         return (
-          <Badge variant={custom ? undefined : STATUS_COLORS[assessment.status]} customColor={custom}>
+          <Badge variant={custom ? undefined : 'secondary'} customColor={custom}>
             {assessment.status.replace('_', ' ')}
           </Badge>
         );

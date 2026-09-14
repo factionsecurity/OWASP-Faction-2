@@ -120,8 +120,8 @@ public class AssessmentController {
             @Parameter(name = "assessmentTypeId", description = "Filter by assessment type ID"),
             @Parameter(name = "assessmentTypeIds", description = "Filter by any of several assessment type IDs (repeatable or comma-separated)"),
             @Parameter(name = "assessorId", description = "Filter by assessor user ID"),
-            @Parameter(name = "status", description = "Filter by status", example = "IN_PROGRESS"),
-            @Parameter(name = "statuses", description = "Filter by any of several statuses (repeatable or comma-separated)", example = "IN_PROGRESS,ON_HOLD"),
+            @Parameter(name = "status", description = "Filter by status", example = "Testing"),
+            @Parameter(name = "statuses", description = "Filter by any of several statuses (repeatable or comma-separated)", example = "Testing,Reporting"),
             @Parameter(name = "openSurveys", description = "Only assessments with at least one unfinished survey", example = "true"),
             @Parameter(name = "startDateFrom", description = "Filter by start date from (ISO format)", example = "2024-01-01T00:00:00"),
             @Parameter(name = "startDateTo", description = "Filter by start date to (ISO format)", example = "2024-12-31T23:59:59"),
@@ -570,7 +570,7 @@ public class AssessmentController {
             @Parameter(name = "organizationId", description = "Filter by organization ID"),
             @Parameter(name = "assessmentTypeId", description = "Filter by assessment type ID"),
             @Parameter(name = "assessorId", description = "Filter by assessor user ID"),
-            @Parameter(name = "status", description = "Filter by status", example = "IN_PROGRESS"),
+            @Parameter(name = "status", description = "Filter by status", example = "Testing"),
             @Parameter(name = "name", description = "Search by name (case-insensitive)")
         },
         responses = {

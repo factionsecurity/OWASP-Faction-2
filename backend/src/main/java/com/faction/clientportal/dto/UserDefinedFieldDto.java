@@ -52,6 +52,9 @@ public class UserDefinedFieldDto {
 
     private FieldScope fieldScope;
 
+    @Builder.Default
+    private Boolean showInScheduling = false;
+
     /**
      * Convert from entity to DTO
      */
@@ -72,6 +75,7 @@ public class UserDefinedFieldDto {
             .minLength(entity.getMinLength())
             .displayOrder(entity.getDisplayOrder())
             .fieldScope(entity.getFieldScope())
+            .showInScheduling(Boolean.TRUE.equals(entity.getShowInScheduling()))
             .build();
     }
 
@@ -92,6 +96,7 @@ public class UserDefinedFieldDto {
             .minLength(this.minLength)
             .displayOrder(this.displayOrder)
             .fieldScope(this.fieldScope != null ? this.fieldScope : FieldScope.ASSESSMENT)
+            .showInScheduling(Boolean.TRUE.equals(this.showInScheduling))
             .build();
     }
 }

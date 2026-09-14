@@ -106,7 +106,7 @@ class FileStreamingEndpointsTest extends TestContainersConfig {
 
         assessment = assessmentRepository.save(Assessment.builder()
                 .name("Streaming Assessment")
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .createdAt(LocalDateTime.now())
                 .build());
     }

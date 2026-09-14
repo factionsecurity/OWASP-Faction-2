@@ -89,6 +89,17 @@ public class UserDefinedField {
     private FieldScope fieldScope = FieldScope.ASSESSMENT;
 
     /**
+     * Whether the scheduling form offers this field. Off by default: a template shows nothing there
+     * until someone ticks the fields that belong in scheduling. Fields stored before this existed
+     * have no key in the JSON and read back as null, which means off.
+     *
+     * <p>No {@code isShowInScheduling()} convenience getter: Jackson would serialise it as a second
+     * property into the jsonb column.
+     */
+    @Builder.Default
+    private Boolean showInScheduling = false;
+
+    /**
      * A detached copy of this field, including its id and variable name. Used when cloning a
      * report template: the fields must be identical (so the DOCX's {@code ${...}} references still
      * resolve) but must not be the same objects, or editing one template's field list would mutate
@@ -108,6 +119,7 @@ public class UserDefinedField {
                 .minLength(minLength)
                 .displayOrder(displayOrder)
                 .fieldScope(fieldScope)
+                .showInScheduling(showInScheduling)
                 .build();
     }
 }

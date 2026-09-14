@@ -354,7 +354,7 @@ class AppOwnerScopeTest extends TestContainersConfig {
     private Assessment saveAssessment(String name, String appId, String orgId) {
         return assessmentRepository.save(Assessment.builder()
                 .name(name).applicationId(appId).organizationId(orgId)
-                .assessmentTypeId("type-1").status("IN_PROGRESS")
+                .assessmentTypeId("type-1").status("Testing")
                 .createdAt(LocalDateTime.now())
                 .build());
     }

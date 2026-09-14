@@ -400,9 +400,9 @@ export default function ReportDesigner() {
     // so re-rendering never remounts them and leaves the typed text and caret alone.
     setSelectedTemplate({ ...currentTemplate, userDefinedFields: updatedFields });
 
-    // Structural changes (fieldType) toggle conditional UI, so persist them right away;
-    // text edits debounce.
-    updateTemplate({ userDefinedFields: updatedFields }, 'fieldType' in updates);
+    // Structural changes (fieldType) toggle conditional UI, and a checkbox has no typing to wait
+    // for, so persist those right away; text edits debounce.
+    updateTemplate({ userDefinedFields: updatedFields }, 'fieldType' in updates || 'showInScheduling' in updates);
   };
 
   const deleteUserDefinedField = (id: string) => {
@@ -1089,6 +1089,21 @@ export default function ReportDesigner() {
                         </Select>
                       </div>
                     </div>
+                    {(field.fieldScope ?? 'ASSESSMENT') === 'ASSESSMENT' && (
+                      <div className="rd-row">
+                        <div className="rd-label">Show in Scheduling</div>
+                        <div className="rd-value">
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            checked={!!field.showInScheduling}
+                            onChange={(e) => updateUserDefinedField(field.id, { showInScheduling: e.target.checked })}
+                            disabled={saving}
+                            aria-label="Show in Scheduling"
+                          />
+                        </div>
+                      </div>
+                    )}
                     <div className="rd-row rd-row--top">
                       <div className="rd-label">Default Value</div>
                       <div className="rd-value">

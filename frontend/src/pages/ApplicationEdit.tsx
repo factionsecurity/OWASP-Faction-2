@@ -57,18 +57,6 @@ import './Applications.css';
 import './ApplicationEdit.css';
 import { useTerminology } from '../context/TerminologyContext';
 
-// Same palette as the main Vulnerabilities tab
-// Same fallback mapping as the main Assessments tab
-const ASSESSMENT_STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  DRAFT: 'secondary',
-  IN_PROGRESS: 'info',
-  ON_HOLD: 'warning',
-  PENDING_REVIEW: 'info',
-  COMPLETED: 'success',
-  APPROVED: 'success',
-  ARCHIVED: 'secondary',
-};
-
 const VULN_PAGE_SIZE = 10;
 
 const COMMON_TECHNOLOGIES = [
@@ -751,7 +739,7 @@ export default function ApplicationEdit() {
         const custom = assessmentStatusColors[a.status];
         return (
           <Badge
-            variant={custom ? undefined : (ASSESSMENT_STATUS_COLORS[a.status] || 'secondary')}
+            variant={custom ? undefined : 'secondary'}
             customColor={custom}
           >
             {a.status}

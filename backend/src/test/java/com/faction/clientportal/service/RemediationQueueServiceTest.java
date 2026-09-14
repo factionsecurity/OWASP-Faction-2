@@ -266,7 +266,7 @@ class RemediationQueueServiceTest extends TestContainersConfig {
                 .applicationId("app-1")
                 .assessmentTypeId("type-1")
                 .organizationId("org-1")
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .deletedAt(deletedAt)
                 .createdAt(LocalDateTime.now())
                 .build());

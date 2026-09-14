@@ -15,18 +15,8 @@ interface AssessmentCalendarProps {
   initialDate?: string; // ISO date string to navigate to on mount
 }
 
-const DEFAULT_STATUS_COLORS: Record<string, string> = {
-  DRAFT: '#6c757d',
-  IN_PROGRESS: '#0d6efd',
-  ON_HOLD: '#ffc107',
-  PENDING_REVIEW: '#0dcaf0',
-  COMPLETED: '#198754',
-  APPROVED: '#20c997',
-  ARCHIVED: '#212529',
-};
-
 const getStatusColor = (status: string, customColors?: Record<string, string>): string => {
-  return customColors?.[status] || DEFAULT_STATUS_COLORS[status] || '#6c757d';
+  return customColors?.[status] || '#6c757d';
 };
 
 /** The calendar date part of an API value, dropping the always-midnight time. */

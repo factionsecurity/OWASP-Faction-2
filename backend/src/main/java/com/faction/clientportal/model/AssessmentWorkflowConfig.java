@@ -31,6 +31,9 @@ import java.util.Map;
 @Table(name = "assessment_workflow_config")
 public class AssessmentWorkflowConfig {
 
+    /** The status a new assessment starts in when nothing else has set one. */
+    public static final String DEFAULT_NEW_STATUS = "New";
+
     @Id
     private String id; // always "singleton"
 
@@ -44,7 +47,7 @@ public class AssessmentWorkflowConfig {
 
     /** Status applied when a new assessment is created */
     @Builder.Default
-    private String newAssessmentStatus = "New";
+    private String newAssessmentStatus = DEFAULT_NEW_STATUS;
 
     /** Status applied when an assessment falls within its start/end date window */
     @Builder.Default

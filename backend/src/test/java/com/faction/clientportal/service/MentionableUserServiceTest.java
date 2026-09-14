@@ -266,7 +266,7 @@ class MentionableUserServiceTest extends TestContainersConfig {
     private String vulnerabilityOn(Application app, String remediationOwnerId, List<String> subscribers) {
         String assessmentId = assessmentRepository.save(Assessment.builder()
                 .name("A").applicationId(app.getId()).organizationId(app.getOrganizationId())
-                .assessmentTypeId("t").status("IN_PROGRESS").createdAt(LocalDateTime.now())
+                .assessmentTypeId("t").status("Testing").createdAt(LocalDateTime.now())
                 .build()).getId();
         return vulnerabilityRepository.save(Vulnerability.builder()
                 .name("v").assessmentId(assessmentId).severity(VulnerabilitySeverity.HIGH).order(0)

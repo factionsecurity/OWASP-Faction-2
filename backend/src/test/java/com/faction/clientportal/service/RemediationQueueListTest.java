@@ -739,7 +739,7 @@ class RemediationQueueListTest extends TestContainersConfig {
         var me = teamUser("tester", orgId);
         var mine = assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
                 .name("Mine").applicationId(appId).assessmentTypeId("t").organizationId(orgId)
-                .status("IN_PROGRESS").assessorIds(List.of(me.getId()))
+                .status("Testing").assessorIds(List.of(me.getId()))
                 .createdAt(LocalDateTime.now()).build()).getId();
         vulnBuilder("mine", VulnerabilitySeverity.HIGH, 40).assessment(mine).save();
         vuln("theirs", VulnerabilitySeverity.HIGH, 40); // default assessment, no assessors
@@ -895,7 +895,7 @@ class RemediationQueueListTest extends TestContainersConfig {
     private String teamAssessment(String orgId, String appId, String name, String teamId) {
         return assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
                 .name(name).applicationId(appId).assessmentTypeId("t").organizationId(orgId)
-                .status("IN_PROGRESS").teamId(teamId).createdAt(LocalDateTime.now()).build()).getId();
+                .status("Testing").teamId(teamId).createdAt(LocalDateTime.now()).build()).getId();
     }
 
     private User teamUser(String username, String orgId, String... teamIds) {
@@ -909,7 +909,7 @@ class RemediationQueueListTest extends TestContainersConfig {
     private String deletedAssessment(String orgId, String appId) {
         return assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
                 .name("Gone").applicationId(appId).assessmentTypeId("t").organizationId(orgId)
-                .status("IN_PROGRESS").deletedAt(LocalDateTime.now()).createdAt(LocalDateTime.now()).build()).getId();
+                .status("Testing").deletedAt(LocalDateTime.now()).createdAt(LocalDateTime.now()).build()).getId();
     }
 
     /** Seed a queue vuln on the default assessment, opened {@code openedDaysAgo} days ago. */

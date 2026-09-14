@@ -85,7 +85,7 @@ class NotebookIsolationTest extends TestContainersConfig {
         // fall into the "nothing tested here yet" allowance and the test would prove nothing.
         assessmentRepository.save(Assessment.builder()
                 .name("Org B Q1").applicationId(theirAppId).organizationId(orgB.getId())
-                .assessmentTypeId("t").status("IN_PROGRESS")
+                .assessmentTypeId("t").status("Testing")
                 .assessorIds(List.of("someone-else"))
                 .createdAt(LocalDateTime.now()).build());
 

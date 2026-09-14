@@ -93,6 +93,14 @@ export default function SearchableApplicationSelect({
     }
   }, [isOpen]);
 
+  // A new (not yet existing) application's name set from outside — a pre-fill — has to show in
+  // the box: with nothing selected, the box renders only what was typed here. Typing already keeps
+  // the two equal, so this only acts on a name the parent changed itself.
+  useEffect(() => {
+    if (!value) setQuery((current) => (current === applicationName ? current : applicationName));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applicationName]);
+
   const handleSelect = (app: Application) => {
     onChange(app.id, app.appId || '', app.name);
     setQuery('');

@@ -206,6 +206,15 @@ public class AssessmentService {
             .build();
 
         Assessment savedAssessment = assessmentRepository.save(assessment);
+        // Values carried forward from another assessment hold that assessment's screenshots, and an
+        // inline image authorises against its owner. Copying needs this assessment's id, hence after
+        // the save; the second save only happens when something was actually copied.
+        Map<String, String> rehomed = rehomeFieldImages(fieldValues, savedAssessment.getId(), userId);
+        if (!rehomed.equals(fieldValues)) {
+            savedAssessment.setFieldValues(rehomed);
+            assessmentRepository.save(savedAssessment);
+            fieldValues = rehomed;
+        }
         // Field values supplied at creation were never indexed — only updateAssessment did it —
         // so a screenshot in a field of an assessment nobody edited again was deleted by the GC
         // a day later. The id only exists after the save, which is why this is not up with the
@@ -339,10 +348,10 @@ public class AssessmentService {
 
         // Update field values with validation
         if (request.getFieldValues() != null) {
-            Map<String, String> validatedValues = validateFieldValues(
+            Map<String, String> validatedValues = rehomeFieldImages(validateFieldValues(
                 request.getFieldValues(),
                 assessment.getFieldDefinitions()
-            );
+            ), id, userId);
             // Merge with existing values
             assessment.getFieldValues().putAll(validatedValues);
             // Update inline image reference index for each saved field.
@@ -448,11 +457,6 @@ public class AssessmentService {
                     "**Assessment completed**: \"" + assessment.getName() + "\" was marked "
                         + request.getStatus() + " by {actor}.",
                     userId);
-            }
-
-            // Set peer review date when status changes to PENDING_REVIEW (legacy)
-            if ("PENDING_REVIEW".equals(request.getStatus()) && !"PENDING_REVIEW".equals(oldStatus)) {
-                assessment.setPeerReviewedAt(LocalDateTime.now());
             }
 
             // Set assessment date when status first moves into an active state
@@ -733,6 +737,7 @@ public class AssessmentService {
         copy.setDefaultValue(src.getDefaultValue());
         copy.setDisplayOrder(src.getDisplayOrder());
         copy.setFieldScope(src.getFieldScope());
+        copy.setShowInScheduling(src.getShowInScheduling());
         return copy;
     }
 
@@ -1015,12 +1020,8 @@ public class AssessmentService {
 
     /** The "completed" status strings, mirroring AssessmentWorkflowConfigService.isCompletedStatus. */
     private Set<String> completedStatuses() {
-        var statuses = new HashSet<>(Set.of("COMPLETED", "APPROVED", "ARCHIVED"));
         var configured = workflowConfigService.getConfig().getCompletedStatus();
-        if (configured != null && !configured.isBlank()) {
-            statuses.add(configured);
-        }
-        return statuses;
+        return configured == null || configured.isBlank() ? Set.of() : Set.of(configured);
     }
 
     private boolean hasAuthority(Authentication authentication, String authority) {
@@ -1165,6 +1166,19 @@ public class AssessmentService {
     }
 
     /**
+     * Points every image in the values at a copy this assessment owns, so variables carried forward
+     * from another assessment render for this one's readers. Images it already owns are untouched.
+     */
+    private Map<String, String> rehomeFieldImages(Map<String, String> values, String assessmentId,
+                                                  String userId) {
+        Map<String, String> seen = new HashMap<>();
+        Map<String, String> rehomed = new HashMap<>();
+        values.forEach((fieldId, value) -> rehomed.put(fieldId, InlineImageService.rehomeImages(value, seen,
+                imageId -> inlineImageService.materializeInto(imageId, assessmentId, userId))));
+        return rehomed;
+    }
+
+    /**
      * Validate a single field value
      */
     private void validateFieldValue(UserDefinedField fieldDef, String value) {
@@ -1238,21 +1252,6 @@ public class AssessmentService {
             .filter(a -> a.getStatus() != null)
             .collect(Collectors.groupingBy(Assessment::getStatus, Collectors.counting()));
 
-        // Legacy fixed counts (backwards compatibility: count by old enum string values)
-        long draftCount = statusCounts.getOrDefault("DRAFT", 0L);
-        long inProgressCount = statusCounts.getOrDefault("IN_PROGRESS", 0L);
-        long onHoldCount = statusCounts.getOrDefault("ON_HOLD", 0L);
-        long pendingReviewCount = statusCounts.getOrDefault("PENDING_REVIEW", 0L);
-        long completedCount = statusCounts.getOrDefault("COMPLETED", 0L);
-        long approvedCount = statusCounts.getOrDefault("APPROVED", 0L);
-        long archivedCount = statusCounts.getOrDefault("ARCHIVED", 0L);
-
-        // Add configured completedStatus to completedCount if it differs from "COMPLETED"
-        String configuredCompleted = workflowConfigService.getConfig().getCompletedStatus();
-        if (!"COMPLETED".equals(configuredCompleted)) {
-            completedCount += statusCounts.getOrDefault(configuredCompleted, 0L);
-        }
-
         // Past due: past planned end date and not in a completed state
         List<Assessment> pastDueAssessments = assessmentRepository.findPastDue(LocalDateTime.now());
         long pastDueCount = pastDueAssessments.stream()
@@ -1263,13 +1262,6 @@ public class AssessmentService {
 
         return AssessmentMetricsDto.builder()
             .totalCount(totalCount)
-            .draftCount(draftCount)
-            .inProgressCount(inProgressCount)
-            .onHoldCount(onHoldCount)
-            .pendingReviewCount(pendingReviewCount)
-            .completedCount(completedCount)
-            .approvedCount(approvedCount)
-            .archivedCount(archivedCount)
             .pastDueCount(pastDueCount)
             .statusCounts(statusCounts)
             .build();
