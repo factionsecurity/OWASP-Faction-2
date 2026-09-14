@@ -9,7 +9,7 @@ import {
 import type { Assessment, Vulnerability, RemediationQueueRow, RemediationQueueSummary } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import { Badge, FormLabel, Checkbox } from '../components';
-import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
+import { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
 import { Button } from '../components/Button';
@@ -115,17 +115,19 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   // Header filters — the same set the vulnerabilities list offers, minus "show closed" (a closed
   // vulnerability is never a queue row on its own). Statuses filter on the vulnerability's status,
   // which is what the Status column shows for both row types.
-  const [filterSeverity, setFilterSeverity] = usePersistedState(tableKey, 'severity', '');
-  const [filterOrganizationId, setFilterOrganizationId] = usePersistedState(tableKey, 'organizationId', '');
-  const [filterApplicationId, setFilterApplicationId] = usePersistedState(tableKey, 'applicationId', '');
-  const [filterAssessmentId, setFilterAssessmentId] = usePersistedState(tableKey, 'assessmentId', '');
+  // Every filter is multi-select: several values in one filter match any of them, and separate
+  // filters must all match.
+  const [filterSeverities, setFilterSeverities] = usePersistedState<string[]>(tableKey, 'severities', []);
+  const [filterOrganizationIds, setFilterOrganizationIds] = usePersistedState<string[]>(tableKey, 'organizationIds', []);
+  const [filterApplicationIds, setFilterApplicationIds] = usePersistedState<string[]>(tableKey, 'applicationIds', []);
+  const [filterAssessmentIds, setFilterAssessmentIds] = usePersistedState<string[]>(tableKey, 'assessmentIds', []);
   const [filterStatuses, setFilterStatuses] = usePersistedState<string[]>(tableKey, 'statuses', []);
   const [exporting, setExporting] = useState(false);
   // The queue is a worklist, so verified retests are off by default; on, it becomes a record of
   // what has been checked as well as what is outstanding.
   const [showCompletedRetests, setShowCompletedRetests] = usePersistedState(tableKey, 'showCompletedRetests', false);
   // Assessment and (on Retest Alerts) Show Completed Retests live in the advanced panel — staged until Apply.
-  const [draftAssessmentId, setDraftAssessmentId] = useState('');
+  const [draftAssessmentIds, setDraftAssessmentIds] = useState<string[]>([]);
   const [draftShowCompletedRetests, setDraftShowCompletedRetests] = useState(false);
   // Stat-badge selection: empty means "Total" (no bucket narrowing); several may be active at once.
   const [buckets, setBuckets] = usePersistedState<string[]>(tableKey, 'buckets', []);
@@ -169,10 +171,10 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
         page, size: pageSize,
         sort: sortParam(sort),
         search: search || undefined,
-        severity: filterSeverity || undefined,
-        organizationId: filterOrganizationId || undefined,
-        applicationId: filterApplicationId || undefined,
-        assessmentId: filterAssessmentId || undefined,
+        severities: filterSeverities.length ? filterSeverities : undefined,
+        organizationIds: filterOrganizationIds.length ? filterOrganizationIds : undefined,
+        applicationIds: filterApplicationIds.length ? filterApplicationIds : undefined,
+        assessmentIds: filterAssessmentIds.length ? filterAssessmentIds : undefined,
         statuses: filterStatuses.length ? filterStatuses : undefined,
         type: kind,
         includeCompletedRetests: showCompletedRetests || undefined,
@@ -191,8 +193,8 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
     } finally {
       if (reqId === loadPageReq.current) setLoading(false);
     }
-  }, [page, pageSize, search, filterSeverity, filterOrganizationId, filterApplicationId,
-      filterAssessmentId, filterStatuses, kind, showCompletedRetests, buckets, sort]);
+  }, [page, pageSize, search, filterSeverities, filterOrganizationIds, filterApplicationIds,
+      filterAssessmentIds, filterStatuses, kind, showCompletedRetests, buckets, sort]);
 
   useEffect(() => { loadPage(); }, [loadPage]);
 
@@ -204,10 +206,10 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
     try {
       const res = await remediationApi.summary({
         search: search || undefined,
-        severity: filterSeverity || undefined,
-        organizationId: filterOrganizationId || undefined,
-        applicationId: filterApplicationId || undefined,
-        assessmentId: filterAssessmentId || undefined,
+        severities: filterSeverities.length ? filterSeverities : undefined,
+        organizationIds: filterOrganizationIds.length ? filterOrganizationIds : undefined,
+        applicationIds: filterApplicationIds.length ? filterApplicationIds : undefined,
+        assessmentIds: filterAssessmentIds.length ? filterAssessmentIds : undefined,
         statuses: filterStatuses.length ? filterStatuses : undefined,
         type: kind,
       });
@@ -215,7 +217,7 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
     } catch {
       // Keep the previous counts — the badges are informational and must not break the page.
     }
-  }, [search, filterSeverity, filterOrganizationId, filterApplicationId, filterAssessmentId,
+  }, [search, filterSeverities, filterOrganizationIds, filterApplicationIds, filterAssessmentIds,
       filterStatuses, kind]);
 
   useEffect(() => { loadSummary(); }, [loadSummary]);
@@ -229,7 +231,7 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
 
   // Keep the advanced panel's drafts aligned with the applied values when they change from
   // elsewhere (chip removal, clear-all, or an application/org change that clears the assessment).
-  useEffect(() => { setDraftAssessmentId(filterAssessmentId); }, [filterAssessmentId]);
+  useEffect(() => { setDraftAssessmentIds(filterAssessmentIds); }, [filterAssessmentIds]);
   useEffect(() => { setDraftShowCompletedRetests(showCompletedRetests); }, [showCompletedRetests]);
 
   // One-time: vulnerability status labels for the detail drawer, plus the organization options.
@@ -271,7 +273,7 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
       const res = await assessmentsApi.search({
         page: 0, size: OPTION_LIMIT,
         search: query || undefined,
-        applicationId: filterApplicationId || undefined, // scope to the selected application
+        applicationIds: filterApplicationIds.length ? filterApplicationIds : undefined, // scope to the selected applications
       });
       if (reqId !== assessmentReq.current) return;
       setAssessmentOptions((res.data || []).map(formatAssessmentLabel));
@@ -286,18 +288,24 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   useEffect(() => {
     searchAssessments('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterApplicationId]);
+  }, [filterApplicationIds]);
 
-  // Merge the selected app/assessment into its option list so its label stays visible
-  // once a server search narrows away from it.
-  const withSelected = (options: SelectOption[], id: string, labels: Record<string, string>): SelectOption[] => {
-    if (!id || options.some(o => o.value === id)) return options;
-    const label = labels[id];
-    return label ? [{ value: id, label }, ...options] : options;
+  // Merge the selected apps/assessments into their option list so their labels stay visible
+  // once a server search narrows away from them.
+  const withSelected = (options: SelectOption[], ids: string[], labels: Record<string, string>): SelectOption[] => {
+    const missing = ids.filter(id => !options.some(o => o.value === id))
+      .map(id => ({ value: id, label: labels[id] ?? id }));
+    return missing.length ? [...missing, ...options] : options;
   };
-  const appOptionsMerged = withSelected(appOptions, filterApplicationId, appLabels);
-  // The advanced panel's Assessment select shows the *draft* value, so merge that one in.
-  const assessmentOptionsForDraft = withSelected(assessmentOptions, draftAssessmentId, assessmentLabels);
+  // Remember the name behind each picked id, so a restored selection shows names rather than ids.
+  const labelsFor = (prev: Record<string, string>, ids: string[], options: SelectOption[]) => {
+    const next = { ...prev };
+    ids.forEach(id => { const o = options.find(x => x.value === id); if (o) next[id] = o.label; });
+    return next;
+  };
+  const appOptionsMerged = withSelected(appOptions, filterApplicationIds, appLabels);
+  // The advanced panel's Assessment select shows the *draft* values, so merge those in.
+  const assessmentOptionsForDraft = withSelected(assessmentOptions, draftAssessmentIds, assessmentLabels);
   // The drawer's status list doubles as the filter's — every status a queue row can carry.
   const statusOptions: SelectOption[] = configuredStatuses.map(s => ({ value: s, label: s }));
 
@@ -434,10 +442,10 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
     try {
       const blob = await remediationApi.exportQueueCsv({
         search: search || undefined,
-        severity: filterSeverity || undefined,
-        organizationId: filterOrganizationId || undefined,
-        applicationId: filterApplicationId || undefined,
-        assessmentId: filterAssessmentId || undefined,
+        severities: filterSeverities.length ? filterSeverities : undefined,
+        organizationIds: filterOrganizationIds.length ? filterOrganizationIds : undefined,
+        applicationIds: filterApplicationIds.length ? filterApplicationIds : undefined,
+        assessmentIds: filterAssessmentIds.length ? filterAssessmentIds : undefined,
         statuses: filterStatuses.length ? filterStatuses : undefined,
         type: kind,
         includeCompletedRetests: showCompletedRetests || undefined,
@@ -601,23 +609,23 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   ];
   const columns: Column<RemediationQueueRow>[] = allColumns.filter(c => !c.kind || c.kind === kind);
 
-  const anyFilterActive = !!(search || filterSeverity || filterOrganizationId
-    || filterApplicationId || filterAssessmentId || filterStatuses.length
+  const anyFilterActive = !!(search || filterSeverities.length || filterOrganizationIds.length
+    || filterApplicationIds.length || filterAssessmentIds.length || filterStatuses.length
     || showCompletedRetests || buckets.length > 0);
 
   // ── Toolbar zones ─────────────────────────────────────────────────────────
   // Assessment and (on Retest Alerts) Show Completed Retests are the advanced (Apply-based) filters.
   const applyAdvanced = () => {
-    setFilterAssessmentId(draftAssessmentId);
+    setFilterAssessmentIds(draftAssessmentIds);
     setShowCompletedRetests(draftShowCompletedRetests);
     setPage(0);
   };
 
   // Clear every filter across all zones (inline dropdowns + advanced drafts).
   const clearAllFilters = () => {
-    setFilterOrganizationId(''); setFilterSeverity(''); setFilterApplicationId('');
+    setFilterOrganizationIds([]); setFilterSeverities([]); setFilterApplicationIds([]);
     setFilterStatuses([]);
-    setFilterAssessmentId(''); setDraftAssessmentId('');
+    setFilterAssessmentIds([]); setDraftAssessmentIds([]);
     setShowCompletedRetests(false); setDraftShowCompletedRetests(false);
     setBuckets([]);
     setPage(0);
@@ -625,13 +633,17 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
 
   // Only the advanced (hidden) filters get chips; the inline dropdowns show their own active state.
   const filterChips: FilterChip[] = [];
-  if (filterAssessmentId) {
+  // One chip per chosen assessment, so each can be removed on its own.
+  filterAssessmentIds.forEach(id => {
     filterChips.push({
-      key: 'assessment',
-      label: `Assessment: ${assessmentLabels[filterAssessmentId] ?? filterAssessmentId}`,
-      onRemove: () => { setFilterAssessmentId(''); setDraftAssessmentId(''); setPage(0); },
+      key: `assessment-${id}`,
+      label: `Assessment: ${assessmentLabels[id] ?? id}`,
+      onRemove: () => {
+        const next = filterAssessmentIds.filter(x => x !== id);
+        setFilterAssessmentIds(next); setDraftAssessmentIds(next); setPage(0);
+      },
     });
-  }
+  });
   if (showCompletedRetests) {
     filterChips.push({
       key: 'showCompletedRetests', label: 'Show completed retests',
@@ -641,27 +653,26 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
 
   const headerFilters = (
     <div className="ss-filter-bar">
-      <SearchableSelect
-        value={filterOrganizationId}
-        onChange={(v) => {
-          setFilterOrganizationId(v); setFilterApplicationId('');
-          setFilterAssessmentId(''); setDraftAssessmentId(''); setPage(0);
-        }}
+      {/* Picking more values never clears another filter: with several choices allowed, wiping the
+          applications on every organization tick would throw away selections. */}
+      <MultiSelect
+        selected={filterOrganizationIds}
+        onChange={(vals) => { setFilterOrganizationIds(vals); setPage(0); }}
         options={orgOptions}
         placeholder={`All ${organizationPlural}`}
       />
-      <SearchableSelect
-        value={filterSeverity}
-        onChange={(v) => { setFilterSeverity(v); setPage(0); }}
+      <MultiSelect
+        selected={filterSeverities}
+        onChange={(vals) => { setFilterSeverities(vals); setPage(0); }}
         options={severityOptions}
         searchable={false}
         placeholder="All Severities"
       />
-      <SearchableSelect
-        value={filterApplicationId}
-        onChange={(v) => {
-          setFilterApplicationId(v); setFilterAssessmentId(''); setDraftAssessmentId(''); setPage(0);
-          if (v) { const o = appOptionsMerged.find(x => x.value === v); if (o) setAppLabels(p => ({ ...p, [v]: o.label })); }
+      <MultiSelect
+        selected={filterApplicationIds}
+        onChange={(vals) => {
+          setFilterApplicationIds(vals); setPage(0);
+          setAppLabels(p => labelsFor(p, vals, appOptionsMerged));
         }}
         options={appOptionsMerged}
         onQueryChange={searchApps}
@@ -732,11 +743,11 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
           <>
             <div className="filter-field">
               <FormLabel>Assessment</FormLabel>
-              <SearchableSelect
-                value={draftAssessmentId}
-                onChange={(v) => {
-                  setDraftAssessmentId(v);
-                  if (v) { const o = assessmentOptionsForDraft.find(x => x.value === v); if (o) setAssessmentLabels(p => ({ ...p, [v]: o.label })); }
+              <MultiSelect
+                selected={draftAssessmentIds}
+                onChange={(vals) => {
+                  setDraftAssessmentIds(vals);
+                  setAssessmentLabels(p => labelsFor(p, vals, assessmentOptionsForDraft));
                 }}
                 options={assessmentOptionsForDraft}
                 onQueryChange={searchAssessments}

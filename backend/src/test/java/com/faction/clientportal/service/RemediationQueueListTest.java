@@ -102,7 +102,12 @@ class RemediationQueueListTest extends TestContainersConfig {
 
     /** Filtered list as a super admin: (severity, organizationId, applicationId, assessmentId). */
     private List<RemediationRowDto> filtered(String severity, String orgFilter, String appFilter, String asmtFilter) {
-        return service.list(null, severity, orgFilter, appFilter, asmtFilter, null, null, null, false, PAGE, superAdmin()).getContent();
+        return service.list(null, one(severity), one(orgFilter), one(appFilter), one(asmtFilter), null, null, null, false, PAGE, superAdmin()).getContent();
+    }
+
+    /** A single filter value as the service's list form; null stays "no filter". */
+    private static List<String> one(String value) {
+        return value == null ? null : List.of(value);
     }
 
     /** Filtered list as a super admin, by row type ("VULNERABILITY" / "RETEST"). */
@@ -543,9 +548,9 @@ class RemediationQueueListTest extends TestContainersConfig {
         var acmeAuth = auth("acme-user", Permission.VULNERABILITIES_READ_ORG.getPermission());
 
         // Asking for another org as an org-scoped caller returns nothing, not the other org's rows.
-        assertThat(service.list(null, null, orgB, null, null, null, null, null, false, PAGE, acmeAuth).getContent()).isEmpty();
+        assertThat(service.list(null, null, List.of(orgB), null, null, null, null, null, false, PAGE, acmeAuth).getContent()).isEmpty();
         // Asking for their own org still works.
-        assertThat(names(service.list(null, null, orgId, null, null, null, null, null, false, PAGE, acmeAuth).getContent()))
+        assertThat(names(service.list(null, null, List.of(orgId), null, null, null, null, null, false, PAGE, acmeAuth).getContent()))
                 .containsExactly("inAcme");
     }
 
@@ -558,9 +563,23 @@ class RemediationQueueListTest extends TestContainersConfig {
         vuln("inOther", VulnerabilitySeverity.HIGH, 40); // default app, not owned
 
         var ownerAuth = auth("owner", Permission.VULNERABILITIES_READ_OWNED.getPermission());
-        assertThat(service.list(null, null, null, appId, null, null, null, null, false, PAGE, ownerAuth).getContent()).isEmpty();
-        assertThat(names(service.list(null, null, null, ownedAppId, null, null, null, null, false, PAGE, ownerAuth).getContent()))
+        assertThat(service.list(null, null, null, List.of(appId), null, null, null, null, false, PAGE, ownerAuth).getContent()).isEmpty();
+        assertThat(names(service.list(null, null, null, List.of(ownedAppId), null, null, null, null, false, PAGE, ownerAuth).getContent()))
                 .containsExactly("inOwned");
+    }
+
+    @Test
+    void ownedScopedUser_severalApplications_narrowToTheOwnedOnes() {
+        var owner = user("owner", orgId);
+        var ownedAppId = ownedApp(orgId, "Owned", owner.getId()).getId();
+        var ownedAsmt = assessment(orgId, ownedAppId, "O");
+        vulnBuilder("inOwned", VulnerabilitySeverity.HIGH, 40).assessment(ownedAsmt).save();
+        vuln("inOther", VulnerabilitySeverity.HIGH, 40); // default app, not owned
+
+        var ownerAuth = auth("owner", Permission.VULNERABILITIES_READ_OWNED.getPermission());
+        // Asking for an owned and an unowned application keeps the owned one and never widens.
+        assertThat(names(service.list(null, null, null, List.of(ownedAppId, appId), null, null, null, null,
+                false, PAGE, ownerAuth).getContent())).containsExactly("inOwned");
     }
 
     @Test
@@ -611,11 +630,46 @@ class RemediationQueueListTest extends TestContainersConfig {
         vuln("SQLInjection", VulnerabilitySeverity.HIGH, 40);
         vuln("SQLInjectionCritical", VulnerabilitySeverity.CRITICAL, 40);
 
-        var result = service.list("sqlinjection", "HIGH", orgId, appId, assessmentId, null, null, null, false, PAGE, superAdmin());
+        var result = service.list("sqlinjection", List.of("HIGH"), List.of(orgId), List.of(appId), List.of(assessmentId), null, null, null, false, PAGE, superAdmin());
         assertThat(names(result.getContent())).containsExactly("SQLInjection");
     }
 
     // ── Scope ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    void multiValueFilters_matchAnyOfTheirValues_andCombineAcrossFilters() {
+        vuln("acmeHigh", VulnerabilitySeverity.HIGH, 40);            // HIGH due at 30 → past due
+        vuln("acmeCritical", VulnerabilitySeverity.CRITICAL, 10);    // CRITICAL due at 7 → past due
+        vuln("acmeMedium", VulnerabilitySeverity.MEDIUM, 100);       // MEDIUM due at 90 → past due
+        var orgB = organization("Globex").getId();
+        var appB = application(orgB, "Ledger").getId();
+        vulnBuilder("globexHigh", VulnerabilitySeverity.HIGH, 40).assessment(assessment(orgB, appB, "B")).save();
+        var orgC = organization("Initech").getId();
+        var appC = application(orgC, "TPS").getId();
+        var asmtC = assessment(orgC, appC, "C");
+        vulnBuilder("initechHigh", VulnerabilitySeverity.HIGH, 40).assessment(asmtC).save();
+
+        assertThat(names(query(null, List.of(orgId, orgB), null, null)))
+                .containsExactlyInAnyOrder("acmeHigh", "acmeCritical", "acmeMedium", "globexHigh");
+        assertThat(names(query(null, null, List.of(appB, appC), null)))
+                .containsExactlyInAnyOrder("globexHigh", "initechHigh");
+        assertThat(names(query(null, null, null, List.of(assessmentId, asmtC))))
+                .containsExactlyInAnyOrder("acmeHigh", "acmeCritical", "acmeMedium", "initechHigh");
+        assertThat(names(query(List.of("CRITICAL", "MEDIUM"), null, null, null)))
+                .containsExactlyInAnyOrder("acmeCritical", "acmeMedium");
+        // Values within a filter are ORed; separate filters still AND.
+        assertThat(names(query(null, List.of(orgB, orgC), List.of(appB), null))).containsExactly("globexHigh");
+        // Blank and unknown values are dropped rather than matching nothing.
+        assertThat(names(query(List.of("HIGH", "NOT_A_SEVERITY", " "), null, null, null)))
+                .containsExactlyInAnyOrder("acmeHigh", "globexHigh", "initechHigh");
+    }
+
+    /** Super-admin list with multi-value (severities, organizationIds, applicationIds, assessmentIds). */
+    private List<RemediationRowDto> query(List<String> severities, List<String> orgIds, List<String> appIds,
+                                          List<String> assessmentIds) {
+        return service.list(null, severities, orgIds, appIds, assessmentIds, null, null, null, false, PAGE, superAdmin())
+                .getContent();
+    }
 
     @Test
     void orgScopedUser_seesOnlyTheirOrg() {
@@ -773,9 +827,19 @@ class RemediationQueueListTest extends TestContainersConfig {
         assertThat(vulnsOnly.retestRequested() + vulnsOnly.retestScheduled() + vulnsOnly.retestInProgress()).isZero();
         assertThat(vulnsOnly.total()).isEqualTo(3);
 
-        var critical = service.summary(null, "CRITICAL", null, null, null, null, null, superAdmin());
+        var critical = service.summary(null, List.of("CRITICAL"), null, null, null, null, null, superAdmin());
         assertThat(critical.pastDue()).isEqualTo(1);
         assertThat(critical.total()).isEqualTo(1);
+    }
+
+    @Test
+    void summary_countsSeveralSeverities() {
+        seedEveryBucket();
+
+        var s = service.summary(null, List.of("CRITICAL", "HIGH"), null, null, null, null, "VULNERABILITY", superAdmin());
+        assertThat(s.pastDue()).isEqualTo(2);
+        assertThat(s.dueSoon()).isEqualTo(1);
+        assertThat(s.total()).isEqualTo(3);
     }
 
     @Test

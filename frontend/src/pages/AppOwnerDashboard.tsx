@@ -139,8 +139,9 @@ export default function AppOwnerDashboard() {
       size: pagination.pageSize,
       sort: sortParam(sort),
       search: search || undefined,
-      severity: filterSeverity || undefined,
-      applicationId: filterApplicationId || undefined,
+      // This dashboard's filters stay single-select; the queue API takes lists.
+      severities: filterSeverity ? [filterSeverity] : undefined,
+      applicationIds: filterApplicationId ? [filterApplicationId] : undefined,
       statuses: filterStatuses.length ? filterStatuses : undefined,
     })
       .then(res => {

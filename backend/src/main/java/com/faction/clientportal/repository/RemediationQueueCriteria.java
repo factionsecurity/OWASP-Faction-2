@@ -32,7 +32,7 @@ import java.util.Collection;
  * assessor.
  *
  * <p>Every field is optional: {@code null} (or an empty {@code applicationIds} / {@code statuses} /
- * {@code severityOrdinals} / {@code organizationIds}) = filter not applied. {@code applicationIds} being non-null-but-empty is the owned-scope "no apps →
+ * {@code severityOrdinals} / {@code organizationIds} / {@code assessmentIds}) = filter not applied. {@code applicationIds} being non-null-but-empty is the owned-scope "no apps →
  * match nothing" case and the service short-circuits before calling.
  */
 @Builder
@@ -49,7 +49,7 @@ public record RemediationQueueCriteria(
         Collection<String> applicationIds,
         Collection<String> teamIds,
         String assessorId,
-        String assessmentId,
+        Collection<String> assessmentIds,
         Collection<String> statuses,
         String rowType,
         /**
