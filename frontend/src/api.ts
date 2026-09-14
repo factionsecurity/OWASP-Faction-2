@@ -1757,9 +1757,10 @@ export const queueCountsApi = {
     api.get('/retests', { params: { assignedToMe: true, status: 'REQUESTED,SCHEDULED,IN_PROGRESS' } })
       .then(r => ((r.data?.data as unknown[] | undefined)?.length ?? 0)),
 
-  remediationQueue: (): Promise<number> =>
-    api.get('/remediation/queue-count')
-      .then(r => (r.data?.data as number | undefined) ?? 0),
+  // Open items on one remediation alerts page: the Total badge of its queue summary.
+  remediationAlerts: (type: 'VULNERABILITY' | 'RETEST'): Promise<number> =>
+    api.get('/remediation/queue-summary', { params: { type } })
+      .then(r => (r.data?.data?.total as number | undefined) ?? 0),
 
   // Findings past their SLA, summed across severities. Reuses the vulnerabilities summary
   // (already scoped server-side) rather than a dedicated count endpoint — the `pastDue`

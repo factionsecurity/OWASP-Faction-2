@@ -588,13 +588,30 @@ function App() {
         />
 
 
+        {/* Remediation alerts, one page per kind. The bare path is the old single queue; bookmarks and
+            the due-date digest email still link there, so it lands on Vuln Alerts. */}
+        <Route path="/remediation" element={<Navigate to="/remediation/vulnerabilities" replace />} />
         <Route
-          path="/remediation"
+          path="/remediation/vulnerabilities"
           element={
             isAuthenticated ? (
               <DashboardLayout>
                 <ProtectedRoute requiredPermission="canViewRemediation">
-                  <RemediationPage />
+                  <RemediationPage kind="VULNERABILITY" />
+                </ProtectedRoute>
+              </DashboardLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/remediation/retests"
+          element={
+            isAuthenticated ? (
+              <DashboardLayout>
+                <ProtectedRoute requiredPermission="canViewRemediation">
+                  <RemediationPage kind="RETEST" />
                 </ProtectedRoute>
               </DashboardLayout>
             ) : (

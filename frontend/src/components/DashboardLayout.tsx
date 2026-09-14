@@ -91,12 +91,13 @@ const menuItems: MenuItem[] = [
   { name: 'Peer Review Queue', path: '/peer-review', icon: ClipboardCheck },
   { name: 'Scheduling', path: '/scheduling', icon: Calendar },
   {
-    // Group key differs from the Remediation item's key, which permissions and counts use.
+    // Group key differs from every sub-item's key, which permissions and counts use.
     name: 'Remediation Group',
     label: 'Remediation',
     icon: CheckSquare,
     subItems: [
-      { name: 'Remediation', label: 'Alerts', path: '/remediation', icon: CheckSquare },
+      { name: 'Vuln Alerts', path: '/remediation/vulnerabilities', icon: CheckSquare },
+      { name: 'Retest Alerts', path: '/remediation/retests', icon: RefreshCw },
       { name: 'Vulnerabilities', path: '/vulnerabilities', icon: ShieldAlert },
     ],
   },
@@ -148,7 +149,8 @@ const QUEUE_BADGE_COLORS: Record<string, string> = {
   'Peer Review Queue': 'nav-badge--blue',
   'Vulnerabilities': 'nav-badge--red',
   'Retests': 'nav-badge--green',
-  'Remediation': 'nav-badge--sky',
+  'Vuln Alerts': 'nav-badge--orange',
+  'Retest Alerts': 'nav-badge--green',
 };
 
 type Theme = 'dark' | 'light';
@@ -332,9 +334,13 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
       ['Retests', isAdmin || authorities.some((a: string) =>
         a === 'vulnerabilities:read:all' || a === 'vulnerabilities:read:team' || a === 'vulnerabilities:read:assessment'),
         queueCountsApi.openRetests],
-      ['Remediation', isAdmin || authorities.some((a: string) =>
+      // One count per alerts page, each scoped server-side and equal to that page's Total badge.
+      ['Vuln Alerts', isAdmin || authorities.some((a: string) =>
         a === 'vulnerabilities:read:all' || a === 'vulnerabilities:read:team'),
-        queueCountsApi.remediationQueue],
+        () => queueCountsApi.remediationAlerts('VULNERABILITY')],
+      ['Retest Alerts', isAdmin || authorities.some((a: string) =>
+        a === 'vulnerabilities:read:all' || a === 'vulnerabilities:read:team'),
+        () => queueCountsApi.remediationAlerts('RETEST')],
     ];
     let cancelled = false;
     fetchers.forEach(([name, allowed, fetchCount]) => {
@@ -424,7 +430,8 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
           auth === 'assessments:create:all' || auth === 'assessments:create:team'
         );
 
-      case 'remediation':
+      case 'vuln alerts':
+      case 'retest alerts':
         return authorities.some((auth: string) =>
           auth === 'vulnerabilities:read:all' || auth === 'vulnerabilities:read:team' ||
           auth === 'vulnerabilities:retest:org' || auth === 'vulnerabilities:retest:owned'
