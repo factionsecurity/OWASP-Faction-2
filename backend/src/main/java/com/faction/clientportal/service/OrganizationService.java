@@ -139,6 +139,13 @@ public class OrganizationService {
             );
         }
 
+        long members = userRepository.countByOrganizationIdsContaining(id);
+        if (members > 0) {
+            throw new IllegalArgumentException(
+                    "Cannot delete organization with " + members
+                    + " member user(s). Remove them from the organization first.");
+        }
+
         organizationRepository.deleteById(id);
     }
 
@@ -166,8 +173,8 @@ public class OrganizationService {
                         throw new ResourceNotFoundException("Organization not found with id: " + id);
                     }
                 } else if (hasReadOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    if (!id.equals(orgId)) {
+                    if (!accessScopeService.visibleOrganizationIds(
+                            accessScopeService.resolveOrgAccess(authentication)).contains(id)) {
                         throw new ResourceNotFoundException("Organization not found with id: " + id);
                     }
                 }
@@ -200,10 +207,11 @@ public class OrganizationService {
                             .flatMap(java.util.Optional::stream)
                             .toList();
                 } else if (hasReadOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    source = orgId != null
-                            ? organizationRepository.findById(orgId).map(List::of).orElse(List.of())
-                            : List.of();
+                    source = accessScopeService.visibleOrganizationIds(
+                                    accessScopeService.resolveOrgAccess(authentication)).stream()
+                            .map(organizationRepository::findById)
+                            .flatMap(java.util.Optional::stream)
+                            .toList();
                 } else {
                     source = List.of();
                 }
@@ -253,10 +261,11 @@ public class OrganizationService {
                             .flatMap(java.util.Optional::stream)
                             .toList();
                 } else if (hasReadOrg) {
-                    String orgId = resolveOrgId(authentication);
-                    source = orgId != null
-                            ? organizationRepository.findById(orgId).map(List::of).orElse(List.of())
-                            : List.of();
+                    source = accessScopeService.visibleOrganizationIds(
+                                    accessScopeService.resolveOrgAccess(authentication)).stream()
+                            .map(organizationRepository::findById)
+                            .flatMap(java.util.Optional::stream)
+                            .toList();
                 } else {
                     source = List.of();
                 }
@@ -354,12 +363,6 @@ public class OrganizationService {
         return userRepository.findByUsername(username)
                 .map(User::getId)
                 .orElse(username);
-    }
-
-    private String resolveOrgId(Authentication authentication) {
-        return userRepository.findByUsername(authentication.getName())
-                .map(User::getOrganizationId)
-                .orElse(null);
     }
 
     private String buildDisplayName(User user) {

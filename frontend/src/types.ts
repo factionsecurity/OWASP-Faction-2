@@ -9,7 +9,11 @@ export interface User {
   teamIds?: string[];
   roles?: Role[];
   isInternal: boolean;
-  organizationId?: string;
+  organizationIds?: string[];
+  subOrganizationIds?: string[];
+  /** Display names for the ids above, same order; sub-org names are "Org / Sub-org". */
+  organizationNames?: string[];
+  subOrganizationNames?: string[];
   createdAt: string;
   lastLogin?: string;
   disabledAt?: string;
@@ -136,7 +140,8 @@ export interface CreateUserRequest {
   roleIds: string[];
   teamIds?: string[];
   isInternal: boolean;
-  organizationId?: string;
+  organizationIds?: string[];
+  subOrganizationIds?: string[];
 }
 
 export interface UpdateUserRequest {
@@ -148,7 +153,8 @@ export interface UpdateUserRequest {
   roleIds: string[];
   teamIds?: string[];
   isInternal: boolean;
-  organizationId?: string;
+  organizationIds?: string[];
+  subOrganizationIds?: string[];
   /**
    * Disable or re-enable the account. Omit to leave the current state alone — the server treats
    * null as "no change", so an ordinary edit cannot silently re-enable someone. Re-enabling also

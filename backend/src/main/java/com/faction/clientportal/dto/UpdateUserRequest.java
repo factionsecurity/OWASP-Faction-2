@@ -44,7 +44,30 @@ public class UpdateUserRequest {
     @NotNull(message = "isInternal flag is required")
     private Boolean isInternal;
 
+    private List<String> organizationIds;
+
+    private List<String> subOrganizationIds;
+
+    /** Deprecated single-organization form; folded into {@link #organizationIds}. */
+    @Deprecated
     private String organizationId;
+
+    public List<String> effectiveOrganizationIds() {
+        List<String> ids = new java.util.ArrayList<>();
+        if (organizationIds != null) {
+            organizationIds.stream().filter(s -> s != null && !s.isBlank()).distinct().forEach(ids::add);
+        }
+        if (organizationId != null && !organizationId.isBlank() && !ids.contains(organizationId)) {
+            ids.add(organizationId);
+        }
+        return ids;
+    }
+
+    public List<String> effectiveSubOrganizationIds() {
+        return subOrganizationIds == null ? new java.util.ArrayList<>()
+                : subOrganizationIds.stream().filter(s -> s != null && !s.isBlank()).distinct()
+                        .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+    }
 
     /**
      * Disable or re-enable the account. A disabled user cannot log in and their API keys are

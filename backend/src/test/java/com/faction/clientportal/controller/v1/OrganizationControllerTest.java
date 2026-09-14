@@ -957,4 +957,22 @@ class OrganizationControllerTest extends TestContainersConfig {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1));
     }
+
+    @Test
+    void deleteOrganization_refusedWhileAUserIsAMember() throws Exception {
+        String token = jwtService.generateToken(superAdminUser.getUsername(),
+                List.of(new SimpleGrantedAuthority("super_admin")));
+        Organization org = organizationRepository.save(Organization.builder().name("Members").build());
+        userRepository.save(User.builder().username("member1").email("m1@c.com").password("x")
+                .loginOption(LoginOption.NATIVE).isInternal(false)
+                .organizationIds(new ArrayList<>(List.of(org.getId())))
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+
+        mockMvc.perform(delete("/api/v1/organizations/" + org.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(
+                        "Cannot delete organization with 1 member user(s). Remove them from the organization first."));
+        assertThat(organizationRepository.findById(org.getId())).isPresent();
+    }
 }

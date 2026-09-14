@@ -750,7 +750,11 @@ public class AssessmentService {
         Authentication authentication
     ) {
         if (isOrgScopedUser(authentication)) {
-            organizationId = resolveOrgId(authentication);
+            // Membership scope is a union of organizations and sub-organization applications, which
+            // the single-column finders below cannot express — route through the scoped search.
+            return searchAssessmentsAdvanced(name, applicationId, null, organizationId, assessmentTypeId,
+                    assessorId, status, null, null, null, null, null, null, null, Boolean.TRUE, null,
+                    null, null, null, null, pageable, authentication);
         }
         return searchAssessments(applicationId, organizationId, assessmentTypeId, assessorId, status, name, pageable);
     }
@@ -852,10 +856,12 @@ public class AssessmentService {
             return Page.empty(pageable);
         }
         java.util.Set<String> ownedAppIds = null;
+        java.util.Set<String> scopeOrgIds = null;
+        java.util.Set<String> scopeAppIds = null;
         java.util.Set<String> scopeTeamIds = null;
         String scopeAssessorId = null;
         switch (scope.kind()) {
-            case ORG -> organizationId = scope.orgId();
+            case ORG -> { scopeOrgIds = scope.orgIds(); scopeAppIds = scope.appIds(); }
             case OWNED -> ownedAppIds = scope.appIds();
             case TEAM -> scopeTeamIds = scope.teamIds();
             case ASSIGNED -> scopeAssessorId = scope.assessorId();
@@ -863,6 +869,8 @@ public class AssessmentService {
         }
 
         final java.util.Set<String> effectiveOwnedAppIds = ownedAppIds;
+        final java.util.Set<String> effectiveScopeOrgIds = scopeOrgIds;
+        final java.util.Set<String> effectiveScopeAppIds = scopeAppIds;
         final java.util.Set<String> effectiveScopeTeamIds = scopeTeamIds;
         final String effectiveScopeAssessorId = scopeAssessorId;
         final String effectiveOrgId = organizationId;
@@ -905,6 +913,8 @@ public class AssessmentService {
                 .applicationIds(applicationIds)
                 .organizationId(effectiveOrgId)
                 .ownedAppIds(effectiveOwnedAppIds)
+                .scopeOrgIds(effectiveScopeOrgIds)
+                .scopeAppIds(effectiveScopeAppIds)
                 .assessmentTypeId(assessmentTypeId)
                 .assessorId(assessorId)
                 .status(status)
@@ -976,7 +986,7 @@ public class AssessmentService {
             case DENIED -> List.of();
             // Fail closed everywhere below: a scope that resolves to nothing counts nothing
             // rather than falling back to global totals.
-            case ORG -> scope.orgId() == null ? List.of() : assessmentRepository.countByStatusGrouped(scope.orgId());
+            case ORG -> membershipStatusCounts(scope);
             case OWNED -> scope.appIds() == null || scope.appIds().isEmpty()
                     ? List.of() : assessmentRepository.countByStatusGroupedOwned(scope.appIds());
             case TEAM -> scope.teamIds() == null || scope.teamIds().isEmpty()
@@ -1069,7 +1079,8 @@ public class AssessmentService {
         }
         var criteria = AssessmentSearchCriteria.builder()
                 .applicationId(applicationId)
-                .organizationId(scope.kind() == AccessScopeService.AssessmentScopeKind.ORG ? scope.orgId() : null)
+                .scopeOrgIds(scope.kind() == AccessScopeService.AssessmentScopeKind.ORG ? scope.orgIds() : null)
+                .scopeAppIds(scope.kind() == AccessScopeService.AssessmentScopeKind.ORG ? scope.appIds() : null)
                 .ownedAppIds(scope.kind() == AccessScopeService.AssessmentScopeKind.OWNED ? scope.appIds() : null)
                 .scopeTeamIds(scope.kind() == AccessScopeService.AssessmentScopeKind.TEAM ? scope.teamIds() : null)
                 .scopeAssessorId(scope.kind() == AccessScopeService.AssessmentScopeKind.ASSIGNED ? scope.assessorId() : null)
@@ -1198,16 +1209,23 @@ public class AssessmentService {
      */
     public AssessmentMetricsDto getMetrics(String organizationId, Authentication authentication) {
         if (isOrgScopedUser(authentication)) {
-            organizationId = resolveOrgId(authentication);
+            var scope = accessScopeService.resolveAssessmentScope(authentication);
+            final String requested = organizationId;
+            return getMetrics(a -> scope.permits(a)
+                    && (requested == null || requested.equals(a.getOrganizationId())));
         }
         return getMetrics(organizationId);
     }
 
     public AssessmentMetricsDto getMetrics(String organizationId) {
-        // Load all non-deleted assessments (filtered by org if specified)
+        return getMetrics(a -> organizationId == null || organizationId.equals(a.getOrganizationId()));
+    }
+
+    private AssessmentMetricsDto getMetrics(java.util.function.Predicate<Assessment> rowFilter) {
+        // Load all non-deleted assessments the caller may count
         List<Assessment> all = assessmentRepository.findAll().stream()
             .filter(a -> a.getDeletedAt() == null)
-            .filter(a -> organizationId == null || organizationId.equals(a.getOrganizationId()))
+            .filter(rowFilter)
             .collect(Collectors.toList());
 
         long totalCount = all.size();
@@ -1236,7 +1254,7 @@ public class AssessmentService {
         List<Assessment> pastDueAssessments = assessmentRepository.findPastDue(LocalDateTime.now());
         long pastDueCount = pastDueAssessments.stream()
             .filter(a -> a.getDeletedAt() == null)
-            .filter(a -> organizationId == null || organizationId.equals(a.getOrganizationId()))
+            .filter(rowFilter)
             .filter(a -> !workflowConfigService.isCompletedStatus(a.getStatus()))
             .count();
 
@@ -1262,7 +1280,17 @@ public class AssessmentService {
     public List<VulnerabilityTrendPointDto> getVulnerabilityTrend(
         String organizationId, String eventType, int days, Authentication authentication) {
         if (isOrgScopedUser(authentication)) {
-            organizationId = resolveOrgId(authentication);
+            // The trend aggregate is per organization. A caller in several organizations, or with
+            // sub-organization grants only, is narrowed to their first organization (or a requested
+            // one they belong to) rather than shown a union the aggregate cannot produce.
+            var access = accessScopeService.resolveOrgAccess(authentication);
+            java.util.Set<String> visible = accessScopeService.visibleOrganizationIds(access);
+            if (organizationId == null || !visible.contains(organizationId)) {
+                organizationId = visible.stream().sorted().findFirst().orElse(null);
+            }
+            if (organizationId == null) {
+                return List.of();
+            }
         }
         String type = (eventType == null || eventType.isBlank())
             ? VulnerabilityEventService.CREATED : eventType;
@@ -1287,10 +1315,10 @@ public class AssessmentService {
         Authentication authentication
     ) {
         if (isOrgScopedUser(authentication)) {
-            final String orgId = resolveOrgId(authentication);
+            final var scope = accessScopeService.resolveAssessmentScope(authentication);
             Page<Assessment> assessments = assessmentRepository.findByDateRange(startDate, endDate, pageable);
             List<Assessment> filtered = assessments.getContent().stream()
-                    .filter(a -> orgId != null && orgId.equals(a.getOrganizationId()))
+                    .filter(scope::permits)
                     .collect(Collectors.toList());
             return new PageImpl<>(
                     filtered.stream().map(this::migrateAndConvertToDto).collect(Collectors.toList()),
@@ -1579,10 +1607,14 @@ public class AssessmentService {
         return applicationRepository.save(application);
     }
 
-    public String resolveOrgId(Authentication authentication) {
-        return userRepository.findByUsername(authentication.getName())
-                .map(User::getOrganizationId)
-                .orElse(null);
+    /** The nav badge's ORG-scope counts, matching the list's membership predicate exactly. */
+    private List<Object[]> membershipStatusCounts(AccessScopeService.AssessmentScope scope) {
+        var orgs = scope.orgIds() == null ? java.util.Set.<String>of() : scope.orgIds();
+        var apps = scope.appIds() == null ? java.util.Set.<String>of() : scope.appIds();
+        if (orgs.isEmpty() && apps.isEmpty()) return List.of();
+        if (apps.isEmpty()) return assessmentRepository.countByStatusGroupedOrgs(orgs);
+        if (orgs.isEmpty()) return assessmentRepository.countByStatusGroupedOwned(apps);
+        return assessmentRepository.countByStatusGroupedMembership(orgs, apps);
     }
 
     private static boolean isSuperAdmin(Authentication authentication) {

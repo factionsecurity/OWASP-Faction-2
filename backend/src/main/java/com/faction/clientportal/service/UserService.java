@@ -10,6 +10,9 @@ import com.faction.clientportal.model.Permission;
 import com.faction.clientportal.model.Role;
 import com.faction.clientportal.model.User;
 import com.faction.clientportal.repository.OrganizationRepository;
+import com.faction.clientportal.model.Organization;
+import com.faction.clientportal.model.SubOrganization;
+import com.faction.clientportal.repository.SubOrganizationRepository;
 import com.faction.clientportal.repository.RoleRepository;
 import com.faction.clientportal.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +42,7 @@ public class UserService {
     private final PasswordPolicyService passwordPolicyService;
     private final RoleRepository roleRepository;
     private final OrganizationRepository organizationRepository;
+    private final SubOrganizationRepository subOrganizationRepository;
     private final ApiKeyService apiKeyService;
     private final EditionPolicy editionPolicy;
 
@@ -249,11 +253,9 @@ public class UserService {
             throw new IllegalArgumentException("One or more role IDs are invalid");
         }
 
-        // Validate organization exists if provided
-        if (request.getOrganizationId() != null && !request.getOrganizationId().isEmpty()) {
-            organizationRepository.findById(request.getOrganizationId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Organization not found with id: " + request.getOrganizationId()));
-        }
+        List<String> orgIds = request.effectiveOrganizationIds();
+        List<String> subOrgIds = request.effectiveSubOrganizationIds();
+        validateMemberships(orgIds, subOrgIds);
 
 
         validateUsername(request.getUsername());
@@ -268,7 +270,8 @@ public class UserService {
                 .roleIds(request.getRoleIds())
                 .teamIds(request.getTeamIds() != null ? request.getTeamIds() : new ArrayList<>())
                 .isInternal(request.getIsInternal())
-                .organizationId(request.getOrganizationId())
+                .organizationIds(new ArrayList<>(orgIds))
+                .subOrganizationIds(new ArrayList<>(subOrgIds))
                 .createdAt(LocalDateTime.now())
                 .failedLoginAttempts(0)
                 .disabledAt(Boolean.TRUE.equals(request.getDisabled()) ? LocalDateTime.now() : null)
@@ -317,11 +320,9 @@ public class UserService {
         List<Role> roles = roleRepository.findAllById(request.getRoleIds());
         List<String> validRoleIds = roles.stream().map(Role::getId).collect(Collectors.toList());
 
-        // Validate organization exists if provided
-        if (request.getOrganizationId() != null && !request.getOrganizationId().isEmpty()) {
-            organizationRepository.findById(request.getOrganizationId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Organization not found with id: " + request.getOrganizationId()));
-        }
+        List<String> orgIds = request.effectiveOrganizationIds();
+        List<String> subOrgIds = request.effectiveSubOrganizationIds();
+        validateMemberships(orgIds, subOrgIds);
 
 
         validateUsername(request.getUsername());
@@ -339,7 +340,8 @@ public class UserService {
         user.setRoleIds(validRoleIds);
         user.setTeamIds(request.getTeamIds() != null ? request.getTeamIds() : new ArrayList<>());
         user.setIsInternal(request.getIsInternal());
-        user.setOrganizationId(request.getOrganizationId());
+        user.setOrganizationIds(new ArrayList<>(orgIds));
+        user.setSubOrganizationIds(new ArrayList<>(subOrgIds));
 
         // Null means "leave as is" so an ordinary edit can't re-enable an account by omission.
         // Re-enabling also clears the failed-attempt count, which would otherwise keep a
@@ -410,11 +412,19 @@ public class UserService {
                                               Pageable pageable, Authentication authentication) {
         String pattern = (search == null || search.trim().isEmpty())
                 ? null : search.trim().toLowerCase() + "%";
-        String org = (organizationId == null || organizationId.isBlank()) ? null : organizationId;
-
         Set<String> ids = null;
         if (roleId != null && !roleId.isBlank()) {
             ids = new HashSet<>(userRepository.findIdsByRoleId(roleId));
+        }
+        // Membership lives in jsonb columns too; the filter covers the organization and any of
+        // its sub-organizations, so a division member shows up under their organization.
+        if (organizationId != null && !organizationId.isBlank()) {
+            Set<String> subIds = subOrganizationRepository.findByOrganizationIdOrderByNameAsc(organizationId)
+                    .stream().map(SubOrganization::getId).collect(Collectors.toSet());
+            List<String> members = userRepository.findIdsByOrganizationMembership(
+                    organizationId, subIds.isEmpty() ? Set.of("") : subIds);
+            ids = ids == null ? new HashSet<>(members)
+                    : ids.stream().filter(new HashSet<>(members)::contains).collect(Collectors.toSet());
         }
         if (teamId != null && !teamId.isBlank()) {
             List<String> teamMembers = userRepository.findIdsByTeamId(teamId);
@@ -428,7 +438,7 @@ public class UserService {
         }
 
         Page<User> userPage = userRepository.searchFiltered(
-                pattern, org, isInternal,
+                pattern, isInternal,
                 ids != null,
                 // The IN list is unused when filterByIds is false, but must still be non-empty for
                 // the query to parse.
@@ -455,7 +465,29 @@ public class UserService {
         return userPage.map(this::toDto);
     }
 
+    private void validateMemberships(List<String> orgIds, List<String> subOrgIds) {
+        for (String id : orgIds) {
+            organizationRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Organization not found with id: " + id));
+        }
+        for (String id : subOrgIds) {
+            subOrganizationRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Sub-organization not found with id: " + id));
+        }
+    }
+
     private UserDto toDto(User user) {
+        List<String> orgIds = user.getOrganizationIds() == null ? List.of() : user.getOrganizationIds();
+        List<String> subIds = user.getSubOrganizationIds() == null ? List.of() : user.getSubOrganizationIds();
+        List<String> orgNames = orgIds.stream()
+                .map(id -> organizationRepository.findById(id).map(Organization::getName).orElse(id))
+                .toList();
+        List<String> subNames = subIds.stream()
+                .map(id -> subOrganizationRepository.findById(id)
+                        .map(sub -> organizationRepository.findById(sub.getOrganizationId())
+                                .map(Organization::getName).orElse("?") + " / " + sub.getName())
+                        .orElse(id))
+                .toList();
         return UserDto.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -466,7 +498,10 @@ public class UserService {
                 .roleIds(user.getRoleIds())
                 .teamIds(user.getTeamIds())
                 .isInternal(user.getIsInternal())
-                .organizationId(user.getOrganizationId())
+                .organizationIds(new ArrayList<>(orgIds))
+                .subOrganizationIds(new ArrayList<>(subIds))
+                .organizationNames(new ArrayList<>(orgNames))
+                .subOrganizationNames(new ArrayList<>(subNames))
                 .createdAt(user.getCreatedAt())
                 .deletedAt(user.getDeletedAt())
                 .disabledAt(user.getDisabledAt())

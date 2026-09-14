@@ -4,6 +4,7 @@ import com.faction.clientportal.edition.EnterpriseOnly;
 import com.faction.clientportal.config.TestContainersConfig;
 import com.faction.clientportal.model.*;
 import com.faction.clientportal.repository.OrganizationRepository;
+import com.faction.clientportal.repository.SubOrganizationRepository;
 import com.faction.clientportal.repository.RoleRepository;
 import com.faction.clientportal.repository.TeamRepository;
 import com.faction.clientportal.repository.UserRepository;
@@ -53,6 +54,9 @@ class UserControllerTest extends TestContainersConfig {
     private OrganizationRepository organizationRepository;
 
     @Autowired
+    private SubOrganizationRepository subOrganizationRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Autowired
@@ -87,6 +91,7 @@ class UserControllerTest extends TestContainersConfig {
         userRepository.deleteAll();
         roleRepository.deleteAll();
         teamRepository.deleteAll();
+        subOrganizationRepository.deleteAll();
         organizationRepository.deleteAll();
 
         // Create test organization
@@ -1126,5 +1131,93 @@ class UserControllerTest extends TestContainersConfig {
                         .map(SimpleGrantedAuthority::new)
                         .toList()
         );
+    }
+
+    // ── Organization and sub-organization membership ─────────────────────────────
+
+    @Test
+    @EnterpriseOnly
+    void createExternalUser_storesOrganizationAndSubOrganizationMemberships() throws Exception {
+        String token = generateToken(superAdminUser, List.of("super_admin"));
+        Organization orgB = organizationRepository.save(Organization.builder().name("Org B").build());
+        SubOrganization emea = subOrganizationRepository.save(SubOrganization.builder()
+                .organizationId(orgB.getId()).name("EMEA").createdAt(LocalDateTime.now()).build());
+
+        String body = String.format("""
+                {
+                    "username": "multi",
+                    "email": "multi@client.com",
+                    "firstName": "M",
+                    "lastName": "U",
+                    "password": "Password12345",
+                    "loginOption": "NATIVE",
+                    "roleIds": [],
+                    "isInternal": false,
+                    "organizationIds": ["%s"],
+                    "subOrganizationIds": ["%s"]
+                }
+                """, testOrganization.getId(), emea.getId());
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.organizationIds[0]").value(testOrganization.getId()))
+                .andExpect(jsonPath("$.data.subOrganizationIds[0]").value(emea.getId()))
+                .andExpect(jsonPath("$.data.organizationNames[0]").value(testOrganization.getName()))
+                .andExpect(jsonPath("$.data.subOrganizationNames[0]").value("Org B / EMEA"));
+
+        User saved = userRepository.findByUsername("multi").orElseThrow();
+        assertThat(saved.getOrganizationIds()).containsExactly(testOrganization.getId());
+        assertThat(saved.getSubOrganizationIds()).containsExactly(emea.getId());
+    }
+
+    @Test
+    @EnterpriseOnly
+    void createExternalUser_rejectsUnknownSubOrganization() throws Exception {
+        String token = generateToken(superAdminUser, List.of("super_admin"));
+        String body = """
+                {
+                    "username": "bad",
+                    "email": "bad@client.com",
+                    "firstName": "B",
+                    "lastName": "U",
+                    "password": "Password12345",
+                    "loginOption": "NATIVE",
+                    "roleIds": [],
+                    "isInternal": false,
+                    "subOrganizationIds": ["nope"]
+                }
+                """;
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isNotFound());
+        assertThat(userRepository.findByUsername("bad")).isEmpty();
+    }
+
+    @Test
+    void listUsers_organizationFilterIncludesSubOrganizationMembers() throws Exception {
+        String token = generateToken(superAdminUser, List.of("super_admin"));
+        SubOrganization div = subOrganizationRepository.save(SubOrganization.builder()
+                .organizationId(testOrganization.getId()).name("Div").createdAt(LocalDateTime.now()).build());
+        userRepository.save(User.builder().username("divmember").email("div@client.com").password("x")
+                .loginOption(LoginOption.NATIVE).isInternal(false)
+                .subOrganizationIds(new ArrayList<>(List.of(div.getId())))
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+        userRepository.save(User.builder().username("orgmember").email("org@client.com").password("x")
+                .loginOption(LoginOption.NATIVE).isInternal(false)
+                .organizationIds(new ArrayList<>(List.of(testOrganization.getId())))
+                .createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+
+        mockMvc.perform(get("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .param("organizationId", testOrganization.getId())
+                        .param("size", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].username", hasItems("divmember", "orgmember")))
+                .andExpect(jsonPath("$.data[*].username", not(hasItem("superadmin"))));
     }
 }

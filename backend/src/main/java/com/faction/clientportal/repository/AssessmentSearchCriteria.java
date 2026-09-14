@@ -20,6 +20,10 @@ import java.util.Collection;
  *       so empty means "no filter" (show all), not "match nothing".
  * </ul>
  *
+ * <p>{@code scopeOrgIds} / {@code scopeAppIds} carry the mandatory membership (ORG) read scope:
+ * the organizations the caller belongs to OR the applications their sub-organizations grant, ORed
+ * together. Null on both → not applied; non-null and both empty → match nothing.
+ *
  * <p>{@code statuses} is the multi-select status filter (empty or null → no filter), separate
  * from the single {@code status} the older callers pass; both are ANDed when both are set.
  *
@@ -43,6 +47,8 @@ public record AssessmentSearchCriteria(
         Collection<String> applicationIds,
         String organizationId,
         Collection<String> ownedAppIds,
+        Collection<String> scopeOrgIds,
+        Collection<String> scopeAppIds,
         String assessmentTypeId,
         String assessorId,
         String status,
