@@ -86,6 +86,22 @@ public class SlaRecalculationService {
             log.debug("SLA changed; recalculation of stored due dates is disabled by configuration");
             return;
         }
+        recalculateAndLog();
+    }
+
+    /**
+     * The admin repair path ({@code POST /api/v1/config/assessment-workflow/recalculate-sla}): the same
+     * recalculation an SLA edit triggers, on the same single-thread executor, whatever
+     * {@code faction.sla.recalculate-on-config-change} says. Re-saving unchanged SLAs publishes no
+     * event, so this is how a run that failed after its batch retries is repeated. The controller calls
+     * it through the Spring proxy, so {@code @Async} applies.
+     */
+    @Async("slaRecalculationExecutor")
+    public void recalculateInBackground() {
+        recalculateAndLog();
+    }
+
+    private void recalculateAndLog() {
         try {
             RecalculationResult result = recalculateOpenFindings();
             log.info("SLA recalculation: {} open finding(s) got new due dates, {} returned from Past Due to Open",
@@ -122,7 +138,8 @@ public class SlaRecalculationService {
      * {@link #MAX_BATCH_ATTEMPTS} times in total (same cursor, new transaction each time) when the
      * failure is a {@link TransientDataAccessException}. Any other exception propagates immediately.
      * If the final attempt still fails, logs at ERROR with the cursor and attempt count, then rethrows
-     * so {@link #onSlaConfigChanged} logs the run as failed.
+     * so the private {@code recalculateAndLog()} helper — called by both {@link #onSlaConfigChanged}
+     * and {@link #recalculateInBackground} — logs the run as failed.
      */
     private BatchOutcome executeBatchWithRetry(String afterId, LocalDateTime now) {
         int attempt = 0;

@@ -42,6 +42,7 @@ class RemediationQueueServiceTest extends TestContainersConfig {
     @Autowired private RetestRepository retestRepository;
     @Autowired private AssessmentRepository assessmentRepository;
     @Autowired private AssessmentWorkflowConfigRepository workflowConfigRepository;
+    @Autowired private SlaService slaService;
 
     private String liveAssessmentId;
 
@@ -251,6 +252,26 @@ class RemediationQueueServiceTest extends TestContainersConfig {
         assertThat(service.queueCount()).isEqualTo(5);
     }
 
+    // ── Stored dates, not the config at read time ──────────────────────────────
+
+    @Test
+    void theQueueReadsTheStoredDates_notTheConfigAtReadTime() {
+        // Stored under setUp's SLAs. Only findings not yet due, so the live past-due job never
+        // picks one up and rewrites its dates under the edited config mid-test.
+        vuln(VulnerabilitySeverity.HIGH, 10, "Open", null);     // warning +5d → not queued
+        vuln(VulnerabilitySeverity.CRITICAL, 5, "Open", null);  // warning −1d → queued
+        vuln(VulnerabilitySeverity.MEDIUM, 50, "Open", null);   // warning −5d → queued
+
+        // Edited straight through the repository: no event, no recalculation, stored dates stay.
+        // Computed from this config the queue would hold only the HIGH finding.
+        configureSlas(
+                new VulnerabilitySla("CRITICAL", 30, 15),
+                new VulnerabilitySla("HIGH", 12, 5),
+                new VulnerabilitySla("MEDIUM", 180, 90));
+
+        assertThat(service.queueCount()).isEqualTo(2);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private void configureSlas(VulnerabilitySla... slas) {
@@ -279,7 +300,7 @@ class RemediationQueueServiceTest extends TestContainersConfig {
 
     private void vuln(String assessmentId, VulnerabilitySeverity sev, int openedDaysAgo,
                       String status, LocalDateTime closedAt) {
-        vulnerabilityRepository.save(Vulnerability.builder()
+        Vulnerability v = Vulnerability.builder()
                 .name("v-" + System.nanoTime())
                 .severity(sev)
                 .assessmentId(assessmentId)
@@ -289,7 +310,11 @@ class RemediationQueueServiceTest extends TestContainersConfig {
                 .closedAt(closedAt)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
-                .build());
+                .build();
+        // The queue reads the stored dates, so seed them the way every real write does: from the
+        // config in force when the finding is saved.
+        slaService.refresh(v);
+        vulnerabilityRepository.save(v);
     }
 
     /**

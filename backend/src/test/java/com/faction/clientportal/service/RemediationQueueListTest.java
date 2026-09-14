@@ -63,6 +63,7 @@ class RemediationQueueListTest extends TestContainersConfig {
     @Autowired private OrganizationRepository organizationRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private AssessmentWorkflowConfigRepository workflowConfigRepository;
+    @Autowired private SlaService slaService;
 
     private static final Pageable PAGE = PageRequest.of(0, 50);
 
@@ -618,6 +619,7 @@ class RemediationQueueListTest extends TestContainersConfig {
         var noStatus = Vulnerability.builder().name("NoStatus").severity(VulnerabilitySeverity.HIGH)
                 .assessmentId(assessmentId).order(0).openedAt(LocalDateTime.now().minusDays(40))
                 .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
+        slaService.refresh(noStatus);
         vulnerabilityRepository.save(noStatus);
         vulnBuilder("OpenVuln", VulnerabilitySeverity.HIGH, 40).status("Open").save();
 
@@ -755,6 +757,25 @@ class RemediationQueueListTest extends TestContainersConfig {
         vuln("v", VulnerabilitySeverity.HIGH, 40);
         var result = list(null, auth("ghost", Permission.VULNERABILITIES_READ_ORG.getPermission()));
         assertThat(result).isEmpty();
+    }
+
+    // ── Stored dates, not the config at read time ────────────────────────────────
+
+    @Test
+    void listsFromTheStoredDates_notTheConfigAtReadTime() {
+        // Stored under setUp's SLAs; both not yet due, so the live past-due job leaves them alone.
+        vuln("StoredWarning", VulnerabilitySeverity.CRITICAL, 5); // due +2d, warning −1d → queued
+        vuln("StoredFresh", VulnerabilitySeverity.HIGH, 10);      // due +20d, warning +5d → not queued
+
+        // No recalculation: computed from this config the queue would be exactly "StoredFresh".
+        configureSlas(
+                new VulnerabilitySla("CRITICAL", 30, 15),
+                new VulnerabilitySla("HIGH", 12, 5));
+
+        var rows = list();
+        assertThat(names(rows)).containsExactly("StoredWarning");
+        assertThat(row(rows, "StoredWarning").isWarning()).isTrue();
+        assertThat(row(rows, "StoredWarning").isUrgent()).isFalse();
     }
 
     // ── Pagination ──────────────────────────────────────────────────────────────
@@ -938,7 +959,12 @@ class RemediationQueueListTest extends TestContainersConfig {
         VulnBuilder openedAtNull() { b.openedAt(null); return this; }
         VulnBuilder softDeleted() { b.deletedAt(LocalDateTime.now()); return this; }
         VulnBuilder assessment(String id) { b.assessmentId(id); return this; }
-        String save() { return vulnerabilityRepository.save(b.build()).getId(); }
+        String save() {
+            Vulnerability v = b.build();
+            // Stored dates from the config in force now, as every real write sets them.
+            slaService.refresh(v);
+            return vulnerabilityRepository.save(v).getId();
+        }
     }
 
     /** Seed an open retest (with a fresh underlying vuln named {@code name}) on the default assessment. */

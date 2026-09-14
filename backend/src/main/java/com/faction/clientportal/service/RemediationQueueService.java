@@ -2,7 +2,6 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.RemediationQueueSummaryDto;
 import com.faction.clientportal.dto.RemediationRowDto;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.VulnerabilitySla;
 import com.faction.clientportal.model.Retest;
 import com.faction.clientportal.model.VulnerabilitySeverity;
 import com.faction.clientportal.repository.RemediationQueueCriteria;
@@ -44,7 +43,6 @@ public class RemediationQueueService {
 
     private final VulnerabilityRepository vulnerabilityRepository;
     private final RetestRepository retestRepository;
-    private final AssessmentWorkflowConfigService workflowConfigService;
     private final VulnerabilityScopeResolver scopeResolver;
 
     /**
@@ -94,10 +92,7 @@ public class RemediationQueueService {
     }
 
     private RemediationQueueSummaryDto summarize(RemediationQueueCriteria criteria) {
-        var slas = workflowConfigService.getConfig().getVulnerabilitySlas();
-        Integer[] warn = slas == null ? new Integer[0] : warnDaysByOrdinal(slas);
-        Integer[] due = slas == null ? new Integer[0] : dueDaysByOrdinal(slas);
-        java.util.Map<String, Long> counts = vulnerabilityRepository.countRemediationBuckets(warn, due, criteria);
+        java.util.Map<String, Long> counts = vulnerabilityRepository.countRemediationBuckets(criteria);
         long pastDue = counts.getOrDefault("PAST_DUE", 0L);
         long dueSoon = counts.getOrDefault("DUE_SOON", 0L);
         long requested = counts.getOrDefault("RETEST_REQUESTED", 0L);
@@ -138,10 +133,6 @@ public class RemediationQueueService {
             return Page.empty(pageable);
         }
 
-        var slas = workflowConfigService.getConfig().getVulnerabilitySlas();
-        Integer[] warn = slas == null ? new Integer[0] : warnDaysByOrdinal(slas);
-        Integer[] due = slas == null ? new Integer[0] : dueDaysByOrdinal(slas);
-
         var criteria = RemediationQueueCriteria.builder()
                 .search(search)
                 .severityOrdinals(severityOrdinals(severities))
@@ -157,7 +148,7 @@ public class RemediationQueueService {
                 .includeCompletedRetests(includeCompletedRetests)
                 .build();
 
-        Page<RemediationDueRow> page = vulnerabilityRepository.listRemediationDue(warn, due, criteria, pageable);
+        Page<RemediationDueRow> page = vulnerabilityRepository.listRemediationDue(criteria, pageable);
 
         return new PageImpl<>(toDtos(page.getContent()), pageable, page.getTotalElements());
     }
@@ -324,38 +315,5 @@ public class RemediationQueueService {
             return null;
         }
         return VulnerabilitySeverity.values()[ordinal];
-    }
-
-    /**
-     * Per-severity warning threshold ({@code pastDueDays - warningDays}) indexed by
-     * severity ordinal; null where the severity has no SLA (untracked, so excluded).
-     */
-    private static Integer[] warnDaysByOrdinal(List<VulnerabilitySla> slas) {
-        var warn = new Integer[VulnerabilitySeverity.values().length];
-        for (var sla : slas) {
-            try {
-                // Normalize case so a config severity like "High"/"high" still matches the enum
-                // (mirrors VulnerabilityPastDueJob; a bare valueOf would silently drop it).
-                warn[VulnerabilitySeverity.valueOf(sla.getSeverity().trim().toUpperCase()).ordinal()] =
-                        sla.getPastDueDays() - sla.getWarningDays();
-            } catch (IllegalArgumentException | NullPointerException ignored) {
-                // Unknown/blank severity name in config — skip it.
-            }
-        }
-        return warn;
-    }
-
-    /** Per-severity {@code pastDueDays} (the SLA deadline) indexed by severity ordinal; null where untracked. */
-    private static Integer[] dueDaysByOrdinal(List<VulnerabilitySla> slas) {
-        var due = new Integer[VulnerabilitySeverity.values().length];
-        for (var sla : slas) {
-            try {
-                due[VulnerabilitySeverity.valueOf(sla.getSeverity().trim().toUpperCase()).ordinal()] =
-                        sla.getPastDueDays();
-            } catch (IllegalArgumentException | NullPointerException ignored) {
-                // Unknown/blank severity name in config — skip it.
-            }
-        }
-        return due;
     }
 }

@@ -122,6 +122,11 @@ faction:
     # Each batch's rows are locked (SELECT ... FOR UPDATE) for the life of its transaction, so a
     # concurrent user save on one of them waits rather than being silently overwritten; kept modest
     # (500, not thousands) so that wait stays brief.
+    #
+    # When false, an SLA edit does NOT recalculate stored due dates. Every SLA reader — the
+    # remediation queue, the severity tiles, VulnerabilityPastDueJob, VulnerabilityDigestJob — keeps
+    # reading the old due_at/warning_at (a shortened SLA won't mark anything Past Due) until
+    # POST /api/v1/config/assessment-workflow/recalculate-sla is called to bring them up to date.
     recalculate-on-config-change: ${FACTION_SLA_RECALCULATE_ON_CONFIG_CHANGE:true}
     recalculation-batch-size: ${FACTION_SLA_RECALCULATION_BATCH_SIZE:500}
 

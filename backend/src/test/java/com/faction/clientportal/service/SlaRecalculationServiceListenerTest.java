@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -124,5 +125,28 @@ class SlaRecalculationServiceListenerTest {
 
         // MAX_BATCH_ATTEMPTS total attempts, then give up.
         verify(transactionTemplate, times(SlaRecalculationService.MAX_BATCH_ATTEMPTS)).execute(any());
+    }
+
+    // ── Admin trigger ───────────────────────────────────────────────────────
+
+    @Test
+    void theAdminTriggerRecalculatesEvenWhenTheConfigChangeSwitchIsOff() {
+        when(transactionTemplate.execute(any())).thenReturn(null);
+
+        new SlaRecalculationService(vulnerabilityRepository, slaService, transactionTemplate, 5000, false)
+                .recalculateInBackground();
+
+        verify(transactionTemplate).execute(any());
+    }
+
+    @Test
+    void theAdminTriggerLogsAFailedRunInsteadOfThrowing() {
+        when(transactionTemplate.execute(ArgumentMatchers.<TransactionCallback<Object>>any()))
+                .thenThrow(new IllegalStateException("boom"));
+
+        SlaRecalculationService service = new SlaRecalculationService(
+                vulnerabilityRepository, slaService, transactionTemplate, 5000, true);
+
+        assertThatCode(service::recalculateInBackground).doesNotThrowAnyException();
     }
 }
