@@ -244,6 +244,31 @@ class PeerReviewServiceTest {
     }
 
     /**
+     * The Finalize tab's "Peer reviewed" step reads peerReviewedAt. Accepting a completed review is
+     * the moment an assessment has been peer reviewed; before this it was only ever set by moving the
+     * assessment into a legacy PENDING_REVIEW status no workflow has, so the step never completed.
+     */
+    @Test
+    void acceptChanges_recordsWhenTheAssessmentWasPeerReviewed() {
+        assessment.setPeerReviewStatus(AssessmentPeerReviewStatus.NEEDS_ACCEPTANCE);
+        assessment.setActivePeerReviewId("review-2");
+
+        when(peerReviewRepository.findById("review-2")).thenReturn(Optional.of(completedReview));
+        when(assessmentRepository.findByIdAndDeletedAtIsNull("assess-1")).thenReturn(Optional.of(assessment));
+        when(assessmentRepository.save(any(Assessment.class))).thenReturn(assessment);
+
+        LocalDateTime before = LocalDateTime.now();
+        service.acceptChanges("review-2", AcceptPeerReviewRequest.builder()
+                .acceptedAssessmentFieldIds(List.of())
+                .acceptedVulnerabilityChanges(new HashMap<>())
+                .build(), "user-1");
+
+        ArgumentCaptor<Assessment> assessCaptor = ArgumentCaptor.forClass(Assessment.class);
+        verify(assessmentRepository).save(assessCaptor.capture());
+        assertThat(assessCaptor.getValue().getPeerReviewedAt()).isNotNull().isAfterOrEqualTo(before);
+    }
+
+    /**
      * A blank revised value (empty editor state saved during review) must
      * never wipe live content on accept — this bug erased vulnerability
      * descriptions and assessment summaries in production data.

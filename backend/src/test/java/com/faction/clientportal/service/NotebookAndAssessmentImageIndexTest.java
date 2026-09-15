@@ -66,7 +66,7 @@ class NotebookAndAssessmentImageIndexTest extends TestContainersConfig {
                 .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build());
         assessment = assessmentRepository.save(Assessment.builder()
                 .name("Q1").applicationId(application.getId()).organizationId("org-1")
-                .assessmentTypeId("t").status("IN_PROGRESS")
+                .assessmentTypeId("t").status("Testing")
                 .createdAt(LocalDateTime.now()).build());
     }
 
@@ -115,7 +115,7 @@ class NotebookAndAssessmentImageIndexTest extends TestContainersConfig {
         // application, and its author moves between assessments.
         Assessment other = assessmentRepository.save(Assessment.builder()
                 .name("Q2").applicationId(application.getId()).organizationId("org-1")
-                .assessmentTypeId("t").status("IN_PROGRESS")
+                .assessmentTypeId("t").status("Testing")
                 .createdAt(LocalDateTime.now()).build());
         String fromFirst = uploadImage(assessment.getId());
         String fromSecond = uploadImage(other.getId());
@@ -174,7 +174,7 @@ class NotebookAndAssessmentImageIndexTest extends TestContainersConfig {
 
         String imageId = uploadImage(assessment.getId());
 
-        assessmentService.createAssessment(CreateAssessmentRequest.builder()
+        String createdId = assessmentService.createAssessment(CreateAssessmentRequest.builder()
                 .name("With evidence")
                 .applicationId(application.getId())
                 .assessmentTypeId(type.getId())
@@ -182,11 +182,19 @@ class NotebookAndAssessmentImageIndexTest extends TestContainersConfig {
                 .startDate(LocalDateTime.now())
                 .plannedEndDate(LocalDateTime.now().plusDays(7))
                 .initialFieldValues(java.util.Map.of("exec-summary", tag(imageId)))
-                .build(), "tester");
+                .build(), "tester").getId();
+
+        // The image belongs to another assessment, so creation copies it in; what must be indexed
+        // is the image the saved field actually points at.
+        String stored = assessmentRepository.findById(createdId).orElseThrow()
+                .getFieldValues().get("exec-summary");
+        java.util.regex.Matcher ref = java.util.regex.Pattern
+                .compile("/api/v1/inline-images/([a-zA-Z0-9]+)").matcher(stored);
+        assertThat(ref.find()).isTrue();
 
         // Only updateAssessment used to index, so an assessment created with an image in a field
         // and never edited again lost it to the GC the next night.
-        assertThat(inlineImageService.hasRefs(imageId)).isTrue();
+        assertThat(inlineImageService.hasRefs(ref.group(1))).isTrue();
     }
 
     @Test

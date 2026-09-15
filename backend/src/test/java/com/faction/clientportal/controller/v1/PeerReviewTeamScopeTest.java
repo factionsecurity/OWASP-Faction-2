@@ -201,7 +201,7 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
     private Assessment saveAssessment(String name, List<String> assessorIds) {
         return assessmentRepository.save(Assessment.builder()
                 .name(name).applicationId("app-1").organizationId("org-1")
-                .assessmentTypeId("type-1").status("IN_PROGRESS")
+                .assessmentTypeId("type-1").status("Testing")
                 .assessorIds(assessorIds)
                 .createdAt(LocalDateTime.now())
                 .build());

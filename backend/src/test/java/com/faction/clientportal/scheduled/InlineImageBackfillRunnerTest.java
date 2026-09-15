@@ -57,7 +57,7 @@ class InlineImageBackfillRunnerTest extends TestContainersConfig {
 
         assessment = assessmentRepository.save(Assessment.builder()
                 .name("Existing").applicationId("app-1").organizationId("org-1")
-                .assessmentTypeId("t").status("IN_PROGRESS")
+                .assessmentTypeId("t").status("Testing")
                 .createdAt(LocalDateTime.now()).build());
     }
 

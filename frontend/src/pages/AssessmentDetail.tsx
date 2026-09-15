@@ -74,21 +74,6 @@ const SIDEBAR_LOCK_LABELS: Record<SidebarLock, string> = {
   closed: 'Locked closed — click to unlock',
 };
 
-const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  DRAFT: 'secondary',
-  IN_PROGRESS: 'info',
-  ON_HOLD: 'warning',
-  PENDING_REVIEW: 'info',
-  COMPLETED: 'success',
-  APPROVED: 'success',
-  ARCHIVED: 'secondary',
-};
-
-function getStatusColor(status: string, completedStatus?: string): 'success' | 'warning' | 'info' | 'danger' | 'secondary' {
-  if (completedStatus && status === completedStatus) return 'success';
-  return STATUS_COLORS[status] ?? 'info';
-}
-
 /**
  * Section ids a notification link may point at. Validated rather than trusted, because
  * `activeSection` drives which block renders and an unknown value renders none of them —
@@ -743,10 +728,11 @@ export default function AssessmentDetail() {
     );
   }
 
-  const isFinalized = workflowConfig
-    ? assessment.status === workflowConfig.completedStatus
-        || ['COMPLETED', 'APPROVED', 'ARCHIVED'].includes(assessment.status)
-    : ['COMPLETED', 'APPROVED', 'ARCHIVED'].includes(assessment.status);
+  // Statuses are workflow-configured; until the config loads nothing counts as finalized.
+  const isFinalized = !!workflowConfig?.completedStatus
+    && assessment.status === workflowConfig.completedStatus;
+  // Reopening sends the configured in-progress status, so it isn't offered until that is known.
+  const reopenStatus = workflowConfig?.inProgressStatus;
 
   // Whole days left in the reopen window; 0 once it has lapsed or the assessment isn't completed.
   // Mirrors AssessmentService.REOPEN_WINDOW_DAYS, which enforces it — the server rejects a late
@@ -759,9 +745,10 @@ export default function AssessmentDetail() {
   })();
 
   const handleReopen = async () => {
+    if (!reopenStatus) return;
     setReopening(true);
     try {
-      const res = await assessmentsApi.updateStatus(assessment.id, workflowConfig?.inProgressStatus ?? 'IN_PROGRESS');
+      const res = await assessmentsApi.updateStatus(assessment.id, reopenStatus);
       if (res.success && res.data) {
         setAssessment(res.data);
         showToastMessage('Assessment reopened');
@@ -963,7 +950,7 @@ export default function AssessmentDetail() {
                   ? ` It can be reopened for ${reopenDaysLeft} more ${reopenDaysLeft === 1 ? 'day' : 'days'}.`
                   : ` It was completed more than ${REOPEN_WINDOW_DAYS} days ago and can no longer be reopened.`}
               </span>
-              {reopenDaysLeft > 0 && permissions.canEditAssessments && (
+              {reopenDaysLeft > 0 && permissions.canEditAssessments && !!reopenStatus && (
                 <Button size="sm" variant="secondary" onClick={() => setShowReopenConfirm(true)} disabled={reopening}>
                   <RotateCcw size={14} />
                   {reopening ? 'Reopening…' : 'Reopen'}
@@ -1017,7 +1004,9 @@ export default function AssessmentDetail() {
                     <span className="inline-flex-row">
                       {assessment.name}
                       <Badge
-                        variant={workflowConfig?.statusColors?.[assessment.status] ? undefined : getStatusColor(assessment.status, workflowConfig?.completedStatus)}
+                        variant={workflowConfig?.statusColors?.[assessment.status]
+                          ? undefined
+                          : (workflowConfig?.completedStatus && assessment.status === workflowConfig.completedStatus ? 'success' : 'info')}
                         customColor={workflowConfig?.statusColors?.[assessment.status]}
                       >
                         {assessment.status.replace(/_/g, ' ')}

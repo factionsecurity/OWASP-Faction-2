@@ -192,27 +192,27 @@ class AssessmentControllerTest extends TestContainersConfig {
     @Test
     void testGetMetrics_Success() throws Exception {
         // Create assessments with different statuses
-        createTestAssessment("Assessment 1", "DRAFT");
-        createTestAssessment("Assessment 2", "IN_PROGRESS");
-        createTestAssessment("Assessment 3", "COMPLETED");
-        createTestAssessment("Assessment 4", "ON_HOLD");
+        createTestAssessment("Assessment 1", "New");
+        createTestAssessment("Assessment 2", "Testing");
+        createTestAssessment("Assessment 3", "Completed");
+        createTestAssessment("Assessment 4", "Testing");
 
         mockMvc.perform(get("/api/v1/assessments/metrics")
                         .header("Authorization", "Bearer " + jwtToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.totalCount").value(4))
-                .andExpect(jsonPath("$.data.draftCount").value(1))
-                .andExpect(jsonPath("$.data.inProgressCount").value(1))
-                .andExpect(jsonPath("$.data.completedCount").value(1))
-                .andExpect(jsonPath("$.data.onHoldCount").value(1));
+                .andExpect(jsonPath("$.data.statusCounts.New").value(1))
+                .andExpect(jsonPath("$.data.statusCounts.Testing").value(2))
+                .andExpect(jsonPath("$.data.statusCounts.Completed").value(1))
+                .andExpect(jsonPath("$.data.draftCount").doesNotExist());
     }
 
     @Test
     void testGetMetrics_WithOrganizationFilter() throws Exception {
         // Create assessments
-        createTestAssessment("Assessment 1", "DRAFT");
-        createTestAssessment("Assessment 2", "IN_PROGRESS");
+        createTestAssessment("Assessment 1", "New");
+        createTestAssessment("Assessment 2", "Testing");
 
         mockMvc.perform(get("/api/v1/assessments/metrics")
                         .header("Authorization", "Bearer " + jwtToken)
@@ -290,8 +290,8 @@ class AssessmentControllerTest extends TestContainersConfig {
 
     @Test
     void testExportToCsv_Success() throws Exception {
-        createTestAssessment("Assessment 1", "DRAFT");
-        createTestAssessment("Assessment 2", "IN_PROGRESS");
+        createTestAssessment("Assessment 1", "New");
+        createTestAssessment("Assessment 2", "Testing");
 
         mockMvc.perform(get("/api/v1/assessments/export/csv")
                         .header("Authorization", "Bearer " + jwtToken))
@@ -304,11 +304,11 @@ class AssessmentControllerTest extends TestContainersConfig {
 
     @Test
     void testUpdateAssessment_WithEngagementFields() throws Exception {
-        Assessment assessment = createTestAssessment("Original Assessment", "DRAFT");
+        Assessment assessment = createTestAssessment("Original Assessment", "New");
 
         UpdateAssessmentRequest updateRequest = UpdateAssessmentRequest.builder()
                 .name("Updated Assessment")
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .assessorIds(List.of(testUser.getId()))
                 .engagementManagerId(testUser.getId())
                 .remediationManagerId(testUser.getId())
@@ -322,14 +322,14 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.name").value("Updated Assessment"))
-                .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.data.status").value("Testing"))
                 .andExpect(jsonPath("$.data.scope").value("Updated scope"))
                 .andExpect(jsonPath("$.data.engagementManagerId").value(testUser.getId()));
     }
 
     @Test
     void testGetAssessment_Success() throws Exception {
-        Assessment assessment = createTestAssessment("Test Assessment", "DRAFT");
+        Assessment assessment = createTestAssessment("Test Assessment", "New");
 
         mockMvc.perform(get("/api/v1/assessments/" + assessment.getId())
                         .header("Authorization", "Bearer " + jwtToken))
@@ -341,7 +341,7 @@ class AssessmentControllerTest extends TestContainersConfig {
 
     @Test
     void testDeleteAssessment_Success() throws Exception {
-        Assessment assessment = createTestAssessment("Assessment to Delete", "DRAFT");
+        Assessment assessment = createTestAssessment("Assessment to Delete", "New");
 
         mockMvc.perform(delete("/api/v1/assessments/" + assessment.getId())
                         .header("Authorization", "Bearer " + jwtToken))
@@ -370,8 +370,8 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .build();
         editAllUser = userRepository.save(editAllUser);
 
-        createTestAssessment("Assessment Alpha", "DRAFT");
-        createTestAssessment("Assessment Beta", "IN_PROGRESS");
+        createTestAssessment("Assessment Alpha", "New");
+        createTestAssessment("Assessment Beta", "Testing");
 
         // assessments:edit:all also grants read:all access per the controller @PreAuthorize
         String token = jwtService.generateToken(
@@ -404,7 +404,7 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .build();
         editAllUser = userRepository.save(editAllUser);
 
-        Assessment assessment = createTestAssessment("Viewable Assessment", "DRAFT");
+        Assessment assessment = createTestAssessment("Viewable Assessment", "New");
 
         String token = jwtService.generateToken(
                 editAllUser.getUsername(),
@@ -435,7 +435,7 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .build();
         editAllUser = userRepository.save(editAllUser);
 
-        Assessment assessment = createTestAssessment("Editable Assessment", "DRAFT");
+        Assessment assessment = createTestAssessment("Editable Assessment", "New");
 
         String token = jwtService.generateToken(
                 editAllUser.getUsername(),
@@ -444,7 +444,7 @@ class AssessmentControllerTest extends TestContainersConfig {
 
         UpdateAssessmentRequest updateRequest = UpdateAssessmentRequest.builder()
                 .name("Editable Assessment Updated")
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .assessorIds(List.of(testUser.getId()))
                 .engagementManagerId(testUser.getId())
                 .scope("Updated scope")
@@ -457,7 +457,7 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.name").value("Editable Assessment Updated"))
-                .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
+                .andExpect(jsonPath("$.data.status").value("Testing"));
     }
 
     @Test
@@ -474,7 +474,7 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .build();
         editAllUser = userRepository.save(editAllUser);
 
-        Assessment assessment = createTestAssessment("Protected Assessment", "DRAFT");
+        Assessment assessment = createTestAssessment("Protected Assessment", "New");
 
         String token = jwtService.generateToken(
                 editAllUser.getUsername(),
@@ -501,7 +501,7 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .build();
         noAccessUser = userRepository.save(noAccessUser);
 
-        Assessment assessment = createTestAssessment("Restricted Assessment", "DRAFT");
+        Assessment assessment = createTestAssessment("Restricted Assessment", "New");
 
         String token = jwtService.generateToken(
                 noAccessUser.getUsername(),
@@ -546,11 +546,11 @@ class AssessmentControllerTest extends TestContainersConfig {
     void testSearchAssessments_AssignedToMe_MatchesByUserId() throws Exception {
         // The JWT principal is the USERNAME; assignments store user IDs. The
         // controller must resolve username -> id or this filter matches nothing.
-        Assessment mine = createTestAssessment("Assigned To Me", "IN_PROGRESS");
+        Assessment mine = createTestAssessment("Assigned To Me", "Testing");
         mine.setAssessorIds(new ArrayList<>(List.of(testUser.getId())));
         assessmentRepository.save(mine);
 
-        createTestAssessment("Someone Else's", "IN_PROGRESS");
+        createTestAssessment("Someone Else's", "Testing");
 
         mockMvc.perform(get("/api/v1/assessments")
                         .header("Authorization", "Bearer " + jwtToken)
@@ -562,11 +562,11 @@ class AssessmentControllerTest extends TestContainersConfig {
 
     @Test
     void testSearchAssessments_AssignedToMe_MatchesEngagementManager() throws Exception {
-        Assessment mine = createTestAssessment("Managed By Me", "IN_PROGRESS");
+        Assessment mine = createTestAssessment("Managed By Me", "Testing");
         mine.setEngagementManagerId(testUser.getId());
         assessmentRepository.save(mine);
 
-        createTestAssessment("Unrelated", "IN_PROGRESS");
+        createTestAssessment("Unrelated", "Testing");
 
         mockMvc.perform(get("/api/v1/assessments")
                         .header("Authorization", "Bearer " + jwtToken)
@@ -582,7 +582,7 @@ class AssessmentControllerTest extends TestContainersConfig {
     void testUpdateAssessment_AcceptsAnExplicitCompletedDate() throws Exception {
         // Importers load historical work, so the record has to carry the date testing actually
         // finished rather than the moment the import ran.
-        Assessment assessment = createTestAssessment("Historic Test", "IN_PROGRESS");
+        Assessment assessment = createTestAssessment("Historic Test", "Testing");
 
         mockMvc.perform(put("/api/v1/assessments/" + assessment.getId())
                         .header("Authorization", "Bearer " + jwtToken)
@@ -605,7 +605,7 @@ class AssessmentControllerTest extends TestContainersConfig {
 
     @Test
     void testUpdateAssessment_StampsCompletionNowWhenNoDateGiven() throws Exception {
-        Assessment assessment = createTestAssessment("Finished Today", "IN_PROGRESS");
+        Assessment assessment = createTestAssessment("Finished Today", "Testing");
 
         mockMvc.perform(put("/api/v1/assessments/" + assessment.getId())
                         .header("Authorization", "Bearer " + jwtToken)
@@ -623,10 +623,10 @@ class AssessmentControllerTest extends TestContainersConfig {
 
     @Test
     void testSearchAssessments_FilteredByCompletedDateRange() throws Exception {
-        Assessment recent = createTestAssessment("Recent", "COMPLETED");
+        Assessment recent = createTestAssessment("Recent", "Completed");
         recent.setCompletedDate(LocalDateTime.now().minusDays(2));
         assessmentRepository.save(recent);
-        Assessment old = createTestAssessment("Old", "COMPLETED");
+        Assessment old = createTestAssessment("Old", "Completed");
         old.setCompletedDate(LocalDateTime.now().minusDays(60));
         assessmentRepository.save(old);
 
@@ -646,11 +646,11 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .name("Mobile").createdAt(LocalDateTime.now()).build());
         AssessmentType cloud = assessmentTypeRepository.save(AssessmentType.builder()
                 .name("Cloud").createdAt(LocalDateTime.now()).build());
-        createTestAssessment("Web one", "IN_PROGRESS");
-        Assessment m = createTestAssessment("Mobile one", "IN_PROGRESS");
+        createTestAssessment("Web one", "Testing");
+        Assessment m = createTestAssessment("Mobile one", "Testing");
         m.setAssessmentTypeId(mobile.getId());
         assessmentRepository.save(m);
-        Assessment c = createTestAssessment("Cloud one", "IN_PROGRESS");
+        Assessment c = createTestAssessment("Cloud one", "Testing");
         c.setAssessmentTypeId(cloud.getId());
         assessmentRepository.save(c);
 
@@ -671,30 +671,30 @@ class AssessmentControllerTest extends TestContainersConfig {
 
     @Test
     void testSearchAssessments_FilteredBySeveralStatuses() throws Exception {
-        createTestAssessment("Drafted", "DRAFT");
-        createTestAssessment("Running", "IN_PROGRESS");
-        createTestAssessment("Paused", "ON_HOLD");
+        createTestAssessment("Drafted", "New");
+        createTestAssessment("Running", "Testing");
+        createTestAssessment("Writing Up", "Reporting");
 
         mockMvc.perform(get("/api/v1/assessments")
                         .header("Authorization", "Bearer " + jwtToken)
-                        .param("statuses", "IN_PROGRESS", "on_hold"))
+                        .param("statuses", "Testing", "reporting"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(2)))
-                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Running", "Paused")));
+                .andExpect(jsonPath("$.data[*].name", containsInAnyOrder("Running", "Writing Up")));
 
         // A status nothing is in returns nothing rather than falling through to everything.
         mockMvc.perform(get("/api/v1/assessments")
                         .header("Authorization", "Bearer " + jwtToken)
-                        .param("statuses", "PENDING_REVIEW"))
+                        .param("statuses", "Planning"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(0)));
     }
 
     @Test
     void testSearchAssessments_OpenSurveysOnly() throws Exception {
-        Assessment withOpen = createTestAssessment("Has Open Survey", "IN_PROGRESS");
-        Assessment allDone = createTestAssessment("Surveys Finished", "IN_PROGRESS");
-        createTestAssessment("No Surveys", "IN_PROGRESS");
+        Assessment withOpen = createTestAssessment("Has Open Survey", "Testing");
+        Assessment allDone = createTestAssessment("Surveys Finished", "Testing");
+        createTestAssessment("No Surveys", "Testing");
 
         assessmentSurveyRepository.save(AssessmentSurvey.builder()
                 .assessmentId(withOpen.getId()).templateName("Scoping")
@@ -724,7 +724,7 @@ class AssessmentControllerTest extends TestContainersConfig {
 
     @Test
     void testSearchAssessments_OpenSurveysWithNoMatchesReturnsNothing() throws Exception {
-        createTestAssessment("No Surveys At All", "IN_PROGRESS");
+        createTestAssessment("No Surveys At All", "Testing");
 
         mockMvc.perform(get("/api/v1/assessments")
                         .header("Authorization", "Bearer " + jwtToken)
@@ -736,8 +736,8 @@ class AssessmentControllerTest extends TestContainersConfig {
 
     @Test
     void testSearchAssessments_StatusAndOpenSurveyFiltersCombine() throws Exception {
-        Assessment running = createTestAssessment("Running With Survey", "IN_PROGRESS");
-        Assessment drafted = createTestAssessment("Draft With Survey", "DRAFT");
+        Assessment running = createTestAssessment("Running With Survey", "Testing");
+        Assessment drafted = createTestAssessment("Draft With Survey", "New");
         assessmentSurveyRepository.save(AssessmentSurvey.builder()
                 .assessmentId(running.getId()).templateName("Scoping")
                 .status(SurveyStatus.INCOMPLETE).build());
@@ -747,7 +747,7 @@ class AssessmentControllerTest extends TestContainersConfig {
 
         mockMvc.perform(get("/api/v1/assessments")
                         .header("Authorization", "Bearer " + jwtToken)
-                        .param("statuses", "IN_PROGRESS")
+                        .param("statuses", "Testing")
                         .param("openSurveys", "true"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)))
@@ -769,7 +769,7 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .templateName(testTemplate.getName())
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .assessorIds(assessorIds)
                 .startDate(start)
                 .plannedEndDate(end)
@@ -893,7 +893,7 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .templateName(testTemplate.getName())
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .assessorIds(new ArrayList<>())
                 .startDate(startDate)
                 .plannedEndDate(endDate)

@@ -97,6 +97,9 @@ class AssessmentServiceTest {
     @Mock
     private DefaultReportTemplateService defaultReportTemplateService;
 
+    @Mock
+    private SlaService slaService;
+
     @InjectMocks
     private AssessmentService assessmentService;
 
@@ -175,7 +178,7 @@ class AssessmentServiceTest {
                 .reportTemplateId(testTemplate.getId())
                 .reportTemplateVersion(testTemplate.getVersion())
                 .templateName(testTemplate.getName())
-                .status("DRAFT")
+                .status("New")
                 .assessorIds(List.of(testUser.getId()))
                 .engagementManagerId(testUser.getId())
                 .startDate(LocalDateTime.now())
@@ -192,11 +195,8 @@ class AssessmentServiceTest {
         // Stub workflow config service for all tests
         AssessmentWorkflowConfig defaultConfig = AssessmentWorkflowConfig.builder().id("singleton").build();
         lenient().when(workflowConfigService.getConfig()).thenReturn(defaultConfig);
-        lenient().when(workflowConfigService.isCompletedStatus(any())).thenAnswer(inv -> {
-            String s = inv.getArgument(0);
-            return s != null && ("Completed".equals(s) || "COMPLETED".equals(s)
-                    || "APPROVED".equals(s) || "ARCHIVED".equals(s));
-        });
+        lenient().when(workflowConfigService.isCompletedStatus(any()))
+                .thenAnswer(inv -> "Completed".equals(inv.getArgument(0)));
     }
 
     @Test
@@ -346,7 +346,7 @@ class AssessmentServiceTest {
                 .reportTemplateId(testTemplate.getId())
                 .reportTemplateVersion(testTemplate.getVersion())
                 .templateName(testTemplate.getName())
-                .status("DRAFT")
+                .status("New")
                 .assessorIds(request.getAssessorIds())
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
@@ -621,15 +621,12 @@ class AssessmentServiceTest {
 
     @Test
     void testGetMetrics_Success() {
-        // Given — build a list of assessments with various statuses for findAll()
+        // Given — assessments across the default workflow's statuses, for findAll()
         List<Assessment> allAssessments = new ArrayList<>();
-        for (int i = 0; i < 5; i++) allAssessments.add(Assessment.builder().id("d-" + i).status("DRAFT").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
-        for (int i = 0; i < 3; i++) allAssessments.add(Assessment.builder().id("ip-" + i).status("IN_PROGRESS").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
-        for (int i = 0; i < 2; i++) allAssessments.add(Assessment.builder().id("oh-" + i).status("ON_HOLD").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
-        allAssessments.add(Assessment.builder().id("pr-1").status("PENDING_REVIEW").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
-        for (int i = 0; i < 4; i++) allAssessments.add(Assessment.builder().id("c-" + i).status("COMPLETED").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
-        for (int i = 0; i < 2; i++) allAssessments.add(Assessment.builder().id("ap-" + i).status("APPROVED").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
-        allAssessments.add(Assessment.builder().id("ar-1").status("ARCHIVED").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
+        for (int i = 0; i < 5; i++) allAssessments.add(Assessment.builder().id("n-" + i).status("New").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
+        for (int i = 0; i < 3; i++) allAssessments.add(Assessment.builder().id("t-" + i).status("Testing").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
+        for (int i = 0; i < 2; i++) allAssessments.add(Assessment.builder().id("r-" + i).status("Reporting").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
+        for (int i = 0; i < 4; i++) allAssessments.add(Assessment.builder().id("c-" + i).status("Completed").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build());
 
         when(assessmentRepository.findAll()).thenReturn(allAssessments);
 
@@ -638,7 +635,15 @@ class AssessmentServiceTest {
                 .name("Past Due Assessment")
                 .applicationId(testApplication.getId())
                 .organizationId(testOrganization.getId())
-                .status("IN_PROGRESS")
+                .status("Testing")
+                .plannedEndDate(LocalDateTime.now().minusDays(1))
+                .fieldDefinitions(new ArrayList<>())
+                .fieldValues(new HashMap<>())
+                .createdAt(LocalDateTime.now())
+                .build();
+        Assessment completedLate = Assessment.builder()
+                .id("past-due-2")
+                .status("Completed")
                 .plannedEndDate(LocalDateTime.now().minusDays(1))
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
@@ -646,20 +651,19 @@ class AssessmentServiceTest {
                 .build();
 
         when(assessmentRepository.findPastDue(any(LocalDateTime.class)))
-                .thenReturn(List.of(pastDueAssessment));
+                .thenReturn(List.of(pastDueAssessment, completedLate));
 
         // When
         AssessmentMetricsDto metrics = assessmentService.getMetrics(null);
 
-        // Then
-        assertThat(metrics.getTotalCount()).isEqualTo(18L);
-        assertThat(metrics.getDraftCount()).isEqualTo(5L);
-        assertThat(metrics.getInProgressCount()).isEqualTo(3L);
-        assertThat(metrics.getOnHoldCount()).isEqualTo(2L);
-        assertThat(metrics.getPendingReviewCount()).isEqualTo(1L);
-        assertThat(metrics.getCompletedCount()).isEqualTo(4L);
-        assertThat(metrics.getApprovedCount()).isEqualTo(2L);
-        assertThat(metrics.getArchivedCount()).isEqualTo(1L);
+        // Then — counted per configured status; a completed assessment is never past due
+        assertThat(metrics.getTotalCount()).isEqualTo(14L);
+        assertThat(metrics.getStatusCounts())
+                .containsEntry("New", 5L)
+                .containsEntry("Testing", 3L)
+                .containsEntry("Reporting", 2L)
+                .containsEntry("Completed", 4L)
+                .hasSize(4);
         assertThat(metrics.getPastDueCount()).isEqualTo(1L);
     }
 
@@ -667,10 +671,10 @@ class AssessmentServiceTest {
     void testGetMetrics_WithOrganizationFilter() {
         // Given — two assessments in org-1, one in another org
         String orgId = testOrganization.getId();
-        Assessment a1 = Assessment.builder().id("m1").status("DRAFT").organizationId(orgId).fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build();
-        Assessment a2 = Assessment.builder().id("m2").status("DRAFT").organizationId(orgId).fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build();
-        Assessment a3 = Assessment.builder().id("m3").status("IN_PROGRESS").organizationId(orgId).fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build();
-        Assessment other = Assessment.builder().id("m4").status("DRAFT").organizationId("other-org").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build();
+        Assessment a1 = Assessment.builder().id("m1").status("New").organizationId(orgId).fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build();
+        Assessment a2 = Assessment.builder().id("m2").status("New").organizationId(orgId).fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build();
+        Assessment a3 = Assessment.builder().id("m3").status("Testing").organizationId(orgId).fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build();
+        Assessment other = Assessment.builder().id("m4").status("New").organizationId("other-org").fieldDefinitions(new ArrayList<>()).fieldValues(new HashMap<>()).createdAt(LocalDateTime.now()).build();
 
         when(assessmentRepository.findAll()).thenReturn(List.of(a1, a2, a3, other));
         when(assessmentRepository.findPastDue(any(LocalDateTime.class))).thenReturn(List.of());
@@ -680,8 +684,7 @@ class AssessmentServiceTest {
 
         // Then — only the 3 assessments in org-1 are counted
         assertThat(metrics.getTotalCount()).isEqualTo(3L);
-        assertThat(metrics.getDraftCount()).isEqualTo(2L);
-        assertThat(metrics.getInProgressCount()).isEqualTo(1L);
+        assertThat(metrics.getStatusCounts()).containsEntry("New", 2L).containsEntry("Testing", 1L).hasSize(2);
         assertThat(metrics.getPastDueCount()).isEqualTo(0L);
     }
 
@@ -699,7 +702,7 @@ class AssessmentServiceTest {
                 .assessmentTypeId(testAssessmentType.getId())
                 .organizationId(testOrganization.getId())
                 .reportTemplateId(testTemplate.getId())
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .assessorIds(assessorIds)
                 .startDate(start.plusDays(2))
                 .plannedEndDate(start.plusDays(5))
@@ -775,7 +778,7 @@ class AssessmentServiceTest {
                 .assessmentTypeId(testAssessmentType.getId())
                 .organizationId(testOrganization.getId())
                 .reportTemplateId(testTemplate.getId())
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .assessorIds(assessorIds)
                 .startDate(start.plusDays(2))
                 .plannedEndDate(start.plusDays(5))
@@ -935,7 +938,7 @@ class AssessmentServiceTest {
         assertThat(csv).contains("ID,Name,Status");
         assertThat(csv).contains(testAssessment.getId());
         assertThat(csv).contains(testAssessment.getName());
-        assertThat(csv).contains("DRAFT");
+        assertThat(csv).contains("New");
     }
 
     @Test
@@ -948,7 +951,7 @@ class AssessmentServiceTest {
                 .assessmentTypeId(testAssessmentType.getId())
                 .organizationId(testOrganization.getId())
                 .reportTemplateId(testTemplate.getId())
-                .status("DRAFT")
+                .status("New")
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
                 .createdBy("user\"with\"quotes")
@@ -973,7 +976,7 @@ class AssessmentServiceTest {
         // Given
         UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
                 .name("Updated Assessment")
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .assessorIds(List.of(testUser.getId(), "user-2"))
                 .remediationManagerId("user-3")
                 .scope("Updated scope")
@@ -990,7 +993,7 @@ class AssessmentServiceTest {
                 .organizationId(testAssessment.getOrganizationId())
                 .reportTemplateId(testAssessment.getReportTemplateId())
                 .reportTemplateVersion(testAssessment.getReportTemplateVersion())
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .assessorIds(List.of(testUser.getId(), "user-2"))
                 .remediationManagerId("user-3")
                 .scope("Updated scope")
@@ -1010,7 +1013,7 @@ class AssessmentServiceTest {
 
         // Then
         assertThat(result.getName()).isEqualTo("Updated Assessment");
-        assertThat(result.getStatus()).isEqualTo("IN_PROGRESS");
+        assertThat(result.getStatus()).isEqualTo("Testing");
         assertThat(result.getAssessorIds()).hasSize(2);
         assertThat(result.getRemediationManagerId()).isEqualTo("user-3");
         assertThat(result.getScope()).isEqualTo("Updated scope");
@@ -1022,7 +1025,7 @@ class AssessmentServiceTest {
     void testUpdateAssessment_CompletionAnnouncedInApplicationChat() {
         // Given
         UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
-                .status("COMPLETED")
+                .status("Completed")
                 .build();
 
         when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
@@ -1048,7 +1051,7 @@ class AssessmentServiceTest {
     void testUpdateAssessment_NonCompletionStatusChangeNotAnnounced() {
         // Given
         UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .build();
 
         when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
@@ -1162,7 +1165,7 @@ class AssessmentServiceTest {
                 .assessmentTypeId(testAssessmentType.getId())
                 .organizationId(testOrganization.getId())
                 .reportTemplateId(testTemplate.getId())
-                .status("DRAFT")
+                .status("New")
                 .assessorId(testUser.getId())
                 .assessorIds(null) // Legacy has null list
                 .fieldDefinitions(new ArrayList<>())
@@ -1221,7 +1224,7 @@ class AssessmentServiceTest {
                 .assessmentTypeId(testAssessmentType.getId())
                 .organizationId(testOrganization.getId())
                 .reportTemplateId(testTemplate.getId())
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .plannedEndDate(LocalDateTime.now().minusDays(1))
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
@@ -1248,7 +1251,7 @@ class AssessmentServiceTest {
                 .assessmentTypeId(testAssessmentType.getId())
                 .organizationId(testOrganization.getId())
                 .reportTemplateId(testTemplate.getId())
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .plannedEndDate(LocalDateTime.now().plusDays(7))
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
@@ -1440,7 +1443,7 @@ class AssessmentServiceTest {
                 .reportTemplateId(updatedTemplate.getId())
                 .reportTemplateVersion(1) // behind template
                 .templateName(updatedTemplate.getName())
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
                 .createdAt(LocalDateTime.now())
@@ -1491,7 +1494,7 @@ class AssessmentServiceTest {
                 .reportTemplateId(templateWithFile.getId())
                 .reportTemplateVersion(1) // same version — only the file sync should fire
                 .templateFileId(null)
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
                 .createdAt(LocalDateTime.now())
@@ -1526,7 +1529,7 @@ class AssessmentServiceTest {
                 .assessmentTypeId(testAssessmentType.getId())
                 .organizationId(testOrganization.getId())
                 .reportTemplateId(testTemplate.getId())
-                .status("COMPLETED")
+                .status("Completed")
                 .plannedEndDate(LocalDateTime.now().minusDays(1))
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
@@ -1544,71 +1547,10 @@ class AssessmentServiceTest {
     }
 
     @Test
-    void testUpdateAssessment_SetsPeerReviewedAtWhenStatusChangesToPendingReview() {
-        // Given
-        UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
-                .status("PENDING_REVIEW")
-                .build();
-
-        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
-                .thenReturn(Optional.of(testAssessment));
-
-        ArgumentCaptor<Assessment> savedCaptor = ArgumentCaptor.forClass(Assessment.class);
-        when(assessmentRepository.save(savedCaptor.capture()))
-                .thenAnswer(inv -> inv.getArgument(0));
-
-        // When
-        assessmentService.updateAssessment(testAssessment.getId(), request, "testuser");
-
-        // Then - peerReviewedAt must be set
-        Assessment saved = savedCaptor.getValue();
-        assertThat(saved.getPeerReviewedAt()).isNotNull();
-        assertThat(saved.getStatus()).isEqualTo("PENDING_REVIEW");
-    }
-
-    @Test
-    void testUpdateAssessment_DoesNotOverwritePeerReviewedAtOnRepeatedTransition() {
-        // Given - already in PENDING_REVIEW with a prior timestamp
-        LocalDateTime originalPeerReviewedAt = LocalDateTime.now().minusHours(2);
-        Assessment alreadyPendingAssessment = Assessment.builder()
-                .id(testAssessment.getId())
-                .name(testAssessment.getName())
-                .applicationId(testAssessment.getApplicationId())
-                .assessmentTypeId(testAssessment.getAssessmentTypeId())
-                .organizationId(testAssessment.getOrganizationId())
-                .reportTemplateId(testAssessment.getReportTemplateId())
-                .reportTemplateVersion(testAssessment.getReportTemplateVersion())
-                .status("PENDING_REVIEW")
-                .peerReviewedAt(originalPeerReviewedAt)
-                .fieldDefinitions(new ArrayList<>())
-                .fieldValues(new HashMap<>())
-                .createdAt(testAssessment.getCreatedAt())
-                .build();
-
-        UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
-                .status("PENDING_REVIEW")
-                .build();
-
-        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
-                .thenReturn(Optional.of(alreadyPendingAssessment));
-
-        ArgumentCaptor<Assessment> savedCaptor = ArgumentCaptor.forClass(Assessment.class);
-        when(assessmentRepository.save(savedCaptor.capture()))
-                .thenAnswer(inv -> inv.getArgument(0));
-
-        // When
-        assessmentService.updateAssessment(testAssessment.getId(), request, "testuser");
-
-        // Then - peerReviewedAt must NOT be overwritten
-        Assessment saved = savedCaptor.getValue();
-        assertThat(saved.getPeerReviewedAt()).isEqualTo(originalPeerReviewedAt);
-    }
-
-    @Test
     void testUpdateAssessment_SetsOpenedAtOnVulnsWhenFinalized() {
-        // Given - assessment transitions from DRAFT to COMPLETED
+        // Given - assessment transitions from New to Completed
         UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
-                .status("COMPLETED")
+                .status("Completed")
                 .build();
 
         when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
@@ -1649,7 +1591,7 @@ class AssessmentServiceTest {
         testAssessment.setRemediationManagerId("user-rem");
 
         UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
-                .status("COMPLETED")
+                .status("Completed")
                 .build();
 
         when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
@@ -1695,7 +1637,7 @@ class AssessmentServiceTest {
 
     @Test
     void testUpdateAssessment_DoesNotSetOpenedAtWhenAlreadyCompleted() {
-        // Given - assessment is already COMPLETED, status stays COMPLETED
+        // Given - assessment is already Completed, status stays Completed
         Assessment alreadyCompleted = Assessment.builder()
                 .id(testAssessment.getId())
                 .name(testAssessment.getName())
@@ -1704,7 +1646,7 @@ class AssessmentServiceTest {
                 .organizationId(testAssessment.getOrganizationId())
                 .reportTemplateId(testAssessment.getReportTemplateId())
                 .reportTemplateVersion(testAssessment.getReportTemplateVersion())
-                .status("COMPLETED")
+                .status("Completed")
                 .completedDate(LocalDateTime.now().minusDays(1))
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
@@ -1712,7 +1654,7 @@ class AssessmentServiceTest {
                 .build();
 
         UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
-                .status("COMPLETED")
+                .status("Completed")
                 .build();
 
         when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
@@ -1850,7 +1792,7 @@ class AssessmentServiceTest {
                 .organizationId(testAssessment.getOrganizationId())
                 .reportTemplateId(testAssessment.getReportTemplateId())
                 .reportTemplateVersion(testAssessment.getReportTemplateVersion())
-                .status("COMPLETED")
+                .status("Completed")
                 .completedDate(completedDate)
                 .fieldDefinitions(new ArrayList<>())
                 .fieldValues(new HashMap<>())
@@ -1875,7 +1817,7 @@ class AssessmentServiceTest {
                 UpdateAssessmentRequest.builder().completedDate(corrected).build(), "root", superAdmin);
 
         assertThat(result.getCompletedDate()).isEqualTo(corrected);
-        assertThat(result.getStatus()).isEqualTo("COMPLETED");
+        assertThat(result.getStatus()).isEqualTo("Completed");
         // Correcting the date is not a fresh completion: findings are not re-opened.
         verify(vulnerabilityRepository, never()).saveAll(any());
     }
@@ -1891,7 +1833,7 @@ class AssessmentServiceTest {
 
         // Re-sending the completed status alongside the date used to slip through; it must not.
         UpdateAssessmentRequest request = UpdateAssessmentRequest.builder()
-                .status("COMPLETED")
+                .status("Completed")
                 .completedDate(LocalDateTime.of(2025, 12, 1, 17, 30))
                 .build();
 
@@ -1916,7 +1858,7 @@ class AssessmentServiceTest {
                 List.of(new SimpleGrantedAuthority(Permission.ASSESSMENTS_EDIT_ALL.getPermission())));
 
         AssessmentDto result = assessmentService.updateAssessment(testAssessment.getId(),
-                UpdateAssessmentRequest.builder().status("COMPLETED").completedDate(historical).build(),
+                UpdateAssessmentRequest.builder().status("Completed").completedDate(historical).build(),
                 "importer", editor);
 
         assertThat(result.getCompletedDate()).isEqualTo(historical);

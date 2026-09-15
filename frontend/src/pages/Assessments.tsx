@@ -15,16 +15,6 @@ import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
 import './Assessments.css';
 
-const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  DRAFT: 'secondary',
-  IN_PROGRESS: 'info',
-  ON_HOLD: 'warning',
-  PENDING_REVIEW: 'info',
-  COMPLETED: 'success',
-  APPROVED: 'success',
-  ARCHIVED: 'secondary',
-};
-
 // localStorage key for this table's saved search, filters, sort and paging.
 const TABLE_KEY = 'assessments';
 
@@ -332,7 +322,7 @@ export default function Assessments() {
       render: (assessment) => {
         const custom = statusColors[assessment.status];
         return (
-          <Badge variant={custom ? undefined : STATUS_COLORS[assessment.status]} customColor={custom}>
+          <Badge variant={custom ? undefined : 'secondary'} customColor={custom}>
             {assessment.status.replace('_', ' ')}
           </Badge>
         );

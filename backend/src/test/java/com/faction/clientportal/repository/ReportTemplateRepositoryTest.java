@@ -57,7 +57,7 @@ class ReportTemplateRepositoryTest extends TestContainersConfig {
                 .organizationId("org-1")
                 .reportTemplateId(template.getId())
                 .templateCss(longCss)
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .createdAt(LocalDateTime.now())
                 .build());
 

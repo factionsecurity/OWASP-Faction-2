@@ -112,6 +112,24 @@ faction:
   # of its own to point.
   upgrade-url: ${FACTION_UPGRADE_URL:}
 
+  sla:
+    # Builds the partial indexes on findings' stored due dates CONCURRENTLY after startup
+    # (VulnerabilitySlaIndexInitializer). Switch off to build them by hand out of hours instead.
+    index-initializer:
+      enabled: ${FACTION_SLA_INDEX_INITIALIZER_ENABLED:true}
+    # After an SLA edit, recalculate open findings' stored due dates in the background and return
+    # findings no longer past due to Open (SlaRecalculationService), this many findings per transaction.
+    # Each batch's rows are locked (SELECT ... FOR UPDATE) for the life of its transaction, so a
+    # concurrent user save on one of them waits rather than being silently overwritten; kept modest
+    # (500, not thousands) so that wait stays brief.
+    #
+    # When false, an SLA edit does NOT recalculate stored due dates. Every SLA reader — the
+    # remediation queue, the severity tiles, VulnerabilityPastDueJob, VulnerabilityDigestJob — keeps
+    # reading the old due_at/warning_at (a shortened SLA won't mark anything Past Due) until
+    # POST /api/v1/config/assessment-workflow/recalculate-sla is called to bring them up to date.
+    recalculate-on-config-change: ${FACTION_SLA_RECALCULATE_ON_CONFIG_CHANGE:true}
+    recalculation-batch-size: ${FACTION_SLA_RECALCULATION_BATCH_SIZE:500}
+
 springdoc:
   api-docs:
     path: /v3/api-docs

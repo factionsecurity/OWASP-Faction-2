@@ -67,25 +67,23 @@ class AssessmentSummaryTest extends TestContainersConfig {
 
     @Test
     void summary_rollsUpActiveAndTotal() {
-        assessment(ORG_A, "app-1", "IN_PROGRESS", null);
-        assessment(ORG_A, "app-1", "SCHEDULED", null);
-        assessment(ORG_A, "app-1", "COMPLETED", null);
-        assessment(ORG_A, "app-1", "APPROVED", null);
-        assessment(ORG_A, "app-1", "ARCHIVED", null);
-        assessment(ORG_A, "app-1", "IN_PROGRESS", LocalDateTime.now()); // soft-deleted (excluded)
+        assessment(ORG_A, "app-1", "Testing", null);
+        assessment(ORG_A, "app-1", "Scheduling", null);
+        assessment(ORG_A, "app-1", "Completed", null);
+        assessment(ORG_A, "app-1", "Testing", LocalDateTime.now()); // soft-deleted (excluded)
 
         var s = assessmentService.assessmentSummary(superAdmin());
 
-        assertThat(s.getTotal()).isEqualTo(5L);  // all non-deleted
-        assertThat(s.getActive()).isEqualTo(2L); // IN_PROGRESS + SCHEDULED
+        assertThat(s.getTotal()).isEqualTo(3L);  // all non-deleted
+        assertThat(s.getActive()).isEqualTo(2L); // Testing + Scheduling
     }
 
     // ── Scope ─────────────────────────────────────────────────────────────────
 
     @Test
     void summary_orgScopedUser_seesOnlyTheirOrg() {
-        assessment(ORG_A, "app-a", "IN_PROGRESS", null);
-        assessment(ORG_B, "app-b", "IN_PROGRESS", null);
+        assessment(ORG_A, "app-a", "Testing", null);
+        assessment(ORG_B, "app-b", "Testing", null);
         user("org-user", ORG_A);
 
         var s = assessmentService.assessmentSummary(
@@ -97,8 +95,8 @@ class AssessmentSummaryTest extends TestContainersConfig {
 
     @Test
     void summary_orgScopedUserWithNoResolvableOrg_failsClosed() {
-        assessment(ORG_A, "app-a", "IN_PROGRESS", null);
-        assessment(ORG_B, "app-b", "IN_PROGRESS", null);
+        assessment(ORG_A, "app-a", "Testing", null);
+        assessment(ORG_B, "app-b", "Testing", null);
         // "ghost" has no user record → resolveOrgId returns null; must see nothing, not everything.
 
         var s = assessmentService.assessmentSummary(
@@ -113,8 +111,8 @@ class AssessmentSummaryTest extends TestContainersConfig {
         var u = user("owned-user", ORG_A);
         var appX = ownedApp(ORG_A, "Owned App X", u.getId()).getId();
         var appY = application(ORG_A, "Unowned App Y").getId();
-        assessment(ORG_A, appX, "IN_PROGRESS", null);
-        assessment(ORG_A, appY, "IN_PROGRESS", null);
+        assessment(ORG_A, appX, "Testing", null);
+        assessment(ORG_A, appY, "Testing", null);
 
         var s = assessmentService.assessmentSummary(
                 auth("owned-user", Permission.ASSESSMENTS_READ_OWNED.getPermission()));
@@ -125,8 +123,8 @@ class AssessmentSummaryTest extends TestContainersConfig {
 
     @Test
     void summary_readAll_isUnrestricted() {
-        assessment(ORG_A, "app-a", "IN_PROGRESS", null);
-        assessment(ORG_B, "app-b", "IN_PROGRESS", null);
+        assessment(ORG_A, "app-a", "Testing", null);
+        assessment(ORG_B, "app-b", "Testing", null);
 
         assertThat(assessmentService.assessmentSummary(
                 auth("all-user", Permission.ASSESSMENTS_READ_ALL.getPermission())).getTotal()).isEqualTo(2L);
@@ -136,8 +134,8 @@ class AssessmentSummaryTest extends TestContainersConfig {
     void summary_teamScopedUser_countsOnlyTheirTeamsAssessments() {
         // :read:team used to be unrestricted (the tier wasn't enforced anywhere). It now counts
         // only the caller's teams — and a user in no team counts nothing rather than everything.
-        assessment(ORG_A, "app-a", "IN_PROGRESS", null);
-        assessment(ORG_B, "app-b", "IN_PROGRESS", null);
+        assessment(ORG_A, "app-a", "Testing", null);
+        assessment(ORG_B, "app-b", "Testing", null);
         user("team-user", ORG_A);
 
         assertThat(assessmentService.assessmentSummary(

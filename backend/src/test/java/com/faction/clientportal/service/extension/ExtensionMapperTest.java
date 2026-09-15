@@ -289,7 +289,7 @@ class ExtensionMapperTest {
         assessment.setId(UUID.randomUUID().toString());
         assessment.setName("Q1 Pentest");
         assessment.setApplicationId("app-1");
-        assessment.setStatus("IN_PROGRESS");
+        assessment.setStatus("Testing");
         assessment.setFieldDefinitions(List.of(summaryField));
         assessment.setFieldValues(new HashMap<>(Map.of("executive_summary", "<p>All good</p>")));
 

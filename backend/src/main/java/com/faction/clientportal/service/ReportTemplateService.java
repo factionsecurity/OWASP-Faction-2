@@ -584,7 +584,11 @@ public class ReportTemplateService {
                 !Objects.equals(f1.getDisplayName(), f2.getDisplayName()) ||
                 !Objects.equals(f1.getFieldType(), f2.getFieldType()) ||
                 !Objects.equals(f1.getRequired(), f2.getRequired()) ||
-                !Objects.equals(f1.getDisplayOrder(), f2.getDisplayOrder())) {
+                !Objects.equals(f1.getDisplayOrder(), f2.getDisplayOrder()) ||
+                // Assessments only re-read their fields when the version advances, and the
+                // scheduling form reads this flag from that copy. Null (stored before the flag
+                // existed) and false are the same setting, so re-saving an old field is no change.
+                Boolean.TRUE.equals(f1.getShowInScheduling()) != Boolean.TRUE.equals(f2.getShowInScheduling())) {
                 return false;
             }
         }

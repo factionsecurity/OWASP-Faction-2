@@ -87,4 +87,25 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * Executor for recalculating open findings' stored SLA due dates after an SLA edit
+     * ({@link com.faction.clientportal.service.SlaRecalculationService}).
+     *
+     * <p>One thread, so two edits in quick succession recalculate in order and a run over every open
+     * finding never competes with another for the database. Each run reads the SLAs when it starts,
+     * so when the queue is full a new request can be discarded: a run already queued will start
+     * after the latest save and pick it up.
+     */
+    @Bean("slaRecalculationExecutor")
+    public ThreadPoolTaskExecutor slaRecalculationExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(10);
+        executor.setThreadNamePrefix("sla-recalc-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.initialize();
+        return executor;
+    }
 }

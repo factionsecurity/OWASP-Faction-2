@@ -102,7 +102,7 @@ class ReportControllerTest extends TestContainersConfig {
                     .assessmentTypeId("type-1")
                     .organizationId("org-1")
                     .templateFileId("templates/tmpl-1/template.docx")
-                    .status("IN_PROGRESS")
+                    .status("Testing")
                     .createdAt(LocalDateTime.now())
                     .build());
     }
@@ -176,7 +176,7 @@ class ReportControllerTest extends TestContainersConfig {
 
     /** Move the fixture assessment into a completed state. */
     private void completeTestAssessment() {
-        testAssessment.setStatus("COMPLETED");
+        testAssessment.setStatus("Completed");
         testAssessment.setCompletedDate(LocalDateTime.now());
         assessmentRepository.save(testAssessment);
     }

@@ -118,7 +118,7 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
         // with one CRITICAL opened vulnerability.
         redCompleted = assessmentRepository.save(Assessment.builder()
                 .name("Red Completed Assessment")
-                .status("COMPLETED")
+                .status("Completed")
                 .assessorIds(List.of(redAssessor.getId()))
                 .campaignId(campaignA.getId())
                 .startDate(LocalDateTime.now().minusDays(10))
@@ -139,7 +139,7 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
         // Blue team's assessment: draft, no campaign, one LOW opened vulnerability.
         blueDraft = assessmentRepository.save(Assessment.builder()
                 .name("Blue Draft Assessment")
-                .status("DRAFT")
+                .status("New")
                 .assessorIds(List.of(blueAssessor.getId()))
                 .startDate(LocalDateTime.now().minusDays(2))
                 .createdAt(LocalDateTime.now())
@@ -268,8 +268,8 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                 .andExpect(jsonPath("$.data.severityBreakdown.CRITICAL").value(1))
                 .andExpect(jsonPath("$.data.severityBreakdown.LOW").value(1))
                 .andExpect(jsonPath("$.data.severityBreakdown.MEDIUM").value(1))
-                .andExpect(jsonPath("$.data.statusBreakdown.COMPLETED").value(1))
-                .andExpect(jsonPath("$.data.statusBreakdown.DRAFT").value(1))
+                .andExpect(jsonPath("$.data.statusBreakdown.Completed").value(1))
+                .andExpect(jsonPath("$.data.statusBreakdown.New").value(1))
                 .andExpect(jsonPath("$.data.totalAssessments").value(2))
                 .andExpect(jsonPath("$.data.totalVulnerabilities").value(3))
                 .andExpect(jsonPath("$.data.completedByAssessor[0].assessorName").value("Red Assessor"))

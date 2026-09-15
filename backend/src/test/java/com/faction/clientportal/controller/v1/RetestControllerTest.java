@@ -49,6 +49,7 @@ class RetestControllerTest extends TestContainersConfig {
     @Autowired private RoleRepository roleRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtService jwtService;
+    @Autowired private com.faction.clientportal.repository.AssessmentWorkflowConfigRepository workflowConfigRepository;
 
     private String jwtToken;
     private String userId;
@@ -93,7 +94,7 @@ class RetestControllerTest extends TestContainersConfig {
                 .applicationId("app-retest-1")
                 .assessmentTypeId("type-1")
                 .organizationId("org-1")
-                .status("COMPLETED")
+                .status("Completed")
                 .createdAt(LocalDateTime.now())
                 .build());
 
@@ -710,7 +711,7 @@ class RetestControllerTest extends TestContainersConfig {
     void savingARetestAppliesRevisedRatingsEvenThoughTheAssessmentIsFinalized() throws Exception {
         // The whole point: retests run on completed assessments, and the vulnerability API refuses
         // to modify one. Going through the retest is what makes re-rating possible at all.
-        testAssessment.setStatus("COMPLETED");
+        testAssessment.setStatus("Completed");
         testAssessment.setCompletedDate(LocalDateTime.now());
         assessmentRepository.save(testAssessment);
 
@@ -1179,5 +1180,36 @@ class RetestControllerTest extends TestContainersConfig {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(2));
+    }
+
+    @Test
+    void reRatingOnARetestRecalculatesTheStoredDueDate() throws Exception {
+        // Defaults: HIGH 60/30, MEDIUM 365/300. Opened in 2099 so the past-due job never touches it.
+        workflowConfigRepository.deleteAll();
+        testVuln.setOpenedAt(LocalDateTime.of(2099, 1, 1, 9, 0));
+        vulnerabilityRepository.save(testVuln);
+
+        String createBody = mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String retestId = objectMapper.readTree(createBody).at("/data/id").asText();
+
+        // Scheduling moved the finding to "In Retest" through updateStatus, which stamps the HIGH dates.
+        Vulnerability scheduled = vulnerabilityRepository.findById(testVuln.getId()).orElseThrow();
+        assertThat(scheduled.getDueAt()).isEqualTo(LocalDateTime.of(2099, 3, 2, 9, 0));
+
+        mockMvc.perform(patch("/api/v1/retests/{id}", retestId)
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("severity", "MEDIUM"))))
+                .andExpect(status().isOk());
+
+        Vulnerability reRated = vulnerabilityRepository.findById(testVuln.getId()).orElseThrow();
+        assertThat(reRated.getSeverity()).isEqualTo(VulnerabilitySeverity.MEDIUM);
+        assertThat(reRated.getDueAt()).isEqualTo(LocalDateTime.of(2100, 1, 1, 9, 0));
+        assertThat(reRated.getWarningAt()).isEqualTo(LocalDateTime.of(2099, 3, 7, 9, 0));
     }
 }

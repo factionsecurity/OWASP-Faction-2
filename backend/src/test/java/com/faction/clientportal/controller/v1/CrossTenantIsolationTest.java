@@ -92,7 +92,7 @@ class CrossTenantIsolationTest extends TestContainersConfig {
                 .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build());
         theirAssessment = assessmentRepository.save(Assessment.builder()
                 .name("Globex Q1").applicationId(theirApp.getId()).organizationId(orgB.getId())
-                .assessmentTypeId("t").status("COMPLETED")
+                .assessmentTypeId("t").status("Completed")
                 .attachments(List.of(AssessmentFile.builder()
                         .id("their-file").fileName("scope.pdf").storageKey("k/their-file")
                         .contentType("application/pdf").build()))

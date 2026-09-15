@@ -63,7 +63,7 @@ class SupportingMaterialExportTest extends TestContainersConfig {
 
         assessment = assessmentRepository.save(Assessment.builder()
                 .name("Evidence Test").applicationId("app-1").organizationId("org-1")
-                .assessmentTypeId("t").status("COMPLETED")
+                .assessmentTypeId("t").status("Completed")
                 .createdAt(LocalDateTime.now()).build());
 
         auth = new UsernamePasswordAuthenticationToken("tester", null,

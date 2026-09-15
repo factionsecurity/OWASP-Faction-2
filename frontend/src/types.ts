@@ -485,6 +485,8 @@ export interface UserDefinedField {
   minLength?: number;
   displayOrder?: number;
   fieldScope?: FieldScope;
+  /** Offered on the scheduling form. Off unless ticked in the Report Designer. */
+  showInScheduling?: boolean;
 }
 
 export interface ReportTemplate {
@@ -545,8 +547,6 @@ export interface UpdateReportTemplateRequest {
   userDefinedFields?: UserDefinedField[];
   active?: boolean;
 }
-
-export type AssessmentStatus = 'DRAFT' | 'IN_PROGRESS' | 'ON_HOLD' | 'PENDING_REVIEW' | 'COMPLETED' | 'APPROVED' | 'ARCHIVED';
 
 export interface VulnerabilitySla {
   severity: string;
@@ -774,6 +774,33 @@ export interface CreateAssessmentRequest {
   initialFieldValues?: Record<string, string>;
 }
 
+/**
+ * Values an outside source hands the scheduling form, named the way people name things rather
+ * than by id. The form resolves each one against its own lists and reports what it couldn't place.
+ */
+export interface AssessmentPrefill {
+  /** Selects the application with this Application Id if one exists, else starts a new one. */
+  appId?: string;
+  applicationName?: string;
+  assessmentName?: string;
+  /** yyyy-mm-dd */
+  startDate?: string;
+  /** A planned-end duration preset, in working days (e.g. '3'). */
+  duration?: string;
+  assessorEmails?: string[];
+  /** A workflow status, matched ignoring spaces and case. */
+  status?: string;
+  teamName?: string;
+  /** Variable values keyed by the field's display name. */
+  variables?: Record<string, string>;
+}
+
+/** The slot on the scheduling form an edition can fill with a way to pre-fill it. */
+export interface AssessmentPrefillActionProps {
+  /** Applies the values. The form itself tells the user about anything it couldn't place. */
+  onPrefill: (prefill: AssessmentPrefill) => Promise<void>;
+}
+
 /** A person who can be assigned to an assessment (the assessor picker's option shape). */
 export interface AssignableUser {
   id: string;
@@ -877,13 +904,6 @@ export interface ManagerDashboardFilters {
 
 export interface AssessmentMetrics {
   totalCount: number;
-  draftCount: number;
-  inProgressCount: number;
-  onHoldCount: number;
-  pendingReviewCount: number;
-  completedCount: number;
-  approvedCount: number;
-  archivedCount: number;
   pastDueCount: number;
   statusCounts?: Record<string, number>;
 }

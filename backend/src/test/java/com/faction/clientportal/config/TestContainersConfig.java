@@ -50,4 +50,22 @@ public abstract class TestContainersConfig {
         registry.add("storage.access-key", minioContainer::getUserName);
         registry.add("storage.secret-key", minioContainer::getPassword);
     }
+
+    /**
+     * Off in tests: the recalculation runs on its own thread, so a PUT to the workflow config in one
+     * test would rewrite other tests' findings in the background. SlaRecalculationServiceTest calls it
+     * synchronously instead, and SlaRecalculationServiceListenerTest covers this switch.
+     *
+     * <p>Registered here, rather than left to {@code src/test/resources/application-test.yml}, because
+     * the enterprise overlay re-runs this suite with core's main jar ahead of core's test-jar on its
+     * classpath ({@code dependenciesToScan} in {@code enterprise/backend/pom.xml}): Spring then
+     * resolves {@code application-test.yml} from core's main resources instead of the test one, where
+     * this switch defaults to true. A {@code @DynamicPropertySource} on this shared base — published in
+     * the test-jar and extended by every {@code @SpringBootTest} in both builds — applies regardless of
+     * which {@code application-test.yml} got picked up.
+     */
+    @DynamicPropertySource
+    static void slaProperties(DynamicPropertyRegistry registry) {
+        registry.add("faction.sla.recalculate-on-config-change", () -> "false");
+    }
 }
