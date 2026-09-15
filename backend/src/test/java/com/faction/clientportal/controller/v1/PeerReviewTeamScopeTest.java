@@ -2,14 +2,14 @@ package com.faction.clientportal.controller.v1;
 
 import com.faction.clientportal.config.TestContainersConfig;
 import com.faction.clientportal.model.Assessment;
-import com.faction.clientportal.model.AssessmentWorkflowConfig;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.LoginOption;
 import com.faction.clientportal.model.PeerReview;
 import com.faction.clientportal.model.PeerReviewStatus;
 import com.faction.clientportal.model.Team;
 import com.faction.clientportal.model.User;
 import com.faction.clientportal.repository.AssessmentRepository;
-import com.faction.clientportal.repository.AssessmentWorkflowConfigRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.PeerReviewRepository;
 import com.faction.clientportal.repository.TeamRepository;
 import com.faction.clientportal.repository.UserRepository;
@@ -48,7 +48,7 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
     @Autowired private AssessmentRepository assessmentRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private TeamRepository teamRepository;
-    @Autowired private AssessmentWorkflowConfigRepository configRepository;
+    @Autowired private AssessmentWorkflowRepository configRepository;
     @Autowired private JwtService jwtService;
 
     private static final String READ_TEAM = "peerreview:read:team";
@@ -217,8 +217,8 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
     }
 
     private void setAllowSelfPeerReview(boolean allow) {
-        AssessmentWorkflowConfig config = configRepository.findById("singleton")
-                .orElseGet(() -> AssessmentWorkflowConfig.builder().id("singleton").build());
+        AssessmentWorkflow config = configRepository.findById(AssessmentWorkflow.DEFAULT_ID)
+                .orElseGet(() -> AssessmentWorkflow.defaultWorkflowBuilder().build());
         config.setAllowSelfPeerReview(allow);
         configRepository.save(config);
     }

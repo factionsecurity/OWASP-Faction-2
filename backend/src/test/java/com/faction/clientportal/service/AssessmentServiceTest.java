@@ -193,7 +193,7 @@ class AssessmentServiceTest {
                 .build();
 
         // Stub workflow config service for all tests
-        AssessmentWorkflowConfig defaultConfig = AssessmentWorkflowConfig.builder().id("singleton").build();
+        AssessmentWorkflow defaultConfig = AssessmentWorkflow.defaultWorkflowBuilder().build();
         lenient().when(workflowConfigService.getConfig()).thenReturn(defaultConfig);
         lenient().when(workflowConfigService.isCompletedStatus(any()))
                 .thenAnswer(inv -> "Completed".equals(inv.getArgument(0)));

@@ -7,7 +7,7 @@ import com.faction.clientportal.dto.UpdateRetestRequest;
 import com.faction.clientportal.dto.UpdateVulnerabilityStatusRequest;
 import com.faction.clientportal.exception.ResourceNotFoundException;
 import com.faction.clientportal.model.Assessment;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.RemediationStage;
+import com.faction.clientportal.model.RemediationStage;
 import com.faction.clientportal.model.EmailNotificationEvent;
 import com.faction.clientportal.model.Permission;
 import com.faction.clientportal.model.Retest;

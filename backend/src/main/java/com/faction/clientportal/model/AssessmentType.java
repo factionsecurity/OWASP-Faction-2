@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
 import jakarta.persistence.*;
 
@@ -30,6 +31,12 @@ public class AssessmentType {
 
     @Builder.Default
     private Boolean active = true;
+
+    /** The workflow new assessments of this type are created under. */
+    @Builder.Default
+    @Column(name = "workflow_id", nullable = false)
+    @ColumnDefault("'default'")
+    private String workflowId = AssessmentWorkflow.DEFAULT_ID;
 
     private LocalDateTime createdAt;
 

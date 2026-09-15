@@ -1,18 +1,18 @@
 package com.faction.clientportal.model;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import jakarta.persistence.Entity;
-import org.hibernate.type.SqlTypes;
-import jakarta.persistence.Table;
-import org.hibernate.type.SqlTypes;
-import jakarta.persistence.Id;
-import org.hibernate.type.SqlTypes;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -20,30 +20,47 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Singleton configuration document for the assessment workflow.
- * Stored with a fixed ID of "singleton" in the database.
+ * A named assessment workflow: the assessment statuses, SLAs, vulnerability statuses, remediation
+ * stages and peer review setting an assessment type's assessments use. Default Workflow (id
+ * {@value #DEFAULT_ID}) always exists; bootstrap creates it on a new installation and the
+ * assessment_workflows migration copies the old single configuration into it.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "assessment_workflow_config")
-public class AssessmentWorkflowConfig {
+@Table(name = "assessment_workflows", indexes = {
+    @Index(name = "idx_assessment_workflows_name", columnList = "name", unique = true)
+})
+public class AssessmentWorkflow {
+
+    public static final String DEFAULT_ID = "default";
+    public static final String DEFAULT_NAME = "Default Workflow";
 
     /** The status a new assessment starts in when nothing else has set one. */
     public static final String DEFAULT_NEW_STATUS = "New";
 
     @Id
-    private String id; // always "singleton"
+    private String id;
+
+    @Column(nullable = false)
+    private String name;
+
+    /** True only for Default Workflow, which can never be deleted or archived. */
+    @Column(name = "is_default", nullable = false)
+    private boolean defaultWorkflow;
+
+    /** Hidden from pickers and default filter lists; its assessments keep working. */
+    private boolean archived;
 
     /** Ordered list of available assessment status labels */
     @Builder.Default
     @JdbcTypeCode(SqlTypes.JSON)
-    private List<String> statuses = Arrays.asList(
+    private List<String> statuses = new ArrayList<>(Arrays.asList(
             "New", "Scheduling", "Data Gathering", "Planning",
             "Testing", "Reporting", "Completed", "NA"
-    );
+    ));
 
     /** Status applied when a new assessment is created */
     @Builder.Default
@@ -67,16 +84,7 @@ public class AssessmentWorkflowConfig {
     @JdbcTypeCode(SqlTypes.JSON)
     private List<VulnerabilitySla> vulnerabilitySlas = defaultVulnerabilitySlas();
 
-    /** Default SLAs seeded on new instances; severities can be adjusted/removed in Assessment Config. */
-    public static List<VulnerabilitySla> defaultVulnerabilitySlas() {
-        return new ArrayList<>(Arrays.asList(
-                new VulnerabilitySla("CRITICAL", 30, 20),
-                new VulnerabilitySla("HIGH", 60, 30),
-                new VulnerabilitySla("MEDIUM", 365, 300)
-        ));
-    }
-
-    /** Custom vulnerability status labels added by the user (defaults None/Open/Closed/Past Due are implicit) */
+    /** Vulnerability statuses added to the built-in ones (None/Open/Closed/Past Due are implicit) */
     @Builder.Default
     @JdbcTypeCode(SqlTypes.JSON)
     private List<String> vulnerabilityStatuses = new ArrayList<>();
@@ -92,6 +100,27 @@ public class AssessmentWorkflowConfig {
     @JdbcTypeCode(SqlTypes.JSON)
     private List<RemediationStage> remediationStages = defaultRemediationStages();
 
+    /**
+     * Whether the person who submitted an assessment for peer review may also
+     * review it. Off by default — the point of peer review is a second pair of
+     * eyes. super_admin is exempt from this check.
+     */
+    @Builder.Default
+    private boolean allowSelfPeerReview = false;
+
+    private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
+
+    /** Default SLAs seeded on new instances; severities can be adjusted/removed in Assessment Config. */
+    public static List<VulnerabilitySla> defaultVulnerabilitySlas() {
+        return new ArrayList<>(Arrays.asList(
+                new VulnerabilitySla("CRITICAL", 30, 20),
+                new VulnerabilitySla("HIGH", 60, 30),
+                new VulnerabilitySla("MEDIUM", 365, 300)
+        ));
+    }
+
     /** Default stages seeded on new instances; editable in Assessment Config. */
     public static List<RemediationStage> defaultRemediationStages() {
         return new ArrayList<>(Arrays.asList(
@@ -101,39 +130,8 @@ public class AssessmentWorkflowConfig {
         ));
     }
 
-    /**
-     * Whether the person who submitted an assessment for peer review may also
-     * review it. Off by default — the point of peer review is a second pair of
-     * eyes. super_admin is exempt from this check.
-     */
-    @Builder.Default
-    private boolean allowSelfPeerReview = false;
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class RemediationStage {
-        /**
-         * Stable identifier completions are keyed by. Never changes once assigned, so renaming
-         * a stage re-labels its historical completions instead of orphaning them.
-         */
-        private String id;
-        /** Display name, free text (e.g. "QA", "UAT"). */
-        private String name;
-    }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class VulnerabilitySla {
-        /** Vulnerability severity (e.g. CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL) */
-        private String severity;
-        /** Days after openedAt before the vulnerability is considered past due (the SLA deadline) */
-        private int pastDueDays;
-        /**
-         * Lead time in days before the past-due deadline at which the vulnerability starts showing a
-         * warning — the warning window opens at {@code openedAt + (pastDueDays - warningDays)}.
-         */
-        private int warningDays;
+    /** A builder for Default Workflow with every setting at its default. */
+    public static AssessmentWorkflowBuilder defaultWorkflowBuilder() {
+        return builder().id(DEFAULT_ID).name(DEFAULT_NAME).defaultWorkflow(true);
     }
 }
