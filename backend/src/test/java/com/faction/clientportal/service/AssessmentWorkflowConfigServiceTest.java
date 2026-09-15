@@ -1,5 +1,6 @@
 package com.faction.clientportal.service;
 
+import com.faction.clientportal.exception.WorkflowConflictException;
 import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.VulnerabilitySla;
@@ -19,7 +20,12 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -38,6 +44,7 @@ class AssessmentWorkflowConfigServiceTest {
 
     @Mock private AssessmentWorkflowRepository repository;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private WorkflowSettingsGuard settingsGuard;
     @InjectMocks private AssessmentWorkflowConfigService service;
 
     /** Stubbed per test: Mockito's strict stubs fail a class-wide stub the entity test never uses. */
@@ -224,5 +231,32 @@ class AssessmentWorkflowConfigServiceTest {
         ArgumentCaptor<SlaConfigChangedEvent> event = ArgumentCaptor.forClass(SlaConfigChangedEvent.class);
         verify(eventPublisher).publishEvent(event.capture());
         assertThat(event.getValue().workflowId()).isEqualTo("default");
+    }
+
+    @Test
+    void savingChecksTheGuardWithWhatTheSaveRemoves() {
+        stored(AssessmentWorkflow.defaultWorkflowBuilder().build());
+        AssessmentWorkflow submitted = AssessmentWorkflow.defaultWorkflowBuilder()
+                .statuses(new ArrayList<>(List.of("New", "Testing", "Completed"))).build();
+
+        service.updateConfig(submitted);
+
+        verify(settingsGuard).check(eq("default"), argThat(change ->
+                change.removedStatuses().containsAll(List.of("Scheduling", "Data Gathering", "Planning", "Reporting", "NA"))
+                        && change.renamedStatuses().isEmpty()));
+    }
+
+    @Test
+    void aRefusedSaveSavesAndAnnouncesNothing() {
+        when(repository.findById("default")).thenReturn(Optional.of(withSlas(new VulnerabilitySla("HIGH", 30, 20))));
+        doThrow(new WorkflowConflictException(new WorkflowConflictException.Violation(
+                WorkflowConflictException.ASSESSMENT_STATUS_IN_USE, "Testing", 3)))
+                .when(settingsGuard).check(any(), any());
+
+        assertThatThrownBy(() -> service.updateConfig(withSlas(new VulnerabilitySla("HIGH", 60, 30))))
+                .isInstanceOf(WorkflowConflictException.class);
+
+        verify(repository, never()).save(any(AssessmentWorkflow.class));
+        verifyNoInteractions(eventPublisher);
     }
 }

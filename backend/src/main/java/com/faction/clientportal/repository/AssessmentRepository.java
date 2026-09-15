@@ -4,6 +4,7 @@ import com.faction.clientportal.model.Assessment;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -220,4 +221,24 @@ public interface AssessmentRepository extends JpaRepository<Assessment, String>,
     /** Each assessment's workflow id, as {@code [id, workflowId]} rows, for many assessments in one query. */
     @Query("select a.id, a.workflowId from Assessment a where a.id in :ids")
     List<Object[]> findWorkflowIdsByIds(@Param("ids") Collection<String> ids);
+
+    /** Non-deleted assessments of one workflow in one status: the "status in use" guard. */
+    long countByWorkflowIdAndStatusAndDeletedAtIsNull(String workflowId, String status);
+
+    /** Non-deleted assessments on one workflow: the delete guard. */
+    long countByWorkflowIdAndDeletedAtIsNull(String workflowId);
+
+    /** Non-deleted assessment counts per workflow, as {@code [workflowId, count]} rows, for the admin usage view. */
+    @Query("select a.workflowId, count(a) from Assessment a where a.deletedAt is null group by a.workflowId")
+    List<Object[]> countGroupedByWorkflowId();
+
+    /**
+     * Renames an assessment status on one workflow, deleted assessments included so a restored one
+     * still has a status its workflow lists. Runs inside the caller's transaction.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Assessment a set a.status = :to where a.workflowId = :workflowId and a.status = :from")
+    int renameStatusInWorkflow(@Param("workflowId") String workflowId,
+                               @Param("from") String from,
+                               @Param("to") String to);
 }

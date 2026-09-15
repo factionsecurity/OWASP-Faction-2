@@ -48,7 +48,13 @@ public enum Feature {
      * own check. The report generator additionally ignores section data in this edition,
      * so a database that once ran the overlay still produces a whole report.
      */
-    REPORT_SECTIONS("report_sections", "Report Sections");
+    REPORT_SECTIONS("report_sections", "Report Sections"),
+
+    /**
+     * Creating and copying workflows beyond Default Workflow. Editing an existing workflow's
+     * settings is open source; only bringing a new one into existence is gated.
+     */
+    CUSTOM_WORKFLOWS("custom_workflows", "Custom Workflows");
 
     private final String key;
     private final String displayName;

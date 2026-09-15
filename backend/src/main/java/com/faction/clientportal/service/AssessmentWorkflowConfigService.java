@@ -28,6 +28,7 @@ public class AssessmentWorkflowConfigService {
 
     private final AssessmentWorkflowRepository repository;
     private final ApplicationEventPublisher eventPublisher;
+    private final WorkflowSettingsGuard settingsGuard;
 
     /**
      * Default Workflow, created with the default settings when it does not exist yet.
@@ -54,8 +55,13 @@ public class AssessmentWorkflowConfigService {
         return ensureDefaultWorkflow();
     }
 
+    /** What {@link #saveSettings} saved, and whether the save changed the SLAs (so due dates must be recalculated). */
+    public record SettingsSave(AssessmentWorkflow workflow, boolean slasChanged) {
+    }
+
     /**
-     * Saves the submitted settings onto Default Workflow exactly as submitted. What identifies the
+     * Saves the submitted settings onto Default Workflow exactly as submitted, after refusing the save
+     * when it removes a status, vulnerability status or stage still in use. What identifies the
      * workflow — id, name, default flag, archived flag, creation time — is never taken from the
      * submission.
      */
@@ -63,6 +69,21 @@ public class AssessmentWorkflowConfigService {
         // With no row yet, getConfig() would have seeded the defaults, so those are what changed from.
         AssessmentWorkflow workflow = repository.findById(AssessmentWorkflow.DEFAULT_ID)
                 .orElseGet(AssessmentWorkflowConfigService::newDefaultWorkflow);
+        settingsGuard.check(AssessmentWorkflow.DEFAULT_ID, WorkflowSettingsChange.untracked(workflow, submitted));
+
+        SettingsSave result = saveSettings(workflow, submitted);
+        if (result.slasChanged()) {
+            eventPublisher.publishEvent(new SlaConfigChangedEvent(AssessmentWorkflow.DEFAULT_ID));
+        }
+        return result.workflow();
+    }
+
+    /**
+     * Copies the settings fields of {@code submitted} onto {@code workflow} and saves it. Neither guards
+     * nor announces: callers check {@link WorkflowSettingsGuard} first and publish
+     * {@link SlaConfigChangedEvent} once the save is committed.
+     */
+    public SettingsSave saveSettings(AssessmentWorkflow workflow, AssessmentWorkflow submitted) {
         List<VulnerabilitySla> previousSlas = workflow.getVulnerabilitySlas();
 
         workflow.setStatuses(submitted.getStatuses());
@@ -77,10 +98,8 @@ public class AssessmentWorkflowConfigService {
         workflow.setUpdatedAt(LocalDateTime.now());
 
         AssessmentWorkflow saved = repository.save(workflow);
-        if (!normalizedSlas(previousSlas).equals(normalizedSlas(saved.getVulnerabilitySlas()))) {
-            eventPublisher.publishEvent(new SlaConfigChangedEvent(AssessmentWorkflow.DEFAULT_ID));
-        }
-        return saved;
+        boolean slasChanged = !normalizedSlas(previousSlas).equals(normalizedSlas(saved.getVulnerabilitySlas()));
+        return new SettingsSave(saved, slasChanged);
     }
 
     private static AssessmentWorkflow newDefaultWorkflow() {

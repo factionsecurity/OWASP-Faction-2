@@ -66,6 +66,7 @@ public class AssessmentService {
     private final DefaultReportTemplateService defaultReportTemplateService;
     private final SlaService slaService;
     private final WorkflowCatalogService workflowCatalogService;
+    private final AssessmentWorkflowMoveService workflowMoveService;
 
     /**
      * Create a new assessment from a report template
@@ -279,13 +280,17 @@ public class AssessmentService {
      */
     public AssessmentDto updateAssessment(String id, UpdateAssessmentRequest request, String userId,
                                           Authentication authentication) {
+        // Loaded once, up front, and reused for the rest of the method — including the
+        // moveToTypeWorkflow validation/apply below — rather than each of them loading their own.
+        WorkflowCatalog catalog = workflowCatalogService.load();
+        String moveToWorkflowId = workflowToMoveTo(id, request, authentication, catalog);
+
         Assessment assessment = assessmentRepository.findByIdAndDeletedAtIsNull(id)
             .orElseThrow(() -> new ResourceNotFoundException("Assessment not found with id: " + id));
 
         // Out-of-scope reads already 404; an out-of-scope write is an explicit denial.
         accessScopeService.checkAssessmentEditAccess(authentication, assessment);
 
-        WorkflowCatalog catalog = workflowCatalogService.load();
         AssessmentWorkflow workflow = catalog.forAssessment(assessment);
 
         // Peer-review lock guard — block field edits while a review is in flight.
@@ -572,6 +577,11 @@ public class AssessmentService {
         Assessment updatedAssessment = assessmentRepository.save(assessment);
         log.info("Updated assessment: {} (status: {})", updatedAssessment.getName(), updatedAssessment.getStatus());
 
+        if (moveToWorkflowId != null) {
+            workflowMoveService.move(updatedAssessment.getId(), moveToWorkflowId, false, catalog);
+            updatedAssessment = assessmentRepository.findById(updatedAssessment.getId()).orElseThrow();
+        }
+
         extensionEventService.assessmentChanged(updatedAssessment.getId(),
             finalizing ? com.faction.extender.AssessmentManager.Operation.Finalize
                        : com.faction.extender.AssessmentManager.Operation.Update);
@@ -587,6 +597,33 @@ public class AssessmentService {
         }
 
         return migrateAndConvertToDto(updatedAssessment, catalog);
+    }
+
+    /**
+     * With {@code moveToTypeWorkflow}: the workflow of the assessment's (new) type when it differs from the
+     * assessment's own, validated (permission, edition, archived target) before anything is saved — on the
+     * one catalog the caller already loaded. Null when there is nothing to move.
+     */
+    private String workflowToMoveTo(String id, UpdateAssessmentRequest request, Authentication authentication,
+                                    WorkflowCatalog catalog) {
+        if (!Boolean.TRUE.equals(request.getMoveToTypeWorkflow())) {
+            return null;
+        }
+        if (!hasAuthority(authentication, Permission.CONFIG_WRITE.getPermission())
+                && !hasAuthority(authentication, RequiresPermissionAuthorizationManager.SUPER_ADMIN)) {
+            throw new AccessDeniedException("Moving an assessment to another workflow needs config:write");
+        }
+        Assessment current = assessmentRepository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Assessment not found with id: " + id));
+        String typeId = request.getAssessmentTypeId() != null ? request.getAssessmentTypeId() : current.getAssessmentTypeId();
+        String workflowId = typeId == null ? AssessmentWorkflow.DEFAULT_ID
+                : assessmentTypeRepository.findById(typeId).map(AssessmentType::getWorkflowId).orElse(AssessmentWorkflow.DEFAULT_ID);
+        if (workflowId.equals(current.getWorkflowId())) {
+            return null;
+        }
+        // Validation only — no finding/completion work — so this doesn't pay for a full dry-run move.
+        workflowMoveService.checkMove(current, workflowId, catalog);
+        return workflowId;
     }
 
     /**

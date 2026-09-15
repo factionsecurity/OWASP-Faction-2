@@ -31,6 +31,12 @@ public class UpdateAssessmentRequest {
      */
     private String assessmentTypeId;
 
+    /**
+     * With a type change, also move the assessment onto the new type's workflow (off by default, so
+     * existing assessments keep their workflow). Needs {@code config:write}.
+     */
+    private Boolean moveToTypeWorkflow;
+
     private String campaignId;
 
     private String reportTemplateId;

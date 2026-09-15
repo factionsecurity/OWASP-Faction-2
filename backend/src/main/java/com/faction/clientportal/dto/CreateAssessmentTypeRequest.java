@@ -22,4 +22,7 @@ public class CreateAssessmentTypeRequest {
     @NotNull(message = "Active status is required")
     @Builder.Default
     private Boolean active = true;
+
+    /** The workflow new assessments of this type use; null means Default Workflow on create and "keep" on update. */
+    private String workflowId;
 }

@@ -1,5 +1,7 @@
 package com.faction.clientportal.service;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilitySeverity;
@@ -10,15 +12,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -71,5 +78,35 @@ class SlaRecalculationFinderTest {
 
         verify(vulnerabilityRepository).findOpenOutsideWorkflowsAfterId(eq(""), eq(List.of(TestWorkflows.SECOND_ID)), any());
         verify(vulnerabilityRepository, never()).findOpenAfterId(any(), any());
+    }
+
+    @Test
+    void recalculatingEveryWorkflowLoadsTheCatalogOnceForTheirScopes() {
+        when(workflowCatalogService.load())
+                .thenReturn(WorkflowCatalog.of(List.of(defaults, TestWorkflows.secondWorkflow())));
+        when(vulnerabilityRepository.findOpenOutsideWorkflowsAfterId(eq(""), any(), any())).thenReturn(List.of());
+        when(vulnerabilityRepository.findOpenInWorkflowAfterId(eq(""), any(), any())).thenReturn(List.of());
+
+        service.recalculateOpenFindings();
+
+        verify(workflowCatalogService, times(1)).load();
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void theLogNamesTheWorkflowARequestedIdResolvedTo(CapturedOutput output) {
+        Logger logger = (Logger) LoggerFactory.getLogger(SlaRecalculationService.class);
+        Level previousLevel = logger.getLevel();
+        try {
+            logger.setLevel(Level.INFO);
+            when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(defaults)));
+            when(vulnerabilityRepository.findOpenAfterId(eq(""), any())).thenReturn(List.of());
+
+            service.recalculateOpenFindings("gone-workflow");
+
+            assertThat(output).contains("SLA recalculation for workflow default (Default Workflow), requested gone-workflow");
+        } finally {
+            logger.setLevel(previousLevel);
+        }
     }
 }
