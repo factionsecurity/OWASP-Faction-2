@@ -15,6 +15,7 @@ import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.repository.VulnerabilityRepository;
 import com.faction.clientportal.service.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -110,6 +111,18 @@ class RetestControllerTest extends TestContainersConfig {
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build());
+    }
+
+    @AfterEach
+    void tearDown() {
+        workflowConfigRepository.deleteAll();
+    }
+
+    private void putTheAssessmentOnTheSecondWorkflow() {
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(workflowConfigRepository);
+        testAssessment.setWorkflowId(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Signed Off");
+        assessmentRepository.save(testAssessment);
     }
 
     private Map<String, Object> buildCreateRequest() {
@@ -998,6 +1011,48 @@ class RetestControllerTest extends TestContainersConfig {
         assertThat(v.getClosedAt()).isNotNull();
         assertThat(stageCompletionRepository.findByVulnerabilityId(testVuln.getId())).isEmpty();
         assertThat(v.getComments()).anyMatch(c -> c.getContent().contains("**Production** completed"));
+    }
+
+    @Test
+    void passClosingInProduction_onTheSecondWorkflow_closesItWithThatWorkflowsLastStage() throws Exception {
+        putTheAssessmentOnTheSecondWorkflow();
+
+        Vulnerability v = passWithClosure("PRODUCTION");
+
+        assertThat(v.getStatus()).isEqualTo("Closed");
+        assertThat(v.getClosedAt()).isNotNull();
+        assertThat(stageCompletionRepository.findByVulnerabilityId(testVuln.getId())).isEmpty();
+        assertThat(v.getComments()).anyMatch(c -> c.getContent().contains("**Live** completed"));
+    }
+
+    @Test
+    void passClosingInTheSecondWorkflowsFirstStage_recordsItAndLeavesTheFindingOpen() throws Exception {
+        putTheAssessmentOnTheSecondWorkflow();
+
+        Vulnerability v = passWithClosure("second-qa");
+
+        assertThat(stageCompletedAt("second-qa")).isNotNull();
+        assertThat(v.getClosedAt()).isNull();
+        assertThat(v.getStatus()).isEqualTo("Passed Retest");
+        assertThat(v.getComments()).anyMatch(c -> c.getContent().contains("**QA** completed"));
+    }
+
+    @Test
+    void passWithADefaultStageOnTheSecondWorkflow_returns400() throws Exception {
+        putTheAssessmentOnTheSecondWorkflow();
+        String createBody = mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String retestId = objectMapper.readTree(createBody).at("/data/id").asText();
+
+        mockMvc.perform(post("/api/v1/retests/{id}/complete", retestId)
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("result", "PASS", "closure", "staging"))))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

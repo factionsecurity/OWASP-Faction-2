@@ -33,6 +33,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import com.faction.clientportal.model.Permission;
 import com.faction.clientportal.repository.AssessmentSearchCriteria;
+import com.faction.clientportal.testsupport.TestWorkflows;
 
 @ExtendWith(MockitoExtension.class)
 class AssessmentServiceTest {
@@ -99,6 +100,9 @@ class AssessmentServiceTest {
 
     @Mock
     private SlaService slaService;
+
+    @Mock
+    private WorkflowCatalogService workflowCatalogService;
 
     @InjectMocks
     private AssessmentService assessmentService;
@@ -197,6 +201,16 @@ class AssessmentServiceTest {
         lenient().when(workflowConfigService.getConfig()).thenReturn(defaultConfig);
         lenient().when(workflowConfigService.isCompletedStatus(any()))
                 .thenAnswer(inv -> "Completed".equals(inv.getArgument(0)));
+        lenient().when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(defaultConfig)));
+        lenient().when(workflowCatalogService.forAssessment(any())).thenReturn(defaultConfig);
+    }
+
+    private AssessmentWorkflow secondWorkflowInCatalog() {
+        AssessmentWorkflow second = TestWorkflows.secondWorkflow();
+        WorkflowCatalog catalog = WorkflowCatalog.of(List.of(AssessmentWorkflow.defaultWorkflowBuilder().build(), second));
+        lenient().when(workflowCatalogService.load()).thenReturn(catalog);
+        lenient().when(workflowCatalogService.forAssessment(any())).thenAnswer(inv -> catalog.forAssessment(inv.getArgument(0)));
+        return second;
     }
 
     @Test
@@ -1883,5 +1897,159 @@ class AssessmentServiceTest {
         assertThat(saved.getValue().getReportTemplateId()).isEqualTo(testTemplate.getId());
         assertThat(saved.getValue().getTemplateName()).isEqualTo(testTemplate.getName());
         verify(reportTemplateRepository, never()).findByIdAndDeletedAtIsNull(any());
+    }
+
+    // ── Per-assessment workflow ─────────────────────────────────────────────
+
+    @Test
+    void aNewAssessmentTakesItsTypesWorkflowAndThatWorkflowsNewStatus() {
+        // Given as in testCreateAssessment_Success, and:
+        secondWorkflowInCatalog();
+        testAssessmentType.setWorkflowId(TestWorkflows.SECOND_ID);
+        CreateAssessmentRequest request = CreateAssessmentRequest.builder()
+                .name("New Assessment")
+                .applicationId(testApplication.getId())
+                .assessmentTypeId(testAssessmentType.getId())
+                .reportTemplateId(testTemplate.getId())
+                .assessorIds(List.of(testUser.getId()))
+                .engagementManagerId(testUser.getId())
+                .startDate(LocalDateTime.now())
+                .plannedEndDate(LocalDateTime.now().plusDays(7))
+                .scope("Assessment scope")
+                .initialFieldValues(new HashMap<>())
+                .build();
+
+        when(applicationRepository.findById(testApplication.getId()))
+                .thenReturn(Optional.of(testApplication));
+        when(assessmentTypeRepository.findById(testAssessmentType.getId()))
+                .thenReturn(Optional.of(testAssessmentType));
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
+                .thenReturn(Optional.of(testTemplate));
+        when(assessmentRepository.save(any(Assessment.class)))
+                .thenReturn(testAssessment);
+
+        // When: the same createAssessment call as testCreateAssessment_Success
+        assessmentService.createAssessment(request, "testuser");
+
+        // Then
+        ArgumentCaptor<Assessment> saved = ArgumentCaptor.forClass(Assessment.class);
+        verify(assessmentRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues().get(0).getWorkflowId()).isEqualTo(TestWorkflows.SECOND_ID);
+        assertThat(saved.getAllValues().get(0).getStatus()).isEqualTo("Draft");
+    }
+
+    @Test
+    void completingUsesTheAssessmentsOwnCompletedStatusAndSlas() {
+        AssessmentWorkflow second = secondWorkflowInCatalog();
+        testAssessment.setWorkflowId(TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Fieldwork");
+        UpdateAssessmentRequest request = UpdateAssessmentRequest.builder().status("Signed Off").build();
+        Vulnerability unopened = Vulnerability.builder().id("v-1").assessmentId(testAssessment.getId())
+                .severity(com.faction.clientportal.model.VulnerabilitySeverity.HIGH).status("None").build();
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId())).thenReturn(Optional.of(testAssessment));
+        when(assessmentRepository.save(any(Assessment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(vulnerabilityRepository.findByAssessmentIdAndDeletedAtIsNull(testAssessment.getId()))
+                .thenReturn(new ArrayList<>(List.of(unopened)));
+        when(assessmentChecklistRepository.findByAssessmentId(testAssessment.getId())).thenReturn(List.of());
+
+        assessmentService.updateAssessment(testAssessment.getId(), request, "testuser");
+
+        assertThat(testAssessment.getCompletedDate()).isNotNull();
+        assertThat(unopened.getStatus()).isEqualTo("Open");
+        verify(slaService).refreshAll(anyList(), eq(second));
+        verify(applicationService).addSystemComment(eq(testApplication.getId()), contains("**Assessment completed**"), eq("testuser"));
+    }
+
+    @Test
+    void anotherWorkflowsCompletedStatusDoesNotCompleteTheAssessment() {
+        secondWorkflowInCatalog();
+        testAssessment.setWorkflowId(TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Fieldwork");
+        UpdateAssessmentRequest request = UpdateAssessmentRequest.builder().status("Completed").build();
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId())).thenReturn(Optional.of(testAssessment));
+        when(assessmentRepository.save(any(Assessment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assessmentService.updateAssessment(testAssessment.getId(), request, "testuser");
+
+        assertThat(testAssessment.getCompletedDate()).isNull();
+        verify(applicationService, never()).addSystemComment(any(), contains("**Assessment completed**"), any());
+    }
+
+    @Test
+    void theReopenWindowAppliesToTheAssessmentsOwnCompletedStatus() {
+        secondWorkflowInCatalog();
+        Assessment signedOff = Assessment.builder().workflowId(TestWorkflows.SECOND_ID)
+                .status("Signed Off").completedDate(LocalDateTime.now().minusHours(1)).build();
+        Assessment completedOnSecond = Assessment.builder().workflowId(TestWorkflows.SECOND_ID)
+                .status("Completed").completedDate(LocalDateTime.now().minusHours(1)).build();
+
+        assertThat(assessmentService.withinReopenWindow(signedOff)).isTrue();
+        assertThat(assessmentService.withinReopenWindow(completedOnSecond)).isFalse();
+    }
+
+    @Test
+    void thePastDueFlagIgnoresAnAssessmentCompletedInItsOwnWorkflow() {
+        // Given as in testIsPastDue_Calculation (the planned end date is in the past), and:
+        secondWorkflowInCatalog();
+        testAssessment.setWorkflowId(TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Signed Off");
+        testAssessment.setPlannedEndDate(LocalDateTime.now().minusDays(1));
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
+                .thenReturn(Optional.of(testAssessment));
+
+        // Then: the same call returns isPastDue false for "Signed Off"...
+        AssessmentDto dto = assessmentService.getAssessment(testAssessment.getId());
+        assertThat(dto.getIsPastDue()).isFalse();
+
+        // ...and, repeating it with testAssessment.setStatus("Completed"), isPastDue true:
+        testAssessment.setStatus("Completed");
+        dto = assessmentService.getAssessment(testAssessment.getId());
+        assertThat(dto.getIsPastDue()).isTrue();
+    }
+
+    @Test
+    void theDateWindowMovesAnAssessmentToItsOwnWorkflowsInProgressStatus() {
+        secondWorkflowInCatalog();
+        testAssessment.setWorkflowId(TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Draft");
+        testAssessment.setStartDate(LocalDateTime.now().minusDays(1));
+        testAssessment.setPlannedEndDate(LocalDateTime.now().plusDays(5));
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
+                .thenReturn(Optional.of(testAssessment));
+        when(assessmentRepository.save(any(Assessment.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        assessmentService.getAssessment(testAssessment.getId(), null);
+
+        assertThat(testAssessment.getStatus()).isEqualTo("Fieldwork");
+    }
+
+    @Test
+    void reopeningASignedOffAssessmentOutsideTheWindowIsRefused() {
+        secondWorkflowInCatalog();
+        testAssessment.setWorkflowId(TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Signed Off");
+        testAssessment.setCompletedDate(LocalDateTime.now().minusYears(5));
+        UpdateAssessmentRequest request = UpdateAssessmentRequest.builder().status("Fieldwork").build();
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId())).thenReturn(Optional.of(testAssessment));
+
+        assertThatThrownBy(() -> assessmentService.updateAssessment(testAssessment.getId(), request, "testuser"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("can no longer be reopened");
+    }
+
+    @Test
+    void anotherWorkflowsCompletedStatusIsNotAReopen() {
+        secondWorkflowInCatalog();
+        testAssessment.setWorkflowId(TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Completed");  // not completed on the second workflow
+        testAssessment.setCompletedDate(LocalDateTime.now().minusYears(5));
+        UpdateAssessmentRequest request = UpdateAssessmentRequest.builder().status("Fieldwork").build();
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId())).thenReturn(Optional.of(testAssessment));
+        when(assessmentRepository.save(any(Assessment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assessmentService.updateAssessment(testAssessment.getId(), request, "testuser");
+
+        assertThat(testAssessment.getStatus()).isEqualTo("Fieldwork");
     }
 }

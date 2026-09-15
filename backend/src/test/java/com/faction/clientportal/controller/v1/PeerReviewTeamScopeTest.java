@@ -14,6 +14,7 @@ import com.faction.clientportal.repository.PeerReviewRepository;
 import com.faction.clientportal.repository.TeamRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.service.JwtService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -89,6 +90,11 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
         betaReview = saveReview(betaAssessment.getId(), betaMember.getId());
     }
 
+    @AfterEach
+    void tearDown() {
+        configRepository.deleteAll();
+    }
+
     // ── Queue / read scoping ────────────────────────────────────────────────
 
     @Test
@@ -153,6 +159,21 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
         mockMvc.perform(post("/api/v1/peer-reviews/" + alphaReview.getId() + "/start")
                         .header("Authorization", token(alphaAssessor, EDIT_TEAM)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void selfReview_followsTheAssessmentsOwnWorkflow() throws Exception {
+        // Default Workflow forbids self-review; the second workflow allows it.
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(configRepository);
+        alphaAssessment.setWorkflowId(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID);
+        assessmentRepository.save(alphaAssessment);
+
+        mockMvc.perform(post("/api/v1/peer-reviews/" + alphaReview.getId() + "/start")
+                        .header("Authorization", token(alphaAssessor, EDIT_TEAM)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/peer-reviews/" + betaReview.getId() + "/start")
+                        .header("Authorization", token(betaMember, EDIT_TEAM)))
+                .andExpect(status().isForbidden());
     }
 
     // ── Submit (create) scoping ─────────────────────────────────────────────

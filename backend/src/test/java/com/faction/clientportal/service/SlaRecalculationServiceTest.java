@@ -6,8 +6,10 @@ import com.faction.clientportal.model.VulnerabilitySla;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilityComment;
 import com.faction.clientportal.model.VulnerabilitySeverity;
+import com.faction.clientportal.repository.AssessmentRepository;
 import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.VulnerabilityRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,11 +50,38 @@ class SlaRecalculationServiceTest extends TestContainersConfig {
     @Autowired private SlaService slaService;
     @Autowired private TransactionTemplate transactionTemplate;
     @Autowired private DataSource dataSource;
+    @Autowired private WorkflowCatalogService workflowCatalogService;
+    @Autowired private AssessmentRepository assessmentRepository;
+
+    private final List<String> assessmentIds = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
         vulnerabilityRepository.deleteAll();
         workflowConfigRepository.deleteAll();
+    }
+
+    @AfterEach
+    void resetWorkflows() {
+        workflowConfigRepository.deleteAll();
+    }
+
+    @AfterEach
+    void deleteAssessments() {
+        assessmentRepository.deleteAllById(assessmentIds);
+    }
+
+    private String assessmentOn(String workflowId) {
+        String id = assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
+                .name("Recalc " + java.util.UUID.randomUUID()).workflowId(workflowId).build()).getId();
+        assessmentIds.add(id);
+        return id;
+    }
+
+    private Vulnerability openHighWithStaleDates(String assessmentId) {
+        LocalDateTime opened = LocalDateTime.of(2099, 1, 1, 9, 0);
+        return seed(b -> b.assessmentId(assessmentId).status("Open").openedAt(opened)
+                .dueAt(opened.plusDays(1)).warningAt(opened));
     }
 
     @Test
@@ -171,7 +200,7 @@ class SlaRecalculationServiceTest extends TestContainersConfig {
         Vulnerability seeded = seed(b -> b.status("Open").openedAt(LocalDateTime.of(2099, 1, 1, 9, 0)));
 
         transactionTemplate.executeWithoutResult(status -> {
-            vulnerabilityRepository.findOpenAfterId("", PageRequest.of(0, 10));
+            vulnerabilityRepository.findOpenOutsideWorkflowsAfterId("", List.of(""), PageRequest.of(0, 10));
             // Row is locked (SELECT ... FOR UPDATE) for the life of this transaction: a concurrent
             // NOWAIT lock attempt from another connection must fail rather than silently succeed and
             // let a user's own edit be overwritten when this batch's transaction later commits.
@@ -205,10 +234,56 @@ class SlaRecalculationServiceTest extends TestContainersConfig {
         }
     }
 
+    @Test
+    void anSlaEditOnOneWorkflowRecalculatesOnlyThatWorkflowsFindings() {
+        workflowConfigRepository.save(AssessmentWorkflow.defaultWorkflowBuilder().build());
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(workflowConfigRepository);
+        Vulnerability onDefault = openHighWithStaleDates(assessmentOn("default"));
+        Vulnerability onSecond = openHighWithStaleDates(assessmentOn(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID));
+        LocalDateTime opened = LocalDateTime.of(2099, 1, 1, 9, 0);
+
+        assertThat(recalculationService.recalculateOpenFindings(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID))
+                .isEqualTo(new SlaRecalculationService.RecalculationResult(1, 0));
+        assertThat(reload(onSecond).getDueAt()).isEqualTo(opened.plusDays(14));
+        assertThat(reload(onDefault).getDueAt()).isEqualTo(opened.plusDays(1));
+
+        assertThat(recalculationService.recalculateOpenFindings("default").recalculated()).isGreaterThanOrEqualTo(1);
+        assertThat(reload(onDefault).getDueAt()).isEqualTo(opened.plusDays(60));
+        assertThat(reload(onSecond).getDueAt()).isEqualTo(opened.plusDays(14));
+    }
+
+    @Test
+    void anAssessmentWithAnUnknownWorkflowBelongsToDefaultWorkflow() {
+        workflowConfigRepository.save(AssessmentWorkflow.defaultWorkflowBuilder().build());
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(workflowConfigRepository);
+        Vulnerability stray = openHighWithStaleDates(assessmentOn("no-such-workflow"));
+        LocalDateTime opened = LocalDateTime.of(2099, 1, 1, 9, 0);
+
+        recalculationService.recalculateOpenFindings(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID);
+        assertThat(reload(stray).getDueAt()).isEqualTo(opened.plusDays(1));
+
+        recalculationService.recalculateOpenFindings("default");
+        assertThat(reload(stray).getDueAt()).isEqualTo(opened.plusDays(60));
+    }
+
+    @Test
+    void withoutAWorkflowIdEveryWorkflowIsRecalculated() {
+        workflowConfigRepository.save(AssessmentWorkflow.defaultWorkflowBuilder().build());
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(workflowConfigRepository);
+        Vulnerability onDefault = openHighWithStaleDates(assessmentOn("default"));
+        Vulnerability onSecond = openHighWithStaleDates(assessmentOn(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID));
+        LocalDateTime opened = LocalDateTime.of(2099, 1, 1, 9, 0);
+
+        assertThat(recalculationService.recalculateOpenFindings().recalculated()).isGreaterThanOrEqualTo(2);
+
+        assertThat(reload(onDefault).getDueAt()).isEqualTo(opened.plusDays(60));
+        assertThat(reload(onSecond).getDueAt()).isEqualTo(opened.plusDays(14));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private SlaRecalculationService smallBatches() {
-        return new SlaRecalculationService(vulnerabilityRepository, slaService, transactionTemplate, 2, true);
+        return new SlaRecalculationService(vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 2, true);
     }
 
     private List<Vulnerability> seedOpenHigh(int count) {

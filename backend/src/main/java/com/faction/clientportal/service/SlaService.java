@@ -1,8 +1,10 @@
 package com.faction.clientportal.service;
 
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.VulnerabilitySla;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilitySeverity;
+import com.faction.clientportal.repository.AssessmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,7 @@ import java.util.Map;
  * stored dates never lag the row they describe. The rules mirror what the readers compute today:
  * due is {@code openedAt + pastDueDays}; the warning window opens {@code warningDays} before that;
  * a finding under exception whose expiry is later than that is due at the expiry instead.
+ * A finding's SLAs are its assessment's workflow's.
  */
 @Service
 @RequiredArgsConstructor
@@ -31,6 +34,8 @@ public class SlaService {
     static final String EXCEPTION_STATUS = "Exception";
 
     private final AssessmentWorkflowConfigService workflowConfigService;
+    private final WorkflowCatalogService workflowCatalogService;
+    private final AssessmentRepository assessmentRepository;
 
     /** The configured SLAs keyed by severity. Build once, then apply to many findings. */
     public record SlaPolicy(Map<VulnerabilitySeverity, VulnerabilitySla> bySeverity) {
@@ -69,9 +74,17 @@ public class SlaService {
         }
     }
 
-    /** The policy from the current workflow configuration. */
+    /**
+     * Default Workflow's policy. Only for readers that span workflows (summary tiles, exports) until
+     * they merge workflows; anything acting on one finding uses {@link #policyFor}.
+     */
     public SlaPolicy policy() {
-        return SlaPolicy.of(workflowConfigService.getConfig().getVulnerabilitySlas());
+        return policyFor(workflowConfigService.getConfig());
+    }
+
+    /** The SLAs of one workflow keyed by severity. A null workflow has none. */
+    public SlaPolicy policyFor(AssessmentWorkflow workflow) {
+        return SlaPolicy.of(workflow == null ? null : workflow.getVulnerabilitySlas());
     }
 
     /** Sets {@code dueAt} and {@code warningAt} on {@code v} from {@code policy}. Does not save. */
@@ -90,24 +103,45 @@ public class SlaService {
         v.setDueAt(extendedByException ? expiry : base);
     }
 
-    /** Recomputes one finding's dates from the current configuration. Does not save. */
+    /**
+     * Recomputes one finding's dates from its assessment's workflow (Default Workflow when the
+     * assessment is missing or its workflow unknown). Does not save.
+     */
     public void refresh(Vulnerability v) {
         if (v == null) {
             return;
         }
-        apply(v, policy());
+        apply(v, policyFor(workflowOf(v)));
     }
 
-    /** Recomputes many findings' dates, reading the configuration once. Does not save. */
-    public void refreshAll(Collection<Vulnerability> vulnerabilities) {
+    /** Recomputes one finding's dates from the given workflow. Does not save. */
+    public void refresh(Vulnerability v, AssessmentWorkflow workflow) {
+        if (v == null) {
+            return;
+        }
+        apply(v, policyFor(workflow));
+    }
+
+    /** Recomputes many findings' dates from one workflow, building its policy once. Does not save. */
+    public void refreshAll(Collection<Vulnerability> vulnerabilities, AssessmentWorkflow workflow) {
         if (vulnerabilities == null || vulnerabilities.isEmpty()) {
             return;
         }
-        SlaPolicy policy = policy();
+        SlaPolicy policy = policyFor(workflow);
         for (Vulnerability v : vulnerabilities) {
             if (v != null) {
                 apply(v, policy);
             }
         }
+    }
+
+    private AssessmentWorkflow workflowOf(Vulnerability v) {
+        WorkflowCatalog catalog = workflowCatalogService.load();
+        if (v.getAssessmentId() == null) {
+            return catalog.defaultWorkflow();
+        }
+        return assessmentRepository.findById(v.getAssessmentId())
+                .map(catalog::forAssessment)
+                .orElseGet(catalog::defaultWorkflow);
     }
 }

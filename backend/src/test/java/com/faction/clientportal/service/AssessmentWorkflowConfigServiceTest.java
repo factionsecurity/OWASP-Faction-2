@@ -214,4 +214,15 @@ class AssessmentWorkflowConfigServiceTest {
 
         verifyNoInteractions(eventPublisher);
     }
+
+    @Test
+    void anSlaChangeNamesDefaultWorkflow() {
+        stored(withSlas(new VulnerabilitySla("HIGH", 30, 20)));
+
+        service.updateConfig(withSlas(new VulnerabilitySla("HIGH", 60, 30)));
+
+        ArgumentCaptor<SlaConfigChangedEvent> event = ArgumentCaptor.forClass(SlaConfigChangedEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertThat(event.getValue().workflowId()).isEqualTo("default");
+    }
 }

@@ -48,7 +48,7 @@ public class PeerReviewService {
     private final AssessmentRepository assessmentRepository;
     private final VulnerabilityRepository vulnerabilityRepository;
     private final UserRepository userRepository;
-    private final AssessmentWorkflowConfigService workflowConfigService;
+    private final WorkflowCatalogService workflowCatalogService;
     private final PeerReviewLockService lockService;
     private final com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
 
@@ -159,9 +159,9 @@ public class PeerReviewService {
      * reviewing actions only — accepting/rejecting the result is the submitter's
      * own job. super_admin is exempt.
      */
-    private void checkNotSelfReview(Authentication authentication, PeerReview review) {
+    private void checkNotSelfReview(Authentication authentication, PeerReview review, Assessment assessment) {
         if (authentication == null || hasAuthority(authentication, SUPER_ADMIN)) return;
-        if (workflowConfigService.getConfig().isAllowSelfPeerReview()) return;
+        if (workflowCatalogService.forAssessment(assessment).isAllowSelfPeerReview()) return;
         boolean isSubmitter = resolveUser(authentication)
                 .map(u -> u.getId().equals(review.getSubmittedByUserId()))
                 .orElse(false);
@@ -378,8 +378,9 @@ public class PeerReviewService {
 
     public PeerReviewDto startReview(String reviewId, String userId, Authentication authentication) {
         PeerReview review = getPeerReviewOrThrow(reviewId);
-        checkEditAccess(authentication, getAssessmentOrThrow(review.getAssessmentId()));
-        checkNotSelfReview(authentication, review);
+        Assessment assessment = getAssessmentOrThrow(review.getAssessmentId());
+        checkEditAccess(authentication, assessment);
+        checkNotSelfReview(authentication, review, assessment);
         if (review.getStatus() != PeerReviewStatus.PENDING) {
             throw new BusinessRuleException("Review is not in PENDING status");
         }
@@ -399,8 +400,9 @@ public class PeerReviewService {
     public PeerReviewDto updateReview(String reviewId, UpdatePeerReviewRequest request, String userId,
                                       Authentication authentication) {
         PeerReview review = getPeerReviewOrThrow(reviewId);
-        checkEditAccess(authentication, getAssessmentOrThrow(review.getAssessmentId()));
-        checkNotSelfReview(authentication, review);
+        Assessment assessment = getAssessmentOrThrow(review.getAssessmentId());
+        checkEditAccess(authentication, assessment);
+        checkNotSelfReview(authentication, review, assessment);
 
         if (request.getRevisedFieldValues() != null) {
             review.setRevisedFieldValues(new HashMap<>(request.getRevisedFieldValues()));
@@ -439,8 +441,9 @@ public class PeerReviewService {
 
     public PeerReviewDto completeReview(String reviewId, String userId, Authentication authentication) {
         PeerReview review = getPeerReviewOrThrow(reviewId);
-        checkEditAccess(authentication, getAssessmentOrThrow(review.getAssessmentId()));
-        checkNotSelfReview(authentication, review);
+        Assessment assessment = getAssessmentOrThrow(review.getAssessmentId());
+        checkEditAccess(authentication, assessment);
+        checkNotSelfReview(authentication, review, assessment);
         if (review.getStatus() != PeerReviewStatus.IN_REVIEW) {
             throw new BusinessRuleException("Review must be IN_REVIEW to complete");
         }
@@ -449,7 +452,6 @@ public class PeerReviewService {
         review.setCompletedAt(LocalDateTime.now());
         PeerReview saved = peerReviewRepository.save(review);
 
-        Assessment assessment = getAssessmentOrThrow(review.getAssessmentId());
         assessment.setPeerReviewStatus(AssessmentPeerReviewStatus.NEEDS_ACCEPTANCE);
         assessmentRepository.save(assessment);
 

@@ -1,5 +1,6 @@
 package com.faction.clientportal.service;
 
+import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,5 +26,10 @@ public class WorkflowCatalogService {
             workflows.add(workflowConfigService.ensureDefaultWorkflow());
         }
         return WorkflowCatalog.of(workflows);
+    }
+
+    /** The workflow of one assessment (Default Workflow when it has none or an unknown one). */
+    public AssessmentWorkflow forAssessment(Assessment assessment) {
+        return load().forAssessment(assessment);
     }
 }
