@@ -45,7 +45,7 @@ public class RetestService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final VulnerabilityService vulnerabilityService;
-    private final AssessmentWorkflowConfigService workflowConfigService;
+    private final WorkflowCatalogService workflowCatalogService;
     private final VulnerabilityEventService vulnerabilityEventService;
     private final com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
     private final com.faction.clientportal.service.email.EventNotificationEmailSender eventEmailSender;
@@ -419,7 +419,7 @@ public class RetestService {
                 result.equals("PASS") ? STATUS_PASSED_RETEST : STATUS_FAILED_RETEST, userId);
 
         if (result.equals("PASS")) {
-            applyClosure(retest, closureStageId(request.getClosure()), userId);
+            applyClosure(retest, closureStageId(request.getClosure(), stagesOf(retest.getAssessmentId())), userId);
         }
 
         recordCompletionEvent(saved, result);
@@ -513,17 +513,16 @@ public class RetestService {
     public static final String CLOSURE_RETEST_ONLY = "RETEST_ONLY";
 
     /**
-     * Resolves a request's closure value to a configured remediation stage id. Accepts a stage id
-     * directly, plus the legacy enum names (DEVELOPMENT / STAGING map to the default stage ids;
-     * PRODUCTION maps to whichever stage is currently terminal) so pre-existing integrations keep
-     * working. Null/blank/RETEST_ONLY resolves to null: close nothing.
+     * Resolves a request's closure value to a remediation stage id of the retest's assessment's
+     * workflow. Accepts a stage id directly, plus the legacy enum names (DEVELOPMENT / STAGING map
+     * to the default stage ids; PRODUCTION maps to whichever stage is currently terminal) so
+     * pre-existing integrations keep working. Null/blank/RETEST_ONLY resolves to null: close nothing.
      */
-    private String closureStageId(String value) {
+    private String closureStageId(String value, List<RemediationStage> stages) {
         if (value == null || value.isBlank() || CLOSURE_RETEST_ONLY.equalsIgnoreCase(value.trim())) {
             return null;
         }
         String trimmed = value.trim();
-        List<RemediationStage> stages = workflowConfigService.remediationStages();
         String candidate = switch (trimmed.toUpperCase()) {
             case "DEVELOPMENT" -> "development";
             case "STAGING" -> "staging";
@@ -538,9 +537,16 @@ public class RetestService {
                         + ". Expected RETEST_ONLY or a configured remediation stage id"));
     }
 
+    /** The remediation stages of an assessment's workflow (Default Workflow's when the assessment is gone). */
+    private List<RemediationStage> stagesOf(String assessmentId) {
+        return AssessmentWorkflows.stages(assessmentRepository.findById(assessmentId)
+                .map(workflowCatalogService::forAssessment)
+                .orElseGet(() -> workflowCatalogService.load().defaultWorkflow()));
+    }
+
     /**
-     * Records how far a passing retest closes the finding, against the configured remediation
-     * stages. A non-terminal stage records a {@code VulnerabilityStageCompletion} and leaves the
+     * Records how far a passing retest closes the finding, against the assessment's workflow's
+     * remediation stages. A non-terminal stage records a {@code VulnerabilityStageCompletion} and leaves the
      * vulnerability open (the fix is confirmed there, not in production, so it stays in the
      * remediation queue); the terminal stage closes it outright via the standard status path
      * (status Closed + closedAt, comment, analytics event). A null stage id touches nothing:

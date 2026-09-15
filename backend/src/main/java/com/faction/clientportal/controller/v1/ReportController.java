@@ -8,10 +8,11 @@ import com.faction.clientportal.dto.common.JsonApiResponse;
 import com.faction.clientportal.exception.ResourceNotFoundException;
 import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.repository.AssessmentRepository;
-import com.faction.clientportal.service.AssessmentWorkflowConfigService;
+import com.faction.clientportal.service.AssessmentWorkflows;
 import com.faction.clientportal.service.ReportDocumentService;
 import com.faction.clientportal.service.ReportGenerationTrigger;
 import com.faction.clientportal.service.StorageService;
+import com.faction.clientportal.service.WorkflowCatalogService;
 import com.faction.clientportal.util.FileStreamResponse;
 import com.faction.clientportal.util.LibreOfficeConverter;
 import com.faction.clientportal.util.ResponseUtil;
@@ -53,7 +54,7 @@ public class ReportController {
     private final StorageService          storageService;
     private final LibreOfficeConverter    libreOfficeConverter;
     private final ReportDocumentService   reportDocumentService;
-    private final AssessmentWorkflowConfigService workflowConfigService;
+    private final WorkflowCatalogService  workflowCatalogService;
 
     /**
      * A completed assessment's report is the deliverable of record — regenerating or replacing it
@@ -63,7 +64,7 @@ public class ReportController {
      * <p>Downloads are deliberately unaffected: reading the issued report must keep working.
      */
     private void requireOpen(Assessment assessment, String action) {
-        if (workflowConfigService.isCompletedStatus(assessment.getStatus())) {
+        if (AssessmentWorkflows.isCompleted(workflowCatalogService.forAssessment(assessment), assessment.getStatus())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Cannot " + action + " a completed assessment. Reopen it first.");
         }

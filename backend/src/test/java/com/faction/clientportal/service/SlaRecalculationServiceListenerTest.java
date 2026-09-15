@@ -1,5 +1,6 @@
 package com.faction.clientportal.service;
 
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilitySeverity;
 import com.faction.clientportal.repository.VulnerabilityRepository;
@@ -36,21 +37,24 @@ class SlaRecalculationServiceListenerTest {
     @Mock private VulnerabilityRepository vulnerabilityRepository;
     @Mock private SlaService slaService;
     @Mock private TransactionTemplate transactionTemplate;
+    @Mock private WorkflowCatalogService workflowCatalogService;
 
     @Test
     void switchedOffByConfigurationItDoesNothing() {
-        new SlaRecalculationService(vulnerabilityRepository, slaService, transactionTemplate, 5000, false)
-                .onSlaConfigChanged(new SlaConfigChangedEvent());
+        new SlaRecalculationService(vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 5000, false)
+                .onSlaConfigChanged(new SlaConfigChangedEvent("default"));
 
-        verifyNoInteractions(vulnerabilityRepository, slaService, transactionTemplate);
+        verifyNoInteractions(vulnerabilityRepository, slaService, transactionTemplate, workflowCatalogService);
     }
 
     @Test
     void switchedOnItRecalculates() {
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(
+                AssessmentWorkflow.defaultWorkflowBuilder().build())));
         when(transactionTemplate.execute(any())).thenReturn(null);
 
-        new SlaRecalculationService(vulnerabilityRepository, slaService, transactionTemplate, 5000, true)
-                .onSlaConfigChanged(new SlaConfigChangedEvent());
+        new SlaRecalculationService(vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 5000, true)
+                .onSlaConfigChanged(new SlaConfigChangedEvent("default"));
 
         verify(transactionTemplate).execute(any());
     }
@@ -66,7 +70,9 @@ class SlaRecalculationServiceListenerTest {
                 .status("Open")
                 .openedAt(LocalDateTime.now())
                 .build();
-        when(vulnerabilityRepository.findOpenAfterId(eq(""), any())).thenReturn(List.of(v));
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(
+                AssessmentWorkflow.defaultWorkflowBuilder().build())));
+        when(vulnerabilityRepository.findOpenOutsideWorkflowsAfterId(eq(""), any(), any())).thenReturn(List.of(v));
         // Simulate SlaService actually changing the dates, so the batch outcome reflects real work.
         doAnswer(invocation -> {
             List<Vulnerability> batch = invocation.getArgument(0);
@@ -74,7 +80,7 @@ class SlaRecalculationServiceListenerTest {
                 vuln.setDueAt(LocalDateTime.now().plusDays(10));
             }
             return null;
-        }).when(slaService).refreshAll(anyList());
+        }).when(slaService).refreshAll(anyList(), any());
 
         AtomicInteger calls = new AtomicInteger();
         when(transactionTemplate.execute(ArgumentMatchers.<TransactionCallback<Object>>any()))
@@ -87,7 +93,7 @@ class SlaRecalculationServiceListenerTest {
                 });
 
         SlaRecalculationService service = new SlaRecalculationService(
-                vulnerabilityRepository, slaService, transactionTemplate, 5000, true);
+                vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 5000, true);
 
         SlaRecalculationService.RecalculationResult result = service.recalculateOpenFindings();
 
@@ -98,27 +104,31 @@ class SlaRecalculationServiceListenerTest {
 
     @Test
     void nonTransientExceptionIsNotRetried() {
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(
+                AssessmentWorkflow.defaultWorkflowBuilder().build())));
         when(transactionTemplate.execute(ArgumentMatchers.<TransactionCallback<Object>>any()))
                 .thenThrow(new IllegalStateException("boom"));
 
         SlaRecalculationService service = new SlaRecalculationService(
-                vulnerabilityRepository, slaService, transactionTemplate, 5000, true);
+                vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 5000, true);
 
         assertThatThrownBy(service::recalculateOpenFindings)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("boom");
 
         verify(transactionTemplate, times(1)).execute(any());
-        verify(vulnerabilityRepository, never()).findOpenAfterId(any(), any());
+        verify(vulnerabilityRepository, never()).findOpenOutsideWorkflowsAfterId(any(), any(), any());
     }
 
     @Test
     void transientFailureExhaustingAllAttemptsRethrowsAndStopsRetrying() {
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(
+                AssessmentWorkflow.defaultWorkflowBuilder().build())));
         when(transactionTemplate.execute(ArgumentMatchers.<TransactionCallback<Object>>any()))
                 .thenThrow(new CannotAcquireLockException("could not acquire lock"));
 
         SlaRecalculationService service = new SlaRecalculationService(
-                vulnerabilityRepository, slaService, transactionTemplate, 5000, true);
+                vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 5000, true);
 
         assertThatThrownBy(service::recalculateOpenFindings)
                 .isInstanceOf(CannotAcquireLockException.class);
@@ -131,9 +141,11 @@ class SlaRecalculationServiceListenerTest {
 
     @Test
     void theAdminTriggerRecalculatesEvenWhenTheConfigChangeSwitchIsOff() {
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(
+                AssessmentWorkflow.defaultWorkflowBuilder().build())));
         when(transactionTemplate.execute(any())).thenReturn(null);
 
-        new SlaRecalculationService(vulnerabilityRepository, slaService, transactionTemplate, 5000, false)
+        new SlaRecalculationService(vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 5000, false)
                 .recalculateInBackground();
 
         verify(transactionTemplate).execute(any());
@@ -141,12 +153,44 @@ class SlaRecalculationServiceListenerTest {
 
     @Test
     void theAdminTriggerLogsAFailedRunInsteadOfThrowing() {
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(
+                AssessmentWorkflow.defaultWorkflowBuilder().build())));
         when(transactionTemplate.execute(ArgumentMatchers.<TransactionCallback<Object>>any()))
                 .thenThrow(new IllegalStateException("boom"));
 
         SlaRecalculationService service = new SlaRecalculationService(
-                vulnerabilityRepository, slaService, transactionTemplate, 5000, true);
+                vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 5000, true);
 
         assertThatCode(service::recalculateInBackground).doesNotThrowAnyException();
+    }
+
+    @Test
+    void anSlaChangeOnAWorkflowRecalculatesThatWorkflowOnly() {
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(
+                AssessmentWorkflow.defaultWorkflowBuilder().build(),
+                com.faction.clientportal.testsupport.TestWorkflows.secondWorkflow())));
+        when(transactionTemplate.execute(ArgumentMatchers.<TransactionCallback<Object>>any()))
+                .thenAnswer(invocation -> ((TransactionCallback<?>) invocation.getArgument(0)).doInTransaction(null));
+
+        new SlaRecalculationService(vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 5000, true)
+                .onSlaConfigChanged(new SlaConfigChangedEvent(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID));
+
+        verify(vulnerabilityRepository).findOpenInWorkflowAfterId(eq(""), eq(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID), any());
+        verify(vulnerabilityRepository, never()).findOpenOutsideWorkflowsAfterId(any(), any(), any());
+    }
+
+    @Test
+    void defaultWorkflowsRecalculationExcludesTheOtherWorkflows() {
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(
+                AssessmentWorkflow.defaultWorkflowBuilder().build(),
+                com.faction.clientportal.testsupport.TestWorkflows.secondWorkflow())));
+        when(transactionTemplate.execute(ArgumentMatchers.<TransactionCallback<Object>>any()))
+                .thenAnswer(invocation -> ((TransactionCallback<?>) invocation.getArgument(0)).doInTransaction(null));
+
+        new SlaRecalculationService(vulnerabilityRepository, slaService, workflowCatalogService, transactionTemplate, 5000, true)
+                .recalculateOpenFindings("default");
+
+        verify(vulnerabilityRepository).findOpenOutsideWorkflowsAfterId(
+                eq(""), eq(List.of(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID)), any());
     }
 }

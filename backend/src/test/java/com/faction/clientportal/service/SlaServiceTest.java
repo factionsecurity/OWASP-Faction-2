@@ -1,9 +1,12 @@
 package com.faction.clientportal.service;
 
+import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.VulnerabilitySla;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilitySeverity;
+import com.faction.clientportal.repository.AssessmentRepository;
+import com.faction.clientportal.testsupport.TestWorkflows;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -14,10 +17,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -35,7 +37,11 @@ class SlaServiceTest {
     private static final SlaService.SlaPolicy DEFAULTS =
             SlaService.SlaPolicy.of(AssessmentWorkflow.defaultVulnerabilitySlas());
 
+    private static final java.time.LocalDateTime OPENED_2099 = java.time.LocalDateTime.of(2099, 1, 1, 9, 0);
+
     @Mock private AssessmentWorkflowConfigService workflowConfigService;
+    @Mock private WorkflowCatalogService workflowCatalogService;
+    @Mock private AssessmentRepository assessmentRepository;
     @InjectMocks private SlaService slaService;
 
     private static Vulnerability open(VulnerabilitySeverity severity) {
@@ -46,6 +52,10 @@ class SlaServiceTest {
     private void configured(VulnerabilitySla... slas) {
         when(workflowConfigService.getConfig()).thenReturn(AssessmentWorkflow.defaultWorkflowBuilder()
                 .vulnerabilitySlas(new ArrayList<>(Arrays.asList(slas))).build());
+    }
+
+    private void catalogOf(AssessmentWorkflow... workflows) {
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(workflows)));
     }
 
     @Test
@@ -159,7 +169,8 @@ class SlaServiceTest {
 
     @Test
     void configuredSeveritiesMatchIgnoringCaseAndSurroundingWhitespace() {
-        configured(new VulnerabilitySla(" high ", 10, 5));
+        catalogOf(AssessmentWorkflow.defaultWorkflowBuilder()
+                .vulnerabilitySlas(new ArrayList<>(List.of(new VulnerabilitySla(" high ", 10, 5)))).build());
         Vulnerability v = open(VulnerabilitySeverity.HIGH);
         slaService.refresh(v);
         assertThat(v.getDueAt()).isEqualTo(LocalDateTime.of(2026, 1, 11, 9, 0));
@@ -184,8 +195,7 @@ class SlaServiceTest {
 
     @Test
     void noSlasConfiguredMeansNoDueDates() {
-        when(workflowConfigService.getConfig()).thenReturn(AssessmentWorkflow.defaultWorkflowBuilder()
-                .vulnerabilitySlas(null).build());
+        catalogOf(AssessmentWorkflow.defaultWorkflowBuilder().vulnerabilitySlas(null).build());
         Vulnerability v = open(VulnerabilitySeverity.HIGH);
         v.setDueAt(HIGH_DUE);
         v.setWarningAt(HIGH_WARNING);
@@ -195,15 +205,77 @@ class SlaServiceTest {
     }
 
     @Test
-    void refreshAllReadsTheConfigOnce() {
-        configured(new VulnerabilitySla("HIGH", 60, 30), new VulnerabilitySla("CRITICAL", 30, 20));
+    void refreshAllAppliesOneWorkflowsPolicyToEveryFinding() {
+        // refreshAll takes the workflow the caller already resolved, so there is no config read
+        // to count.
+        AssessmentWorkflow workflow = AssessmentWorkflow.defaultWorkflowBuilder()
+                .vulnerabilitySlas(new ArrayList<>(List.of(
+                        new VulnerabilitySla("HIGH", 60, 30), new VulnerabilitySla("CRITICAL", 30, 20))))
+                .build();
         Vulnerability high = open(VulnerabilitySeverity.HIGH);
         Vulnerability critical = open(VulnerabilitySeverity.CRITICAL);
 
-        slaService.refreshAll(List.of(high, critical));
+        slaService.refreshAll(List.of(high, critical), workflow);
 
-        verify(workflowConfigService, times(1)).getConfig();
         assertThat(high.getDueAt()).isEqualTo(HIGH_DUE);
         assertThat(critical.getDueAt()).isEqualTo(LocalDateTime.of(2026, 1, 31, 9, 0));
+    }
+
+    @Test
+    void aFindingUsesItsAssessmentsWorkflowSlas() {
+        AssessmentWorkflow second = TestWorkflows.secondWorkflow();
+        catalogOf(AssessmentWorkflow.defaultWorkflowBuilder().build(), second);
+        when(assessmentRepository.findById("a-1")).thenReturn(Optional.of(
+                Assessment.builder().id("a-1").workflowId(TestWorkflows.SECOND_ID).build()));
+        Vulnerability v = Vulnerability.builder().assessmentId("a-1")
+                .severity(VulnerabilitySeverity.HIGH).openedAt(OPENED_2099).build();
+
+        slaService.refresh(v);
+
+        // Second workflow: HIGH 14 days, warning 5 days before.
+        assertThat(v.getDueAt()).isEqualTo(OPENED_2099.plusDays(14));
+        assertThat(v.getWarningAt()).isEqualTo(OPENED_2099.plusDays(9));
+    }
+
+    @Test
+    void aFindingWhoseAssessmentHasAnUnknownWorkflowUsesDefaultWorkflow() {
+        catalogOf(AssessmentWorkflow.defaultWorkflowBuilder().build(), TestWorkflows.secondWorkflow());
+        when(assessmentRepository.findById("a-2")).thenReturn(Optional.of(
+                Assessment.builder().id("a-2").workflowId("gone").build()));
+        Vulnerability v = Vulnerability.builder().assessmentId("a-2")
+                .severity(VulnerabilitySeverity.HIGH).openedAt(OPENED_2099).build();
+
+        slaService.refresh(v);
+
+        // Default Workflow: HIGH 60 days, warning 30 days before.
+        assertThat(v.getDueAt()).isEqualTo(OPENED_2099.plusDays(60));
+        assertThat(v.getWarningAt()).isEqualTo(OPENED_2099.plusDays(30));
+    }
+
+    @Test
+    void aFindingWithoutAnAssessmentUsesDefaultWorkflow() {
+        catalogOf(AssessmentWorkflow.defaultWorkflowBuilder().build());
+        Vulnerability v = Vulnerability.builder().severity(VulnerabilitySeverity.HIGH).openedAt(OPENED_2099).build();
+
+        slaService.refresh(v);
+
+        assertThat(v.getDueAt()).isEqualTo(OPENED_2099.plusDays(60));
+    }
+
+    @Test
+    void refreshingWithAGivenWorkflowUsesThatWorkflowWithoutLookingAnythingUp() {
+        Vulnerability critical = Vulnerability.builder().assessmentId("whatever")
+                .severity(VulnerabilitySeverity.CRITICAL).openedAt(OPENED_2099).build();
+        Vulnerability medium = Vulnerability.builder().assessmentId("whatever")
+                .severity(VulnerabilitySeverity.MEDIUM).openedAt(OPENED_2099).build();
+
+        slaService.refreshAll(List.of(critical, medium), TestWorkflows.secondWorkflow());
+
+        assertThat(critical.getDueAt()).isEqualTo(OPENED_2099.plusDays(7));
+        assertThat(critical.getWarningAt()).isEqualTo(OPENED_2099.plusDays(4));
+        // The second workflow has no MEDIUM SLA.
+        assertThat(medium.getDueAt()).isNull();
+        assertThat(medium.getWarningAt()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(workflowCatalogService, assessmentRepository);
     }
 }

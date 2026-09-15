@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -215,4 +216,8 @@ public interface AssessmentRepository extends JpaRepository<Assessment, String>,
      */
     @Query("SELECT a FROM Assessment a WHERE a.completedDate IS NOT NULL AND a.autoScheduledSuccessorId IS NULL AND a.deletedAt IS NULL")
     List<Assessment> findCompletedWithNoSuccessor();
+
+    /** Each assessment's workflow id, as {@code [id, workflowId]} rows, for many assessments in one query. */
+    @Query("select a.id, a.workflowId from Assessment a where a.id in :ids")
+    List<Object[]> findWorkflowIdsByIds(@Param("ids") Collection<String> ids);
 }

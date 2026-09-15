@@ -38,7 +38,7 @@ class PeerReviewServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private com.faction.clientportal.service.AssessmentWorkflowConfigService workflowConfigService;
+    private com.faction.clientportal.service.WorkflowCatalogService workflowCatalogService;
 
     @Mock
     private com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;

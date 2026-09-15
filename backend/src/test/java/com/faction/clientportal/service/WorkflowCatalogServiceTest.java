@@ -73,4 +73,15 @@ class WorkflowCatalogServiceTest extends TestContainersConfig {
         assertThat(catalog.defaultWorkflow().getId()).isEqualTo("default");
         assertThat(catalog.workflows(true)).hasSize(1);
     }
+
+    @Test
+    void resolvesAnAssessmentsOwnWorkflow() {
+        TestWorkflows.saveSecondWorkflow(workflowRepository);
+
+        AssessmentWorkflow workflow = catalogService.forAssessment(
+                com.faction.clientportal.model.Assessment.builder().workflowId(TestWorkflows.SECOND_ID).build());
+
+        assertThat(workflow.getId()).isEqualTo(TestWorkflows.SECOND_ID);
+        assertThat(catalogService.forAssessment(null).getId()).isEqualTo("default");
+    }
 }

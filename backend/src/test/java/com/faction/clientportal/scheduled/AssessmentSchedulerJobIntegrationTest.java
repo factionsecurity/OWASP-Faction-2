@@ -358,6 +358,25 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
         assertThat(assessmentRepository.count()).isEqualTo(3); // 2 originals + 1 successor
     }
 
+    // ── Per-assessment workflow ─────────────────────────────────────────────
+
+    @Test
+    void aSuccessorTakesItsTypesCurrentWorkflowAndThatWorkflowsNewStatus() {
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(workflowConfigRepository);
+        Assessment original = saveCompletedAssessment("Annual Pentest", yearlyApp, LocalDateTime.now().minusDays(331));
+        // The type moves to the second workflow after the original was created; the original keeps its own.
+        assessmentType.setWorkflowId(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID);
+        assessmentTypeRepository.save(assessmentType);
+
+        job.scheduleSuccessorAssessments();
+
+        Assessment updated = assessmentRepository.findById(original.getId()).orElseThrow();
+        Assessment successor = assessmentRepository.findById(updated.getAutoScheduledSuccessorId()).orElseThrow();
+        assertThat(successor.getWorkflowId()).isEqualTo(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID);
+        assertThat(successor.getStatus()).isEqualTo("Draft");
+        assertThat(updated.getWorkflowId()).isEqualTo("default");
+    }
+
     // ── Repository query ─────────────────────────────────────────────────────
 
     @Test

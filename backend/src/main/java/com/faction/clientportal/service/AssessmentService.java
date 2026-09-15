@@ -66,6 +66,7 @@ public class AssessmentService {
     private final com.faction.clientportal.service.email.EventNotificationEmailSender eventEmailSender;
     private final DefaultReportTemplateService defaultReportTemplateService;
     private final SlaService slaService;
+    private final WorkflowCatalogService workflowCatalogService;
 
     /**
      * Create a new assessment from a report template
@@ -95,9 +96,11 @@ public class AssessmentService {
             }
         }
 
-        // Verify assessment type exists
-        assessmentTypeRepository.findById(request.getAssessmentTypeId())
+        // Verify assessment type exists, and resolve the workflow it takes at creation
+        AssessmentType assessmentType = assessmentTypeRepository.findById(request.getAssessmentTypeId())
             .orElseThrow(() -> new ResourceNotFoundException("Assessment type not found with id: " + request.getAssessmentTypeId()));
+        WorkflowCatalog catalog = workflowCatalogService.load();
+        AssessmentWorkflow workflow = catalog.forType(assessmentType);
 
         ReportTemplate template;
         if (org.springframework.util.StringUtils.hasText(request.getReportTemplateId())) {
@@ -189,7 +192,8 @@ public class AssessmentService {
             .sections(template.getSections() != null ? new ArrayList<>(template.getSections()) : new ArrayList<>())
             .fieldDefinitions(fieldDefinitionsSnapshot)
             .fieldValues(fieldValues)
-            .status(workflowConfigService.getConfig().getNewAssessmentStatus())
+            .workflowId(workflow.getId())
+            .status(workflow.getNewAssessmentStatus())
             .assessorId(request.getAssessorId()) // Legacy field
             .assessorIds(assessorIds)
             .engagementManagerId(request.getEngagementManagerId())
@@ -259,7 +263,7 @@ public class AssessmentService {
         extensionEventService.assessmentChanged(
             savedAssessment.getId(), com.faction.extender.AssessmentManager.Operation.Create);
 
-        return migrateAndConvertToDto(savedAssessment);
+        return migrateAndConvertToDto(savedAssessment, catalog);
     }
 
     /**
@@ -281,6 +285,9 @@ public class AssessmentService {
 
         // Out-of-scope reads already 404; an out-of-scope write is an explicit denial.
         accessScopeService.checkAssessmentEditAccess(authentication, assessment);
+
+        WorkflowCatalog catalog = workflowCatalogService.load();
+        AssessmentWorkflow workflow = catalog.forAssessment(assessment);
 
         // Peer-review lock guard — block field edits while a review is in flight.
         // Status-only updates (from the peer review service itself) are permitted.
@@ -382,9 +389,9 @@ public class AssessmentService {
             // reopen window. Past that it is a historical record — its findings have been reported
             // and their SLA clocks are running — so correcting it becomes a deliberate act rather
             // than an edit anyone with assessment access can make.
-            if (workflowConfigService.isCompletedStatus(oldStatus)
-                    && !workflowConfigService.isCompletedStatus(request.getStatus())) {
-                if (!withinReopenWindow(assessment)) {
+            if (AssessmentWorkflows.isCompleted(workflow, oldStatus)
+                    && !AssessmentWorkflows.isCompleted(workflow, request.getStatus())) {
+                if (!withinReopenWindow(assessment, workflow)) {
                     throw new IllegalArgumentException(
                             "This assessment was completed more than " + REOPEN_WINDOW_DAYS
                                     + " days ago and can no longer be reopened");
@@ -394,8 +401,8 @@ public class AssessmentService {
             }
 
             // Block finalization if any preventClosure checklists have unanswered questions
-            if (workflowConfigService.isCompletedStatus(request.getStatus())
-                    && !workflowConfigService.isCompletedStatus(oldStatus)) {
+            if (AssessmentWorkflows.isCompleted(workflow, request.getStatus())
+                    && !AssessmentWorkflows.isCompleted(workflow, oldStatus)) {
                 List<com.faction.clientportal.model.AssessmentChecklist> checklists =
                         assessmentChecklistRepository.findByAssessmentId(assessment.getId());
                 List<String> blocking = checklists.stream()
@@ -415,12 +422,12 @@ public class AssessmentService {
                 }
             }
 
-            String completedStatus = workflowConfigService.getConfig().getCompletedStatus();
+            String completedStatus = workflow.getCompletedStatus();
             assessment.setStatus(request.getStatus());
 
             // Set completion date when status changes to a completed state
-            if (workflowConfigService.isCompletedStatus(request.getStatus())
-                    && !workflowConfigService.isCompletedStatus(oldStatus)) {
+            if (AssessmentWorkflows.isCompleted(workflow, request.getStatus())
+                    && !AssessmentWorkflows.isCompleted(workflow, oldStatus)) {
                 // An import of historical work supplies the real completion date; everything else
                 // is being completed right now.
                 assessment.setCompletedDate(request.getCompletedDate() != null
@@ -451,7 +458,7 @@ public class AssessmentService {
                         }
                     }
                 }
-                slaService.refreshAll(vulns);
+                slaService.refreshAll(vulns, workflow);
                 vulnerabilityRepository.saveAll(vulns);
 
                 // Announce completion in the application's chat
@@ -473,7 +480,7 @@ public class AssessmentService {
         // the Faction 1 importer) may supply the real date. A date sent for an assessment that is
         // not completed has no meaning and is ignored.
         if (request.getCompletedDate() != null && !finalizing
-                && workflowConfigService.isCompletedStatus(assessment.getStatus())) {
+                && AssessmentWorkflows.isCompleted(workflow, assessment.getStatus())) {
             if (!isSuperAdmin(authentication)) {
                 throw new AccessDeniedException("Only a super admin can change the completion date");
             }
@@ -580,7 +587,7 @@ public class AssessmentService {
                     updatedAssessment, previousStatus);
         }
 
-        return migrateAndConvertToDto(updatedAssessment);
+        return migrateAndConvertToDto(updatedAssessment, catalog);
     }
 
     /**
@@ -601,8 +608,9 @@ public class AssessmentService {
         }
 
         syncFieldDefinitionsIfNeeded(assessment);
-        applyDateTransitionIfNeeded(assessment);
-        return migrateAndConvertToDto(assessment);
+        WorkflowCatalog catalog = workflowCatalogService.load();
+        applyDateTransitionIfNeeded(assessment, catalog.forAssessment(assessment));
+        return migrateAndConvertToDto(assessment, catalog);
     }
 
     /**
@@ -705,11 +713,11 @@ public class AssessmentService {
      * in the newAssessmentStatus. This prevents overriding statuses that have been
      * manually advanced past the initial state.
      */
-    private void applyDateTransitionIfNeeded(Assessment assessment) {
+    private void applyDateTransitionIfNeeded(Assessment assessment, AssessmentWorkflow workflow) {
         if (assessment.getStartDate() == null || assessment.getPlannedEndDate() == null) return;
-        if (workflowConfigService.isCompletedStatus(assessment.getStatus())) return;
+        if (AssessmentWorkflows.isCompleted(workflow, assessment.getStatus())) return;
 
-        var config = workflowConfigService.getConfig();
+        var config = workflow;
         String newStatus = config.getNewAssessmentStatus();
         String inProgressStatus = config.getInProgressStatus();
 
@@ -795,7 +803,8 @@ public class AssessmentService {
             assessments = assessmentRepository.findAll(pageable);
         }
 
-        return assessments.map(this::migrateAndConvertToDto);
+        WorkflowCatalog catalog = workflowCatalogService.load();
+        return assessments.map(a -> migrateAndConvertToDto(a, catalog));
     }
 
     /**
@@ -952,8 +961,9 @@ public class AssessmentService {
 
         Page<Assessment> page = assessmentRepository.searchAdvanced(criteria, pageable);
 
+        WorkflowCatalog catalog = workflowCatalogService.load();
         List<AssessmentDto> dtos = page.getContent().stream()
-                .map(this::migrateAndConvertToDto)
+                .map(a -> migrateAndConvertToDto(a, catalog))
                 .collect(Collectors.toList());
 
         return new PageImpl<>(dtos, pageable, page.getTotalElements());
@@ -971,7 +981,15 @@ public class AssessmentService {
      * window rather than reopenable forever.
      */
     public boolean withinReopenWindow(Assessment assessment) {
-        if (!workflowConfigService.isCompletedStatus(assessment.getStatus())) {
+        return withinReopenWindow(assessment, workflowCatalogService.forAssessment(assessment));
+    }
+
+    /**
+     * As {@link #withinReopenWindow(Assessment)}, but taking the assessment's workflow when the
+     * caller already has it, avoiding a repeat catalog load.
+     */
+    private boolean withinReopenWindow(Assessment assessment, AssessmentWorkflow workflow) {
+        if (!AssessmentWorkflows.isCompleted(workflow, assessment.getStatus())) {
             return false;
         }
         LocalDateTime completed = assessment.getCompletedDate();
@@ -1080,9 +1098,10 @@ public class AssessmentService {
         if (scope.denied()) {
             return Page.empty(pageable);
         }
+        WorkflowCatalog catalog = workflowCatalogService.load();
         if (scope.unrestricted()) {
             return assessmentRepository.findByApplicationIdAndDeletedAtIsNull(applicationId, pageable)
-                    .map(this::migrateAndConvertToDto);
+                    .map(a -> migrateAndConvertToDto(a, catalog));
         }
         var criteria = AssessmentSearchCriteria.builder()
                 .applicationId(applicationId)
@@ -1095,7 +1114,7 @@ public class AssessmentService {
                 .now(LocalDateTime.now())
                 .build();
         Page<Assessment> page = assessmentRepository.searchAdvanced(criteria, pageable);
-        return new PageImpl<>(page.getContent().stream().map(this::migrateAndConvertToDto).toList(),
+        return new PageImpl<>(page.getContent().stream().map(a -> migrateAndConvertToDto(a, catalog)).toList(),
                 pageable, page.getTotalElements());
     }
 
@@ -1311,6 +1330,7 @@ public class AssessmentService {
         Pageable pageable,
         Authentication authentication
     ) {
+        WorkflowCatalog catalog = workflowCatalogService.load();
         if (isOrgScopedUser(authentication)) {
             final var scope = accessScopeService.resolveAssessmentScope(authentication);
             Page<Assessment> assessments = assessmentRepository.findByDateRange(startDate, endDate, pageable);
@@ -1318,11 +1338,11 @@ public class AssessmentService {
                     .filter(scope::permits)
                     .collect(Collectors.toList());
             return new PageImpl<>(
-                    filtered.stream().map(this::migrateAndConvertToDto).collect(Collectors.toList()),
+                    filtered.stream().map(a -> migrateAndConvertToDto(a, catalog)).collect(Collectors.toList()),
                     pageable, filtered.size());
         }
         Page<Assessment> assessments = assessmentRepository.findByDateRange(startDate, endDate, pageable);
-        return assessments.map(this::migrateAndConvertToDto);
+        return assessments.map(a -> migrateAndConvertToDto(a, catalog));
     }
 
     /**
@@ -1351,8 +1371,9 @@ public class AssessmentService {
                     .collect(Collectors.toList());
             }
 
+            WorkflowCatalog catalog = workflowCatalogService.load();
             return conflicts.stream()
-                .map(this::migrateAndConvertToDto)
+                .map(a -> migrateAndConvertToDto(a, catalog))
                 .collect(Collectors.toList());
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize assessor IDs", e);
@@ -1492,15 +1513,15 @@ public class AssessmentService {
     /**
      * Migrate assessorId to assessorIds if needed and convert to DTO
      */
-    private AssessmentDto migrateAndConvertToDto(Assessment assessment) {
+    private AssessmentDto migrateAndConvertToDto(Assessment assessment, WorkflowCatalog catalog) {
         migrateAssessorId(assessment);
         AssessmentDto dto = AssessmentDto.fromEntity(assessment);
         enrichWithDisplayNames(dto);
         dto.setVulnerabilitySummary(computeVulnerabilitySummary(assessment));
-        // Compute isPastDue using workflow config (status-aware)
+        // Compute isPastDue using the assessment's own workflow (status-aware)
         dto.setIsPastDue(assessment.getPlannedEndDate() != null
                 && LocalDateTime.now().isAfter(assessment.getPlannedEndDate())
-                && !workflowConfigService.isCompletedStatus(assessment.getStatus()));
+                && !AssessmentWorkflows.isCompleted(catalog.forAssessment(assessment), assessment.getStatus()));
         return dto;
     }
 

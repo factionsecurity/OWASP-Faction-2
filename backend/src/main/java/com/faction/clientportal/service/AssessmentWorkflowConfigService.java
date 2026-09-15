@@ -18,9 +18,9 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * The workflow configuration every assessment uses: Default Workflow. Until workflows are assigned
- * per assessment type (later phases) this is the only workflow any code reads, and
- * {@code GET|PUT /api/v1/config/assessment-workflow} is its alias.
+ * Default Workflow's settings, and {@code GET|PUT /api/v1/config/assessment-workflow}'s alias for
+ * them. Single-assessment code reads an assessment's own workflow via {@link WorkflowCatalogService}
+ * instead; this remains the source for readers that span workflows.
  */
 @Service
 @RequiredArgsConstructor
@@ -78,7 +78,7 @@ public class AssessmentWorkflowConfigService {
 
         AssessmentWorkflow saved = repository.save(workflow);
         if (!normalizedSlas(previousSlas).equals(normalizedSlas(saved.getVulnerabilitySlas()))) {
-            eventPublisher.publishEvent(new SlaConfigChangedEvent());
+            eventPublisher.publishEvent(new SlaConfigChangedEvent(AssessmentWorkflow.DEFAULT_ID));
         }
         return saved;
     }
@@ -104,13 +104,13 @@ public class AssessmentWorkflowConfigService {
     }
 
     /**
-     * The configured remediation stages, never empty: there must always be a terminal (last)
-     * stage for closing a vulnerability, so a null/empty list falls back to the defaults.
+     * Default Workflow's remediation stages, kept for callers that span workflows. Never empty:
+     * there must always be a terminal (last) stage for closing a vulnerability, so a null/empty
+     * list falls back to the defaults. Single-assessment code uses {@link AssessmentWorkflows}
+     * with the assessment's own workflow.
      */
     public List<RemediationStage> remediationStages() {
-        List<RemediationStage> stages = getConfig().getRemediationStages();
-        return stages == null || stages.isEmpty()
-                ? AssessmentWorkflow.defaultRemediationStages() : stages;
+        return AssessmentWorkflows.stages(getConfig());
     }
 
     /**
@@ -132,9 +132,13 @@ public class AssessmentWorkflowConfigService {
         return normalized.isEmpty() ? AssessmentWorkflow.defaultRemediationStages() : normalized;
     }
 
-    /** Whether the given status is the workflow's configured completed status. */
+    /**
+     * Whether the given status is Default Workflow's configured completed status, kept for callers
+     * that span workflows. Single-assessment code uses {@link AssessmentWorkflows} with the
+     * assessment's own workflow.
+     */
     public boolean isCompletedStatus(String status) {
         if (status == null) return false;
-        return status.equals(getConfig().getCompletedStatus());
+        return AssessmentWorkflows.isCompleted(getConfig(), status);
     }
 }
