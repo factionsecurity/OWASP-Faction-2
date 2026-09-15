@@ -130,6 +130,14 @@ faction:
     recalculate-on-config-change: ${FACTION_SLA_RECALCULATE_ON_CONFIG_CHANGE:true}
     recalculation-batch-size: ${FACTION_SLA_RECALCULATION_BATCH_SIZE:500}
 
+  workflows:
+    # Builds the workflow indexes CONCURRENTLY after startup (WorkflowIndexInitializer):
+    # assessments (workflow_id, status), vulnerabilities (assessment_id, status), and
+    # vulnerability_stage_completions (stage_id). Switch off to build them by hand instead
+    # on very large installs.
+    index-initializer:
+      enabled: ${FACTION_WORKFLOWS_INDEX_INITIALIZER_ENABLED:true}
+
 springdoc:
   api-docs:
     path: /v3/api-docs

@@ -4,6 +4,7 @@ import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.AssessmentType;
 import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.RemediationStage;
+import com.faction.clientportal.repository.CompletedStatusFilter;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -116,6 +117,13 @@ public final class WorkflowCatalog {
             }
         }
         return new CompletedPairs(List.copyOf(ids), List.copyOf(statuses));
+    }
+
+    /** Every workflow's completed status, as the filter SQL that spans workflows binds. */
+    public CompletedStatusFilter completedStatusFilter() {
+        CompletedPairs pairs = completedPairs();
+        return new CompletedStatusFilter(pairs.workflowIds(), pairs.completedStatuses(),
+                ordered.stream().map(AssessmentWorkflow::getId).toList(), defaultWorkflow.getId());
     }
 
     private List<String> merged(boolean includeArchived, Function<AssessmentWorkflow, List<String>> names) {

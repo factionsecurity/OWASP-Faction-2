@@ -34,7 +34,11 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Autowired private ApplicationRepository applicationRepository;
     @Autowired private AssessmentTypeRepository assessmentTypeRepository;
 
-    private static final Set<String> COMPLETED_STATUSES = Set.of("Completed");
+    private static final CompletedStatusFilter DEFAULT_ONLY = new CompletedStatusFilter(
+            List.of("default"), List.of("Completed"), List.of("default"), "default");
+    private static final CompletedStatusFilter TWO_WORKFLOWS = new CompletedStatusFilter(
+            List.of("default", "second-workflow"), List.of("Completed", "Signed Off"),
+            List.of("default", "second-workflow"), "default");
     private static final Pageable PAGE = PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "name"));
 
     @BeforeEach
@@ -47,7 +51,7 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     private AssessmentSearchCriteria.AssessmentSearchCriteriaBuilder base() {
         return AssessmentSearchCriteria.builder()
-                .completedStatuses(COMPLETED_STATUSES)
+                .completed(DEFAULT_ONLY)
                 .now(LocalDateTime.now());
     }
 
@@ -246,6 +250,59 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
         var result = search(base().pastDue(true).build());
 
         assertThat(result).extracting(Assessment::getName).containsExactly("Overdue");
+    }
+
+    @Test
+    void excludeCompleted_usesEachAssessmentsOwnWorkflowsCompletedStatus() {
+        save(a("DefaultDone").status("Completed"));
+        save(a("DefaultSignedOff").status("Signed Off"));
+        save(a("SecondDone").workflowId("second-workflow").status("Signed Off"));
+        save(a("SecondCompleted").workflowId("second-workflow").status("Completed"));
+        save(a("UnknownDone").workflowId("gone-workflow").status("Completed"));
+        save(a("UnknownSignedOff").workflowId("gone-workflow").status("Signed Off"));
+        save(a("SecondNoStatus").workflowId("second-workflow").status(null));
+
+        var result = search(base().completed(TWO_WORKFLOWS).excludeCompleted(true).build());
+
+        assertThat(result).extracting(Assessment::getName).containsExactlyInAnyOrder(
+                "DefaultSignedOff", "SecondCompleted", "UnknownSignedOff", "SecondNoStatus");
+    }
+
+    @Test
+    void excludeCompleted_aKnownWorkflowWithNoCompletedStatusCompletesNothing() {
+        var filter = new CompletedStatusFilter(List.of("default"), List.of("Completed"),
+                List.of("default", "no-end"), "default");
+        save(a("NoEndCompleted").workflowId("no-end").status("Completed"));
+        save(a("DefaultDone").status("Completed"));
+
+        var result = search(base().completed(filter).excludeCompleted(true).build());
+
+        assertThat(result).extracting(Assessment::getName).containsExactly("NoEndCompleted");
+    }
+
+    @Test
+    void pastDue_usesEachAssessmentsOwnWorkflowsCompletedStatus() {
+        var late = LocalDateTime.now().minusDays(1);
+        save(a("SecondDoneLate").workflowId("second-workflow").status("Signed Off").plannedEndDate(late));
+        save(a("SecondCompletedLate").workflowId("second-workflow").status("Completed").plannedEndDate(late));
+        save(a("UnknownDoneLate").workflowId("gone-workflow").status("Completed").plannedEndDate(late));
+
+        var result = search(base().completed(TWO_WORKFLOWS).pastDue(true).build());
+
+        assertThat(result).extracting(Assessment::getName).containsExactly("SecondCompletedLate");
+    }
+
+    @Test
+    void excludeCompleted_countQueryBindsTheSameFilter() {
+        save(a("ActiveOne").workflowId("second-workflow").status("Fieldwork"));
+        save(a("ActiveTwo").workflowId("second-workflow").status("Draft"));
+        save(a("Done").workflowId("second-workflow").status("Signed Off"));
+
+        var page = assessmentRepository.searchAdvanced(
+                base().completed(TWO_WORKFLOWS).excludeCompleted(true).build(), PageRequest.of(0, 1));
+
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getTotalElements()).isEqualTo(2);
     }
 
     // ── Assigned-to-me (managers, legacy assessor, assessorIds JSONB) ───────────

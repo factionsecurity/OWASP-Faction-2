@@ -4,6 +4,7 @@ import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.AssessmentType;
 import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.RemediationStage;
+import com.faction.clientportal.repository.CompletedStatusFilter;
 import com.faction.clientportal.testsupport.TestWorkflows;
 import org.junit.jupiter.api.Test;
 
@@ -95,6 +96,20 @@ class WorkflowCatalogTest {
 
         assertThat(pairs.workflowIds()).containsExactly("default", "alpha", "old", TestWorkflows.SECOND_ID);
         assertThat(pairs.completedStatuses()).containsExactly("Completed", "Alpha Only", "Legacy", "Signed Off");
+    }
+
+    @Test
+    void completedStatusFilterPairsEachWorkflowWithItsCompletedStatusAndKnowsEveryId() {
+        AssessmentWorkflow noCompleted = AssessmentWorkflow.builder()
+                .id("blank").name("Blank").completedStatus(" ").build();
+        WorkflowCatalog catalog = WorkflowCatalog.of(List.of(second, defaults, noCompleted));
+
+        CompletedStatusFilter filter = catalog.completedStatusFilter();
+
+        assertThat(filter.workflowIds()).containsExactly("default", TestWorkflows.SECOND_ID);
+        assertThat(filter.completedStatuses()).containsExactly("Completed", "Signed Off");
+        assertThat(filter.knownWorkflowIds()).containsExactly("default", "blank", TestWorkflows.SECOND_ID);
+        assertThat(filter.defaultWorkflowId()).isEqualTo("default");
     }
 
     @Test

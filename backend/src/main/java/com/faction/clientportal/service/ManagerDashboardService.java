@@ -55,7 +55,7 @@ public class ManagerDashboardService {
     private final VulnerabilityCategoryRepository vulnerabilityCategoryRepository;
     private final UserRepository userRepository;
     private final TeamRepository teamRepository;
-    private final AssessmentWorkflowConfigService workflowConfigService;
+    private final WorkflowCatalogService workflowCatalogService;
 
     /**
      * Global stats-card counts (rolling periods), unaffected by the filter form.
@@ -184,8 +184,9 @@ public class ManagerDashboardService {
                 .collect(Collectors.groupingBy(AssessmentDto::getStatus,
                         LinkedHashMap::new, Collectors.counting()));
 
+        WorkflowCatalog catalog = workflowCatalogService.load();
         Map<String, Long> completedCounts = assessments.stream()
-                .filter(a -> workflowConfigService.isCompletedStatus(a.getStatus()))
+                .filter(a -> AssessmentWorkflows.isCompleted(catalog.forId(a.getWorkflowId()), a.getStatus()))
                 .filter(a -> a.getAssessorIds() != null)
                 .flatMap(a -> a.getAssessorIds().stream())
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));

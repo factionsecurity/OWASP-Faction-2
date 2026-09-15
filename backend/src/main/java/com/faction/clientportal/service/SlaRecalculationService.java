@@ -140,7 +140,7 @@ public class SlaRecalculationService {
                 .map(AssessmentWorkflow::getId)
                 .filter(id -> !id.equals(target.getId()))
                 .toList();
-        BatchScope scope = new BatchScope(target.getId(), isDefault, others.isEmpty() ? List.of("") : others);
+        BatchScope scope = new BatchScope(target.getId(), isDefault, others);
 
         LocalDateTime now = LocalDateTime.now();
         String afterId = "";
@@ -162,7 +162,10 @@ public class SlaRecalculationService {
         return new RecalculationResult(recalculated, clearedPastDue);
     }
 
-    /** Which findings one run covers: the target workflow's, or Default Workflow's (everything not on another). */
+    /**
+     * Which findings one run covers: the target workflow's, or Default Workflow's (every finding not on
+     * another workflow; every open finding when no other workflow exists).
+     */
     private record BatchScope(String workflowId, boolean isDefault, List<String> otherWorkflowIds) {
     }
 
@@ -193,9 +196,7 @@ public class SlaRecalculationService {
     }
 
     private BatchOutcome recalculateBatch(BatchScope scope, String afterId, LocalDateTime now) {
-        List<Vulnerability> batch = scope.isDefault()
-                ? vulnerabilityRepository.findOpenOutsideWorkflowsAfterId(afterId, scope.otherWorkflowIds(), PageRequest.of(0, batchSize))
-                : vulnerabilityRepository.findOpenInWorkflowAfterId(afterId, scope.workflowId(), PageRequest.of(0, batchSize));
+        List<Vulnerability> batch = loadBatch(scope, afterId);
         if (batch.isEmpty()) {
             return new BatchOutcome(0, afterId, 0, 0);
         }
@@ -234,6 +235,17 @@ public class SlaRecalculationService {
             vulnerabilityRepository.saveAll(changed);
         }
         return new BatchOutcome(batch.size(), batch.get(batch.size() - 1).getId(), recalculated, clearedPastDue);
+    }
+
+    private List<Vulnerability> loadBatch(BatchScope scope, String afterId) {
+        PageRequest page = PageRequest.of(0, batchSize);
+        if (!scope.isDefault()) {
+            return vulnerabilityRepository.findOpenInWorkflowAfterId(afterId, scope.workflowId(), page);
+        }
+        if (scope.otherWorkflowIds().isEmpty()) {
+            return vulnerabilityRepository.findOpenAfterId(afterId, page);
+        }
+        return vulnerabilityRepository.findOpenOutsideWorkflowsAfterId(afterId, scope.otherWorkflowIds(), page);
     }
 
     /** Same comment shape VulnerabilityPastDueJob writes when it marks a finding Past Due. */

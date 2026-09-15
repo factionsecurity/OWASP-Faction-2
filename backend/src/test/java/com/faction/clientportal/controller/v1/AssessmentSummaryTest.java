@@ -9,10 +9,13 @@ import com.faction.clientportal.model.Permission;
 import com.faction.clientportal.model.User;
 import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.AssessmentRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.security.RequiresPermissionAuthorizationManager;
 import com.faction.clientportal.service.AssessmentService;
 import com.faction.clientportal.service.JwtService;
+import com.faction.clientportal.testsupport.TestWorkflows;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,6 +55,7 @@ class AssessmentSummaryTest extends TestContainersConfig {
     @Autowired private AssessmentRepository assessmentRepository;
     @Autowired private ApplicationRepository applicationRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private AssessmentWorkflowRepository workflowRepository;
 
     private static final String ORG_A = "org-A";
     private static final String ORG_B = "org-B";
@@ -61,6 +65,11 @@ class AssessmentSummaryTest extends TestContainersConfig {
         assessmentRepository.deleteAll();
         applicationRepository.deleteAll();
         userRepository.deleteAll();
+    }
+
+    @AfterEach
+    void removeSecondWorkflow() {
+        workflowRepository.deleteById(TestWorkflows.SECOND_ID);
     }
 
     // ── Rollup ────────────────────────────────────────────────────────────────
@@ -76,6 +85,23 @@ class AssessmentSummaryTest extends TestContainersConfig {
 
         assertThat(s.getTotal()).isEqualTo(3L);  // all non-deleted
         assertThat(s.getActive()).isEqualTo(2L); // Testing + Scheduling
+    }
+
+    @Test
+    void summary_countsAnAssessmentAsActiveUntilItsOwnWorkflowsCompletedStatus() {
+        // Start from a fresh Default Workflow (the catalog recreates it) so no other test's edits leak in.
+        workflowRepository.deleteAll();
+        TestWorkflows.saveSecondWorkflow(workflowRepository);
+        onWorkflow("default", "Completed");                  // completed
+        onWorkflow("default", "Signed Off");                 // active: not Default Workflow's completed status
+        onWorkflow(TestWorkflows.SECOND_ID, "Signed Off");   // completed
+        onWorkflow(TestWorkflows.SECOND_ID, "Completed");    // active
+        onWorkflow("gone-workflow", "Completed");            // completed: unknown ids use Default Workflow
+
+        var s = assessmentService.assessmentSummary(superAdmin());
+
+        assertThat(s.getTotal()).isEqualTo(5L);
+        assertThat(s.getActive()).isEqualTo(2L);
     }
 
     // ── Scope ─────────────────────────────────────────────────────────────────
@@ -183,6 +209,18 @@ class AssessmentSummaryTest extends TestContainersConfig {
                 .organizationId(orgId)
                 .status(status)
                 .deletedAt(deletedAt)
+                .createdAt(LocalDateTime.now())
+                .build());
+    }
+
+    private void onWorkflow(String workflowId, String status) {
+        assessmentRepository.save(Assessment.builder()
+                .name("Workflow " + workflowId + "-" + System.nanoTime())
+                .applicationId("app-1")
+                .assessmentTypeId("type-1")
+                .organizationId(ORG_A)
+                .workflowId(workflowId)
+                .status(status)
                 .createdAt(LocalDateTime.now())
                 .build());
     }

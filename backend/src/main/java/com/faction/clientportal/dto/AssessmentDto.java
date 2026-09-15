@@ -29,6 +29,8 @@ public class AssessmentDto {
     private String appId; // Human-readable application id, for frontend display
     private String applicationName; // Display name for frontend
     private String assessmentTypeId;
+    /** The assessment's workflow; judge its status against this workflow's statuses. */
+    private String workflowId;
     private String assessmentTypeName; // Display name for frontend
     private String organizationId;
     private String campaignId;
@@ -130,6 +132,7 @@ public class AssessmentDto {
             .name(entity.getName())
             .applicationId(entity.getApplicationId())
             .assessmentTypeId(entity.getAssessmentTypeId())
+            .workflowId(entity.getWorkflowId())
             .organizationId(entity.getOrganizationId())
             .campaignId(entity.getCampaignId())
             .teamId(entity.getTeamId())

@@ -72,7 +72,7 @@ class SlaRecalculationServiceListenerTest {
                 .build();
         when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(
                 AssessmentWorkflow.defaultWorkflowBuilder().build())));
-        when(vulnerabilityRepository.findOpenOutsideWorkflowsAfterId(eq(""), any(), any())).thenReturn(List.of(v));
+        when(vulnerabilityRepository.findOpenAfterId(eq(""), any())).thenReturn(List.of(v));
         // Simulate SlaService actually changing the dates, so the batch outcome reflects real work.
         doAnswer(invocation -> {
             List<Vulnerability> batch = invocation.getArgument(0);

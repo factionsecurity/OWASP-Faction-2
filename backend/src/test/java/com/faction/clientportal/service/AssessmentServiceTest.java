@@ -33,6 +33,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import com.faction.clientportal.model.Permission;
 import com.faction.clientportal.repository.AssessmentSearchCriteria;
+import com.faction.clientportal.repository.CompletedStatusFilter;
 import com.faction.clientportal.testsupport.TestWorkflows;
 
 @ExtendWith(MockitoExtension.class)
@@ -67,9 +68,6 @@ class AssessmentServiceTest {
 
     @Mock
     private VulnerabilityRepository vulnerabilityRepository;
-
-    @Mock
-    private AssessmentWorkflowConfigService workflowConfigService;
 
     @Mock
     private NotebookService notebookService;
@@ -196,11 +194,8 @@ class AssessmentServiceTest {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        // Stub workflow config service for all tests
+        // Stub workflow catalog service for all tests
         AssessmentWorkflow defaultConfig = AssessmentWorkflow.defaultWorkflowBuilder().build();
-        lenient().when(workflowConfigService.getConfig()).thenReturn(defaultConfig);
-        lenient().when(workflowConfigService.isCompletedStatus(any()))
-                .thenAnswer(inv -> "Completed".equals(inv.getArgument(0)));
         lenient().when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(defaultConfig)));
         lenient().when(workflowCatalogService.forAssessment(any())).thenReturn(defaultConfig);
     }
@@ -2051,5 +2046,61 @@ class AssessmentServiceTest {
         assessmentService.updateAssessment(testAssessment.getId(), request, "testuser");
 
         assertThat(testAssessment.getStatus()).isEqualTo("Fieldwork");
+    }
+
+    @Test
+    void searchAssessmentsAdvanced_bindsEveryWorkflowsCompletedStatusFromOneCatalogLoad() {
+        secondWorkflowInCatalog();
+        var auth = new UsernamePasswordAuthenticationToken("org-user", null,
+                List.of(new SimpleGrantedAuthority(Permission.ASSESSMENTS_READ_ORG.getPermission())));
+        when(accessScopeService.resolveAssessmentScope(auth)).thenReturn(
+                new AccessScopeService.AssessmentScope(
+                        AccessScopeService.AssessmentScopeKind.ORG, java.util.Set.of("org-A"), java.util.Set.of(), null, null));
+        when(assessmentRepository.searchAdvanced(any(), any())).thenReturn(Page.empty());
+
+        assessmentService.searchAssessmentsAdvanced(
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, PageRequest.of(0, 20), auth);
+
+        var captor = ArgumentCaptor.forClass(AssessmentSearchCriteria.class);
+        verify(assessmentRepository).searchAdvanced(captor.capture(), any());
+        CompletedStatusFilter completed = captor.getValue().completed();
+        assertThat(completed.workflowIds()).containsExactly("default", TestWorkflows.SECOND_ID);
+        assertThat(completed.completedStatuses()).containsExactly("Completed", "Signed Off");
+        assertThat(completed.knownWorkflowIds()).containsExactly("default", TestWorkflows.SECOND_ID);
+        assertThat(completed.defaultWorkflowId()).isEqualTo("default");
+        verify(workflowCatalogService, times(1)).load();
+    }
+
+    @Test
+    void getMetrics_pastDueUsesEachAssessmentsOwnWorkflowsCompletedStatus() {
+        secondWorkflowInCatalog();
+        Assessment secondDone = lateAssessment("m-second-done", TestWorkflows.SECOND_ID, "Signed Off");
+        Assessment secondDoneToo = lateAssessment("m-second-done-too", TestWorkflows.SECOND_ID, "Signed Off");
+        Assessment secondCompleted = lateAssessment("m-second-completed", TestWorkflows.SECOND_ID, "Completed");
+        Assessment defaultDone = lateAssessment("m-default-done", "default", "Completed");
+        Assessment unknownDone = lateAssessment("m-unknown-done", "gone-workflow", "Completed");
+        List<Assessment> all = List.of(secondDone, secondDoneToo, secondCompleted, defaultDone, unknownDone);
+        when(assessmentRepository.findAll()).thenReturn(all);
+        when(assessmentRepository.findPastDue(any(LocalDateTime.class))).thenReturn(all);
+
+        AssessmentMetricsDto metrics = assessmentService.getMetrics(null);
+
+        // Only the second-workflow assessment sitting in Default Workflow's completed status is still open
+        // (the Default-only check counted the two "Signed Off" ones instead).
+        assertThat(metrics.getPastDueCount()).isEqualTo(1L);
+        verify(workflowCatalogService, times(1)).load();
+    }
+
+    private static Assessment lateAssessment(String id, String workflowId, String status) {
+        return Assessment.builder()
+                .id(id)
+                .workflowId(workflowId)
+                .status(status)
+                .plannedEndDate(LocalDateTime.now().minusDays(1))
+                .fieldDefinitions(new ArrayList<>())
+                .fieldValues(new HashMap<>())
+                .createdAt(LocalDateTime.now())
+                .build();
     }
 }
