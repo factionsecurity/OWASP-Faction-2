@@ -2,6 +2,7 @@ package com.faction.clientportal.exception;
 
 import com.faction.clientportal.dto.ErrorResponse;
 import com.faction.clientportal.dto.UpgradeRequiredResponse;
+import com.faction.clientportal.dto.WorkflowConflictResponse;
 import com.faction.clientportal.edition.EditionStatusService;
 import com.faction.clientportal.edition.FeatureNotLicensedException;
 import com.faction.clientportal.edition.QuotaExceededException;
@@ -203,6 +204,20 @@ public class GlobalExceptionHandler {
                 .build();
 
         return ResponseEntity.status(status).body(errorResponse);
+    }
+
+    /** A refused workflow change: 409 with each violation and its count, for the editor to show. */
+    @ExceptionHandler(WorkflowConflictException.class)
+    public ResponseEntity<WorkflowConflictResponse> handleWorkflowConflict(
+            WorkflowConflictException ex, HttpServletRequest request) {
+        log.info("Refused workflow change: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(WorkflowConflictResponse.builder()
+                .status(HttpStatus.CONFLICT.value())
+                .error("Conflict")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .violations(ex.getViolations())
+                .build());
     }
 
     @ExceptionHandler(BusinessRuleException.class)

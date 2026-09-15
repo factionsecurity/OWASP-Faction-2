@@ -17,6 +17,8 @@ public class AssessmentTypeDto {
     private String name;
     private String description;
     private Boolean active;
+    /** The workflow new assessments of this type are created under. */
+    private String workflowId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
