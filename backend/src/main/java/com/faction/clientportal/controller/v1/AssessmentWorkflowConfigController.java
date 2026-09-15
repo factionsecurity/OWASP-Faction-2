@@ -4,7 +4,7 @@ import com.faction.clientportal.security.AuthenticatedOnly;
 import com.faction.clientportal.model.Permission;
 import com.faction.clientportal.security.RequiresPermission;
 import com.faction.clientportal.dto.common.JsonApiResponse;
-import com.faction.clientportal.model.AssessmentWorkflowConfig;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.service.AssessmentWorkflowConfigService;
 import com.faction.clientportal.service.SlaRecalculationService;
 import com.faction.clientportal.util.ResponseUtil;
@@ -29,17 +29,19 @@ public class AssessmentWorkflowConfigController {
     @GetMapping
     @AuthenticatedOnly
     @Operation(summary = "Get assessment workflow configuration",
-               description = "Retrieve the configured assessment workflow statuses and settings.")
-    public ResponseEntity<JsonApiResponse<AssessmentWorkflowConfig>> getConfig() {
+               description = "Retrieve Default Workflow's statuses and settings. Kept for one release as the "
+                       + "alias for Default Workflow.")
+    public ResponseEntity<JsonApiResponse<AssessmentWorkflow>> getConfig() {
         return ResponseUtil.success("Config retrieved successfully", service.getConfig());
     }
 
     @PutMapping
     @RequiresPermission(Permission.CONFIG_WRITE)
     @Operation(summary = "Update assessment workflow configuration",
-               description = "Replace the assessment workflow statuses and settings.")
-    public ResponseEntity<JsonApiResponse<AssessmentWorkflowConfig>> updateConfig(
-            @RequestBody AssessmentWorkflowConfig config) {
+               description = "Replace Default Workflow's statuses and settings. Its id, name and default and "
+                       + "archived flags are not changed. Kept for one release as the alias for Default Workflow.")
+    public ResponseEntity<JsonApiResponse<AssessmentWorkflow>> updateConfig(
+            @RequestBody AssessmentWorkflow config) {
         return ResponseUtil.success("Config updated successfully", service.updateConfig(config));
     }
 

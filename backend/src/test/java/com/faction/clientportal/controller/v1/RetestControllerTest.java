@@ -49,7 +49,7 @@ class RetestControllerTest extends TestContainersConfig {
     @Autowired private RoleRepository roleRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtService jwtService;
-    @Autowired private com.faction.clientportal.repository.AssessmentWorkflowConfigRepository workflowConfigRepository;
+    @Autowired private com.faction.clientportal.repository.AssessmentWorkflowRepository workflowConfigRepository;
 
     private String jwtToken;
     private String userId;

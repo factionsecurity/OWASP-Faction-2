@@ -13,6 +13,7 @@ import com.faction.clientportal.model.Team;
 import com.faction.clientportal.model.User;
 import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.AssessmentRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.OrganizationRepository;
 import com.faction.clientportal.repository.ReportTemplateRepository;
 import com.faction.clientportal.repository.AssessmentTypeRepository;
@@ -62,6 +63,7 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
     @Autowired private TeamRepository teamRepository;
     @Autowired private ReportTemplateRepository reportTemplateRepository;
     @Autowired private AssessmentTypeRepository assessmentTypeRepository;
+    @Autowired private AssessmentWorkflowRepository workflowRepository;
 
     private static final Pageable PAGE = PageRequest.of(0, 50);
 
@@ -88,6 +90,7 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
         organizationRepository.deleteAll();
         userRepository.deleteAll();
         teamRepository.deleteAll();
+        workflowRepository.deleteAll();
 
         orgId = organizationRepository.save(
                 Organization.builder().name("Acme").description("d").build()).getId();

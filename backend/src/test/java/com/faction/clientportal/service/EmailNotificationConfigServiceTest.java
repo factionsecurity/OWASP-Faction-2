@@ -2,7 +2,7 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.EmailNotificationConfigDto;
 import com.faction.clientportal.dto.UpdateEmailNotificationConfigRequest;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.RemediationStage;
+import com.faction.clientportal.model.RemediationStage;
 import com.faction.clientportal.model.EmailNotificationAudience;
 import com.faction.clientportal.model.EmailNotificationConfig;
 import com.faction.clientportal.model.EmailNotificationEvent;

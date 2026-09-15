@@ -3,6 +3,7 @@ package com.faction.clientportal.scheduled;
 import com.faction.clientportal.config.TestContainersConfig;
 import com.faction.clientportal.model.*;
 import com.faction.clientportal.repository.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,7 +48,7 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
     private ReportTemplateRepository reportTemplateRepository;
 
     @Autowired
-    private AssessmentWorkflowConfigRepository workflowConfigRepository;
+    private AssessmentWorkflowRepository workflowConfigRepository;
 
     private Application yearlyApp;
     private AssessmentType assessmentType;
@@ -84,6 +85,11 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
                         .assessmentFrequency(AssessmentFrequency.YEARLY.getDisplayName())
                         .createdAt(LocalDateTime.now())
                         .build());
+    }
+
+    @AfterEach
+    void resetWorkflows() {
+        workflowConfigRepository.deleteAll();
     }
 
     // ── Yearly scheduling ───────────────────────────────────────────────────
@@ -296,8 +302,7 @@ class AssessmentSchedulerJobIntegrationTest extends TestContainersConfig {
     void successor_receivesNewAssessmentStatus() {
         // Configure workflow with a custom new-status
         workflowConfigRepository.save(
-                AssessmentWorkflowConfig.builder()
-                        .id("singleton")
+                AssessmentWorkflow.defaultWorkflowBuilder()
                         .statuses(List.of("Pending", "Active", "Done"))
                         .newAssessmentStatus("Pending")
                         .inProgressStatus("Active")

@@ -1,12 +1,12 @@
 package com.faction.clientportal.service;
 
 import com.faction.clientportal.config.TestContainersConfig;
-import com.faction.clientportal.model.AssessmentWorkflowConfig;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.VulnerabilitySla;
+import com.faction.clientportal.model.AssessmentWorkflow;
+import com.faction.clientportal.model.VulnerabilitySla;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilityComment;
 import com.faction.clientportal.model.VulnerabilitySeverity;
-import com.faction.clientportal.repository.AssessmentWorkflowConfigRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.VulnerabilityRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,7 +43,7 @@ class SlaRecalculationServiceTest extends TestContainersConfig {
 
     @Autowired private SlaRecalculationService recalculationService;
     @Autowired private AssessmentWorkflowConfigService workflowConfigService;
-    @Autowired private AssessmentWorkflowConfigRepository workflowConfigRepository;
+    @Autowired private AssessmentWorkflowRepository workflowConfigRepository;
     @Autowired private VulnerabilityRepository vulnerabilityRepository;
     @Autowired private SlaService slaService;
     @Autowired private TransactionTemplate transactionTemplate;
@@ -57,8 +57,7 @@ class SlaRecalculationServiceTest extends TestContainersConfig {
 
     @Test
     void lengtheningAnSlaMovesDueDatesAndReturnsFindingsNoLongerPastDueToOpen() {
-        workflowConfigRepository.save(AssessmentWorkflowConfig.builder()
-                .id("singleton")
+        workflowConfigRepository.save(AssessmentWorkflow.defaultWorkflowBuilder()
                 .vulnerabilitySlas(new ArrayList<>(List.of(new VulnerabilitySla("HIGH", 30, 20))))
                 .build());
 
@@ -72,7 +71,7 @@ class SlaRecalculationServiceTest extends TestContainersConfig {
                 .dueAt(oldOpened.plusDays(30)).warningAt(oldOpened.plusDays(10)));
         Vulnerability closed = seed(b -> b.status("Closed").openedAt(recentOpened).closedAt(base));
 
-        AssessmentWorkflowConfig edited = workflowConfigService.getConfig();
+        AssessmentWorkflow edited = workflowConfigService.getConfig();
         edited.setVulnerabilitySlas(new ArrayList<>(List.of(new VulnerabilitySla("HIGH", 60, 30))));
         workflowConfigService.updateConfig(edited);
 
@@ -110,8 +109,7 @@ class SlaRecalculationServiceTest extends TestContainersConfig {
     void removingAnSlaClearsPastDueFindingWithNullDueDates() {
         // Characterization test: with no SLA nothing can be past due, so a Past Due finding whose
         // severity's SLA is removed must be returned to Open with dueAt/warningAt cleared to null.
-        workflowConfigRepository.save(AssessmentWorkflowConfig.builder()
-                .id("singleton")
+        workflowConfigRepository.save(AssessmentWorkflow.defaultWorkflowBuilder()
                 .vulnerabilitySlas(new ArrayList<>(List.of(new VulnerabilitySla("HIGH", 30, 20))))
                 .build());
 
@@ -120,7 +118,7 @@ class SlaRecalculationServiceTest extends TestContainersConfig {
         Vulnerability pastDue = seed(b -> b.status("Past Due").openedAt(openedAt)
                 .dueAt(openedAt.plusDays(30)).warningAt(openedAt.plusDays(10)));
 
-        AssessmentWorkflowConfig edited = workflowConfigService.getConfig();
+        AssessmentWorkflow edited = workflowConfigService.getConfig();
         edited.setVulnerabilitySlas(new ArrayList<>());
         workflowConfigService.updateConfig(edited);
 

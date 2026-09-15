@@ -1,7 +1,7 @@
 package com.faction.clientportal.service;
 
-import com.faction.clientportal.model.AssessmentWorkflowConfig;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.VulnerabilitySla;
+import com.faction.clientportal.model.AssessmentWorkflow;
+import com.faction.clientportal.model.VulnerabilitySla;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilitySeverity;
 import org.junit.jupiter.api.Test;
@@ -33,7 +33,7 @@ class SlaServiceTest {
     private static final LocalDateTime HIGH_WARNING = LocalDateTime.of(2026, 1, 31, 9, 0);
 
     private static final SlaService.SlaPolicy DEFAULTS =
-            SlaService.SlaPolicy.of(AssessmentWorkflowConfig.defaultVulnerabilitySlas());
+            SlaService.SlaPolicy.of(AssessmentWorkflow.defaultVulnerabilitySlas());
 
     @Mock private AssessmentWorkflowConfigService workflowConfigService;
     @InjectMocks private SlaService slaService;
@@ -44,8 +44,8 @@ class SlaServiceTest {
     }
 
     private void configured(VulnerabilitySla... slas) {
-        when(workflowConfigService.getConfig()).thenReturn(AssessmentWorkflowConfig.builder()
-                .id("singleton").vulnerabilitySlas(new ArrayList<>(Arrays.asList(slas))).build());
+        when(workflowConfigService.getConfig()).thenReturn(AssessmentWorkflow.defaultWorkflowBuilder()
+                .vulnerabilitySlas(new ArrayList<>(Arrays.asList(slas))).build());
     }
 
     @Test
@@ -184,8 +184,8 @@ class SlaServiceTest {
 
     @Test
     void noSlasConfiguredMeansNoDueDates() {
-        when(workflowConfigService.getConfig()).thenReturn(AssessmentWorkflowConfig.builder()
-                .id("singleton").vulnerabilitySlas(null).build());
+        when(workflowConfigService.getConfig()).thenReturn(AssessmentWorkflow.defaultWorkflowBuilder()
+                .vulnerabilitySlas(null).build());
         Vulnerability v = open(VulnerabilitySeverity.HIGH);
         v.setDueAt(HIGH_DUE);
         v.setWarningAt(HIGH_WARNING);

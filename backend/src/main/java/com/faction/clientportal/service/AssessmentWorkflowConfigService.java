@@ -1,13 +1,15 @@
 package com.faction.clientportal.service;
 
-import com.faction.clientportal.model.AssessmentWorkflowConfig;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.RemediationStage;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.VulnerabilitySla;
-import com.faction.clientportal.repository.AssessmentWorkflowConfigRepository;
+import com.faction.clientportal.model.AssessmentWorkflow;
+import com.faction.clientportal.model.RemediationStage;
+import com.faction.clientportal.model.VulnerabilitySla;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -15,37 +17,75 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * The workflow configuration every assessment uses: Default Workflow. Until workflows are assigned
+ * per assessment type (later phases) this is the only workflow any code reads, and
+ * {@code GET|PUT /api/v1/config/assessment-workflow} is its alias.
+ */
 @Service
 @RequiredArgsConstructor
 public class AssessmentWorkflowConfigService {
 
-    static final String SINGLETON_ID = "singleton";
-
-    private final AssessmentWorkflowConfigRepository repository;
+    private final AssessmentWorkflowRepository repository;
     private final ApplicationEventPublisher eventPublisher;
 
-    /** Returns the config, creating it with defaults on first access. */
-    public AssessmentWorkflowConfig getConfig() {
-        return repository.findById(SINGLETON_ID).orElseGet(() -> {
-            AssessmentWorkflowConfig defaults = AssessmentWorkflowConfig.builder()
-                    .id(SINGLETON_ID)
-                    .build();
-            return repository.save(defaults);
-        });
+    /**
+     * Default Workflow, created with the default settings when it does not exist yet.
+     *
+     * <p>Two callers racing to create it both find it missing; the loser's insert hits the
+     * primary-key/name conflict, so it re-reads the winner's row instead of failing outright
+     * (which would otherwise fail {@code ApplicationRunner} at startup).
+     */
+    public AssessmentWorkflow ensureDefaultWorkflow() {
+        return repository.findById(AssessmentWorkflow.DEFAULT_ID)
+                .orElseGet(this::createDefaultWorkflow);
     }
 
-    public AssessmentWorkflowConfig updateConfig(AssessmentWorkflowConfig config) {
-        config.setId(SINGLETON_ID);
-        config.setRemediationStages(normalizeStages(config.getRemediationStages()));
+    private AssessmentWorkflow createDefaultWorkflow() {
+        try {
+            return repository.save(newDefaultWorkflow());
+        } catch (DataIntegrityViolationException e) {
+            return repository.findById(AssessmentWorkflow.DEFAULT_ID).orElseThrow(() -> e);
+        }
+    }
+
+    /** Returns Default Workflow, creating it with defaults on first access. */
+    public AssessmentWorkflow getConfig() {
+        return ensureDefaultWorkflow();
+    }
+
+    /**
+     * Saves the submitted settings onto Default Workflow exactly as submitted. What identifies the
+     * workflow — id, name, default flag, archived flag, creation time — is never taken from the
+     * submission.
+     */
+    public AssessmentWorkflow updateConfig(AssessmentWorkflow submitted) {
         // With no row yet, getConfig() would have seeded the defaults, so those are what changed from.
-        List<VulnerabilitySla> previousSlas = repository.findById(SINGLETON_ID)
-                .map(AssessmentWorkflowConfig::getVulnerabilitySlas)
-                .orElseGet(AssessmentWorkflowConfig::defaultVulnerabilitySlas);
-        AssessmentWorkflowConfig saved = repository.save(config);
+        AssessmentWorkflow workflow = repository.findById(AssessmentWorkflow.DEFAULT_ID)
+                .orElseGet(AssessmentWorkflowConfigService::newDefaultWorkflow);
+        List<VulnerabilitySla> previousSlas = workflow.getVulnerabilitySlas();
+
+        workflow.setStatuses(submitted.getStatuses());
+        workflow.setNewAssessmentStatus(submitted.getNewAssessmentStatus());
+        workflow.setInProgressStatus(submitted.getInProgressStatus());
+        workflow.setCompletedStatus(submitted.getCompletedStatus());
+        workflow.setStatusColors(submitted.getStatusColors());
+        workflow.setVulnerabilitySlas(submitted.getVulnerabilitySlas());
+        workflow.setVulnerabilityStatuses(submitted.getVulnerabilityStatuses());
+        workflow.setRemediationStages(normalizeStages(submitted.getRemediationStages()));
+        workflow.setAllowSelfPeerReview(submitted.isAllowSelfPeerReview());
+        workflow.setUpdatedAt(LocalDateTime.now());
+
+        AssessmentWorkflow saved = repository.save(workflow);
         if (!normalizedSlas(previousSlas).equals(normalizedSlas(saved.getVulnerabilitySlas()))) {
             eventPublisher.publishEvent(new SlaConfigChangedEvent());
         }
         return saved;
+    }
+
+    private static AssessmentWorkflow newDefaultWorkflow() {
+        LocalDateTime now = LocalDateTime.now();
+        return AssessmentWorkflow.defaultWorkflowBuilder().createdAt(now).updatedAt(now).build();
     }
 
     /**
@@ -70,7 +110,7 @@ public class AssessmentWorkflowConfigService {
     public List<RemediationStage> remediationStages() {
         List<RemediationStage> stages = getConfig().getRemediationStages();
         return stages == null || stages.isEmpty()
-                ? AssessmentWorkflowConfig.defaultRemediationStages() : stages;
+                ? AssessmentWorkflow.defaultRemediationStages() : stages;
     }
 
     /**
@@ -80,7 +120,7 @@ public class AssessmentWorkflowConfigService {
      */
     private static List<RemediationStage> normalizeStages(List<RemediationStage> stages) {
         if (stages == null) {
-            return AssessmentWorkflowConfig.defaultRemediationStages();
+            return AssessmentWorkflow.defaultRemediationStages();
         }
         List<RemediationStage> normalized = new ArrayList<>();
         for (RemediationStage stage : stages) {
@@ -89,7 +129,7 @@ public class AssessmentWorkflowConfigService {
                     ? UUID.randomUUID().toString() : stage.getId();
             normalized.add(new RemediationStage(id, stage.getName().trim()));
         }
-        return normalized.isEmpty() ? AssessmentWorkflowConfig.defaultRemediationStages() : normalized;
+        return normalized.isEmpty() ? AssessmentWorkflow.defaultRemediationStages() : normalized;
     }
 
     /** Whether the given status is the workflow's configured completed status. */

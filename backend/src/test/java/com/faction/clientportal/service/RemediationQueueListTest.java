@@ -3,8 +3,8 @@ package com.faction.clientportal.service;
 import com.faction.clientportal.config.TestContainersConfig;
 import com.faction.clientportal.dto.RemediationRowDto;
 import com.faction.clientportal.model.Application;
-import com.faction.clientportal.model.AssessmentWorkflowConfig;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.VulnerabilitySla;
+import com.faction.clientportal.model.AssessmentWorkflow;
+import com.faction.clientportal.model.VulnerabilitySla;
 import com.faction.clientportal.model.AssignedUser;
 import com.faction.clientportal.model.LoginOption;
 import com.faction.clientportal.model.Organization;
@@ -15,7 +15,7 @@ import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilitySeverity;
 import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.AssessmentRepository;
-import com.faction.clientportal.repository.AssessmentWorkflowConfigRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.OrganizationRepository;
 import com.faction.clientportal.repository.RetestRepository;
 import com.faction.clientportal.repository.UserRepository;
@@ -62,7 +62,7 @@ class RemediationQueueListTest extends TestContainersConfig {
     @Autowired private ApplicationRepository applicationRepository;
     @Autowired private OrganizationRepository organizationRepository;
     @Autowired private UserRepository userRepository;
-    @Autowired private AssessmentWorkflowConfigRepository workflowConfigRepository;
+    @Autowired private AssessmentWorkflowRepository workflowConfigRepository;
     @Autowired private SlaService slaService;
 
     private static final Pageable PAGE = PageRequest.of(0, 50);
@@ -890,8 +890,7 @@ class RemediationQueueListTest extends TestContainersConfig {
     }
 
     private void configureSlas(VulnerabilitySla... slas) {
-        workflowConfigRepository.save(AssessmentWorkflowConfig.builder()
-                .id("singleton")
+        workflowConfigRepository.save(AssessmentWorkflow.defaultWorkflowBuilder()
                 .vulnerabilitySlas(List.of(slas))
                 .build());
     }

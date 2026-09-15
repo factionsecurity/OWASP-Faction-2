@@ -35,6 +35,7 @@ public class BootstrapService implements ApplicationRunner {
     private final CampaignRepository campaignRepository;
     private final EditionPolicy editionPolicy;
     private final DefaultReportTemplateService defaultReportTemplateService;
+    private final AssessmentWorkflowConfigService workflowConfigService;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -64,6 +65,9 @@ public class BootstrapService implements ApplicationRunner {
         }
 
         regionConfigService.ensureDefaults();
+
+        // Before the assessment types below, which start on Default Workflow.
+        workflowConfigService.ensureDefaultWorkflow();
 
         if (assessmentTypeRepository.count() == 0) {
             log.info("No assessment types found. Initializing default assessment types...");

@@ -1,6 +1,6 @@
 package com.faction.clientportal.service;
 
-import com.faction.clientportal.model.AssessmentWorkflowConfig.VulnerabilitySla;
+import com.faction.clientportal.model.VulnerabilitySla;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilitySeverity;
 import lombok.RequiredArgsConstructor;
