@@ -12,6 +12,7 @@ import org.springframework.data.domain.Sort;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -174,16 +175,16 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
                     q -> q.setParameter("completedTo", c.completedDateTo())));
         }
         if (c.pastDue()) {
-            clauses.add(Clause.of("""
-                    AND a.planned_end_date IS NOT NULL AND a.planned_end_date < :now
-                    AND (a.status IS NULL OR a.status NOT IN (:completed))""",
-                    q -> { q.setParameter("now", c.now()); q.setParameter("completed", c.completedStatuses()); }));
+            CompletedStatusFilter completed = Objects.requireNonNull(c.completed(), "completed");
+            clauses.add(Clause.of("AND a.planned_end_date IS NOT NULL AND a.planned_end_date < :now AND "
+                            + CompletedStatusFilter.NOT_COMPLETED_SQL,
+                    q -> { q.setParameter("now", c.now()); completed.bind(q); }));
         }
         if (c.excludeCompleted()) {
             // Completed assessments leave the list entirely; "show completed" is how to see them,
-            // reopen window or not.
-            clauses.add(Clause.of("AND (a.status IS NULL OR a.status NOT IN (:completed))",
-                    q -> q.setParameter("completed", c.completedStatuses())));
+            // reopen window or not. Completed means the assessment's own workflow's completed status.
+            CompletedStatusFilter completed = Objects.requireNonNull(c.completed(), "completed");
+            clauses.add(Clause.of("AND " + CompletedStatusFilter.NOT_COMPLETED_SQL, completed::bind));
         }
         if (c.assignedToMe() && c.currentUserId() != null) {
             clauses.add(Clause.of("""

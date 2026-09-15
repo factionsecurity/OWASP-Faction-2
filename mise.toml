@@ -68,6 +68,11 @@ description = "Run backend tests without Docker (unit tests only)"
 run = "mvn test -Dtest='!@IntegrationTest'"
 dir = "backend"
 
+[tasks.perf-check]
+description = "Assessment workflows performance check: seeds 50k assessments / 1M findings / 20 workflows in a throwaway container and EXPLAINs the hot queries (never part of backend-test)"
+run = "mvn test -Dtest=AssessmentWorkflowsPerfCheck -Dsurefire.failIfNoSpecifiedTests=false -Dperf.check=true"
+dir = "backend"
+
 [tasks.test-all]
 description = "Run all backend and frontend tests"
 depends = ["backend-test", "frontend-test"]

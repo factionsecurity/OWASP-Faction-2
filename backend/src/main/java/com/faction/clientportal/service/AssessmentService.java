@@ -52,7 +52,6 @@ public class AssessmentService {
     private final StorageService storageService;
     private final InlineImageService inlineImageService;
     private final VulnerabilityRepository vulnerabilityRepository;
-    private final AssessmentWorkflowConfigService workflowConfigService;
     private final AssessmentChecklistRepository assessmentChecklistRepository;
     private final AssessmentSurveyRepository assessmentSurveyRepository;
     private final ChecklistTemplateRepository checklistTemplateRepository;
@@ -907,10 +906,8 @@ public class AssessmentService {
                 search, effectiveAppId, effectiveOrgId, assessmentTypeId, assessorId, status,
                 pastDue, showCompleted, assignedToMe, currentUserId);
 
-        // Resolve the completed-status set once (isCompletedStatus() otherwise hits the
-        // uncached singleton config per row) and translate the filters into criteria the
-        // repository turns into a single DB query — no findAll() + in-memory scan.
-        var completed = completedStatuses();
+        // One catalog snapshot serves the completed filter and the DTO conversion below.
+        WorkflowCatalog catalog = workflowCatalogService.load();
         var severityOrdinals = (severities == null || severities.isEmpty())
                 ? null
                 : severities.stream().map(Enum::ordinal).toList();
@@ -955,13 +952,12 @@ public class AssessmentService {
                 .scopeTeamIds(effectiveScopeTeamIds)
                 .campaignId(campaignId)
                 .severityOrdinals(severityOrdinals)
-                .completedStatuses(completed)
+                .completed(catalog.completedStatusFilter())
                 .now(LocalDateTime.now())
                 .build();
 
         Page<Assessment> page = assessmentRepository.searchAdvanced(criteria, pageable);
 
-        WorkflowCatalog catalog = workflowCatalogService.load();
         List<AssessmentDto> dtos = page.getContent().stream()
                 .map(a -> migrateAndConvertToDto(a, catalog))
                 .collect(Collectors.toList());
@@ -1001,7 +997,7 @@ public class AssessmentService {
 
     /**
      * Aggregate assessment counts for the nav badge / dashboards, scoped like the list endpoint.
-     * Uses a single {@code GROUP BY status} query — the badge only needs totals, so it must not
+     * Uses a single {@code GROUP BY workflow_id, status} query — the badge only needs totals, so it must not
      * route through searchAssessmentsAdvanced (which materializes every row and calls getConfig()
      * per row).
      */
@@ -1017,31 +1013,26 @@ public class AssessmentService {
             // rather than falling back to global totals.
             case ORG -> membershipStatusCounts(scope);
             case OWNED -> scope.appIds() == null || scope.appIds().isEmpty()
-                    ? List.of() : assessmentRepository.countByStatusGroupedOwned(scope.appIds());
+                    ? List.of() : assessmentRepository.countByWorkflowAndStatusGroupedOwned(scope.appIds());
             case TEAM -> scope.teamIds() == null || scope.teamIds().isEmpty()
-                    ? List.of() : assessmentRepository.countByStatusGroupedTeam(scope.teamIds());
+                    ? List.of() : assessmentRepository.countByWorkflowAndStatusGroupedTeam(scope.teamIds());
             case ASSIGNED -> scope.assessorId() == null
-                    ? List.of() : assessmentRepository.countByStatusGroupedAssigned(scope.assessorId());
-            case UNRESTRICTED -> assessmentRepository.countByStatusGroupedAll();
+                    ? List.of() : assessmentRepository.countByWorkflowAndStatusGroupedAssigned(scope.assessorId());
+            case UNRESTRICTED -> assessmentRepository.countByWorkflowAndStatusGroupedAll();
         };
 
-        var completed = completedStatuses();
-        long total = rows.stream().mapToLong(row -> ((Number) row[1]).longValue()).sum();
-        // A null status is treated as active (matches isCompletedStatus returning false for null).
-        // Note this deliberately excludes assessments still inside their reopen window: they remain
-        // in the queue so they can be reopened, but they are finished work, and the badge counts
-        // what still needs doing. The badge is therefore lower than the unfiltered list length.
+        WorkflowCatalog catalog = workflowCatalogService.load();
+        long total = rows.stream().mapToLong(row -> ((Number) row[2]).longValue()).sum();
+        // Completed means the row's own workflow's completed status (an unknown workflow id uses Default
+        // Workflow's); a null status is active. Note this deliberately excludes assessments still inside
+        // their reopen window: they remain in the queue so they can be reopened, but they are finished
+        // work, and the badge counts what still needs doing. The badge is therefore lower than the
+        // unfiltered list length.
         long active = rows.stream()
-                .filter(row -> row[0] == null || !completed.contains((String) row[0]))
-                .mapToLong(row -> ((Number) row[1]).longValue())
+                .filter(row -> !AssessmentWorkflows.isCompleted(catalog.forId((String) row[0]), (String) row[1]))
+                .mapToLong(row -> ((Number) row[2]).longValue())
                 .sum();
         return AssessmentSummaryDto.builder().active(active).total(total).build();
-    }
-
-    /** The "completed" status strings, mirroring AssessmentWorkflowConfigService.isCompletedStatus. */
-    private Set<String> completedStatuses() {
-        var configured = workflowConfigService.getConfig().getCompletedStatus();
-        return configured == null || configured.isBlank() ? Set.of() : Set.of(configured);
     }
 
     private boolean hasAuthority(Authentication authentication, String authority) {
@@ -1110,7 +1101,6 @@ public class AssessmentService {
                 .ownedAppIds(scope.kind() == AccessScopeService.AssessmentScopeKind.OWNED ? scope.appIds() : null)
                 .scopeTeamIds(scope.kind() == AccessScopeService.AssessmentScopeKind.TEAM ? scope.teamIds() : null)
                 .scopeAssessorId(scope.kind() == AccessScopeService.AssessmentScopeKind.ASSIGNED ? scope.assessorId() : null)
-                .completedStatuses(completedStatuses())
                 .now(LocalDateTime.now())
                 .build();
         Page<Assessment> page = assessmentRepository.searchAdvanced(criteria, pageable);
@@ -1273,12 +1263,13 @@ public class AssessmentService {
             .filter(a -> a.getStatus() != null)
             .collect(Collectors.groupingBy(Assessment::getStatus, Collectors.counting()));
 
-        // Past due: past planned end date and not in a completed state
+        // Past due: past planned end date and not in its own workflow's completed status
+        WorkflowCatalog catalog = workflowCatalogService.load();
         List<Assessment> pastDueAssessments = assessmentRepository.findPastDue(LocalDateTime.now());
         long pastDueCount = pastDueAssessments.stream()
             .filter(a -> a.getDeletedAt() == null)
             .filter(rowFilter)
-            .filter(a -> !workflowConfigService.isCompletedStatus(a.getStatus()))
+            .filter(a -> !AssessmentWorkflows.isCompleted(catalog.forAssessment(a), a.getStatus()))
             .count();
 
         return AssessmentMetricsDto.builder()
@@ -1630,9 +1621,9 @@ public class AssessmentService {
         var orgs = scope.orgIds() == null ? java.util.Set.<String>of() : scope.orgIds();
         var apps = scope.appIds() == null ? java.util.Set.<String>of() : scope.appIds();
         if (orgs.isEmpty() && apps.isEmpty()) return List.of();
-        if (apps.isEmpty()) return assessmentRepository.countByStatusGroupedOrgs(orgs);
-        if (orgs.isEmpty()) return assessmentRepository.countByStatusGroupedOwned(apps);
-        return assessmentRepository.countByStatusGroupedMembership(orgs, apps);
+        if (apps.isEmpty()) return assessmentRepository.countByWorkflowAndStatusGroupedOrgs(orgs);
+        if (orgs.isEmpty()) return assessmentRepository.countByWorkflowAndStatusGroupedOwned(apps);
+        return assessmentRepository.countByWorkflowAndStatusGroupedMembership(orgs, apps);
     }
 
     private static boolean isSuperAdmin(Authentication authentication) {

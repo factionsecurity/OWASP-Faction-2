@@ -35,6 +35,8 @@ import java.util.Collection;
  * scope (see {@code AccessScopeService.resolveAssessmentScope}) — distinct from the optional
  * {@code assignedToMe} / {@code assessorId} <em>filters</em>, which the user can clear. An empty
  * {@code scopeTeamIds} means "belongs to no team" and matches nothing.
+ *
+ * @param completed required when {@code pastDue} or {@code excludeCompleted} is set
  */
 @Builder
 public record AssessmentSearchCriteria(
@@ -67,6 +69,6 @@ public record AssessmentSearchCriteria(
         Collection<String> scopeTeamIds,
         String campaignId,
         Collection<Integer> severityOrdinals,
-        Collection<String> completedStatuses,
+        CompletedStatusFilter completed,
         LocalDateTime now
 ) {}

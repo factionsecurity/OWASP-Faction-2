@@ -9,11 +9,14 @@ import com.faction.clientportal.model.User;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilitySeverity;
 import com.faction.clientportal.repository.AssessmentRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.CampaignRepository;
 import com.faction.clientportal.repository.TeamRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.repository.VulnerabilityRepository;
 import com.faction.clientportal.service.JwtService;
+import com.faction.clientportal.testsupport.TestWorkflows;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +29,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -58,6 +62,9 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
 
     @Autowired
     private JwtService jwtService;
+
+    @Autowired
+    private AssessmentWorkflowRepository workflowRepository;
 
     private String managerToken;
 
@@ -163,6 +170,11 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                 .openedAt(LocalDateTime.now().minusDays(40))
                 .createdAt(LocalDateTime.now())
                 .build());
+    }
+
+    @AfterEach
+    void removeSecondWorkflow() {
+        workflowRepository.deleteById(TestWorkflows.SECOND_ID);
     }
 
     @Test
@@ -332,5 +344,49 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                         .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(greaterThanOrEqualTo(2)));
+    }
+
+    @Test
+    void stats_countsCompletedAssessmentsByEachAssessmentsOwnWorkflow() throws Exception {
+        TestWorkflows.saveSecondWorkflow(workflowRepository);
+        assessmentRepository.save(Assessment.builder()
+                .name("Blue Signed Off Assessment")
+                .workflowId(TestWorkflows.SECOND_ID)
+                .status("Signed Off")
+                .assessorIds(List.of(blueAssessor.getId()))
+                .startDate(LocalDateTime.now().minusDays(4))
+                .completedDate(LocalDateTime.now().minusDays(1))
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+        assessmentRepository.save(Assessment.builder()
+                .name("Blue Second Signed Off Assessment")
+                .workflowId(TestWorkflows.SECOND_ID)
+                .status("Signed Off")
+                .assessorIds(List.of(blueAssessor.getId()))
+                .startDate(LocalDateTime.now().minusDays(6))
+                .completedDate(LocalDateTime.now().minusDays(2))
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+        // "Completed" is Default Workflow's completed status, not the second workflow's: still open.
+        assessmentRepository.save(Assessment.builder()
+                .name("Blue Second Workflow Open Assessment")
+                .workflowId(TestWorkflows.SECOND_ID)
+                .status("Completed")
+                .assessorIds(List.of(blueAssessor.getId()))
+                .startDate(LocalDateTime.now().minusDays(4))
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/stats")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.completedByAssessor.length()").value(2))
+                .andExpect(jsonPath("$.data.completedByAssessor[?(@.assessorName == 'Blue Assessor')].count")
+                        .value(contains(2)))
+                .andExpect(jsonPath("$.data.completedByAssessor[?(@.assessorName == 'Red Assessor')].count")
+                        .value(contains(1)));
     }
 }
