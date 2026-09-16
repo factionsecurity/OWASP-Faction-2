@@ -18,6 +18,7 @@ import com.faction.clientportal.repository.RetestRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.repository.VulnerabilityCategoryRepository;
 import com.faction.clientportal.repository.VulnerabilityRepository;
+import com.faction.clientportal.service.WorkflowCatalogService;
 import com.faction.elements.results.AssessmentManagerResult;
 import com.faction.elements.results.InventoryResult;
 import com.faction.elements.utils.Log;
@@ -84,6 +85,7 @@ public class ExtensionEventService {
     private final VulnerabilityCategoryRepository vulnerabilityCategoryRepository;
     private final RetestRepository retestRepository;
     private final UserRepository userRepository;
+    private final WorkflowCatalogService workflowCatalogService;
 
     private final TaskExecutor extensionTaskExecutor;
 
@@ -347,8 +349,9 @@ public class ExtensionEventService {
         List<AssessmentChecklist> checklists =
                 assessmentChecklistRepository.findByAssessmentId(assessment.getId());
 
+        String workflowName = workflowCatalogService.load().forAssessment(assessment).getName();
         return mapper.toElement(assessment, typeName, campaignName, assessors,
-                engagementContact, remediationContact, checklists);
+                engagementContact, remediationContact, checklists, workflowName);
     }
 
     /**

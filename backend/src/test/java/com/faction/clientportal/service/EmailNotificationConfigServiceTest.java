@@ -2,6 +2,7 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.EmailNotificationConfigDto;
 import com.faction.clientportal.dto.UpdateEmailNotificationConfigRequest;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.RemediationStage;
 import com.faction.clientportal.model.EmailNotificationAudience;
 import com.faction.clientportal.model.EmailNotificationConfig;
@@ -34,7 +35,7 @@ import static org.mockito.Mockito.when;
 class EmailNotificationConfigServiceTest {
 
     @Mock private EmailNotificationConfigRepository repository;
-    @Mock private AssessmentWorkflowConfigService workflowConfigService;
+    @Mock private WorkflowCatalogService workflowCatalogService;
     @Mock private EmailService emailService;
 
     @InjectMocks private EmailNotificationConfigService service;
@@ -47,9 +48,12 @@ class EmailNotificationConfigServiceTest {
         when(repository.findById(EmailNotificationConfig.SINGLETON_ID)).thenReturn(Optional.of(stored));
         when(repository.save(any(EmailNotificationConfig.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
-        when(workflowConfigService.remediationStages()).thenReturn(List.of(
-                new RemediationStage("development", "Development"),
-                new RemediationStage("production", "Production")));
+        AssessmentWorkflow defaultWorkflow = AssessmentWorkflow.defaultWorkflowBuilder()
+                .remediationStages(List.of(
+                        new RemediationStage("development", "Development"),
+                        new RemediationStage("production", "Production")))
+                .build();
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(defaultWorkflow)));
         when(emailService.isConfigured()).thenReturn(true);
     }
 
@@ -257,5 +261,38 @@ class EmailNotificationConfigServiceTest {
         assertThat(saved.getValue().getEvents())
                 .containsKey("VULNERABILITY_CLOSED:kept")
                 .doesNotContainKey("VULNERABILITY_CLOSED:gone");
+    }
+
+    @Test
+    void perStageSettingsAreOfferedForEveryWorkflowsStagesAndSayWhichWorkflowTheyBelongTo() {
+        AssessmentWorkflow defaultWorkflow = AssessmentWorkflow.defaultWorkflowBuilder()
+                .remediationStages(List.of(new RemediationStage("d-stg", "Staging"),
+                        new RemediationStage("d-prod", "Production")))
+                .build();
+        AssessmentWorkflow pci = AssessmentWorkflow.builder()
+                .id("pci").name("PCI").defaultWorkflow(false).archived(false)
+                .remediationStages(List.of(new RemediationStage("p-stg", "Staging"),
+                        new RemediationStage("p-live", "Live")))
+                .build();
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(defaultWorkflow, pci)));
+
+        List<EmailNotificationConfigDto.EventDto> perStage = service.getConfig().getEvents().stream()
+                .filter(EmailNotificationConfigDto.EventDto::isPerStage)
+                .toList();
+
+        // Every stage of every workflow, each tagged with the workflow it belongs to — including the
+        // two both workflows happen to call "Staging", which are different stages with different keys.
+        assertThat(perStage).extracting(EmailNotificationConfigDto.EventDto::getStageId)
+                .containsExactlyInAnyOrder("d-stg", "d-prod", "p-stg", "p-live");
+        assertThat(perStage).filteredOn(e -> "p-stg".equals(e.getStageId()))
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.getWorkflowId()).isEqualTo("pci");
+                    assertThat(e.getWorkflowName()).isEqualTo("PCI");
+                    assertThat(e.getKey()).isEqualTo(EmailNotificationEvent.VULNERABILITY_CLOSED.key("p-stg"));
+                });
+        assertThat(perStage).filteredOn(e -> "d-stg".equals(e.getStageId()))
+                .singleElement()
+                .satisfies(e -> assertThat(e.getWorkflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID));
     }
 }

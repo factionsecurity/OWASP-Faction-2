@@ -84,6 +84,12 @@ public class AssessmentDto {
     private List<StakeholderDto> stakeholders = new ArrayList<>();
     private Boolean isPastDue; // Computed field
 
+    /**
+     * Whether the assessment's status is its own workflow's completed status. Computed, because
+     * completion is per workflow: no caller can decide it by comparing status text.
+     */
+    private Boolean completed;
+
     // Attachments (metadata only — no file content)
     @Builder.Default
     private List<AssessmentFileDto> attachments = new ArrayList<>();
@@ -179,6 +185,7 @@ public class AssessmentDto {
                     .collect(Collectors.toList())
                 : new ArrayList<>())
             .isPastDue(false) // computed by AssessmentService using workflow config
+            .completed(false) // computed by AssessmentService using the assessment's workflow
             .generatedReportFileId(entity.getGeneratedReportFileId())
             .reportGeneratedAt(entity.getReportGeneratedAt())
             .createdBy(entity.getCreatedBy())

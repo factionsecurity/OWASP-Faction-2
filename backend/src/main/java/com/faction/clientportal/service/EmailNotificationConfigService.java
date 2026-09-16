@@ -2,6 +2,7 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.EmailNotificationConfigDto;
 import com.faction.clientportal.dto.UpdateEmailNotificationConfigRequest;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.RemediationStage;
 import com.faction.clientportal.model.EmailNotificationConfig;
 import com.faction.clientportal.model.EmailNotificationConfig.EventSettings;
@@ -30,7 +31,7 @@ import java.util.Map;
 public class EmailNotificationConfigService {
 
     private final EmailNotificationConfigRepository repository;
-    private final AssessmentWorkflowConfigService workflowConfigService;
+    private final WorkflowCatalogService workflowCatalogService;
     private final EmailService emailService;
 
     public EmailNotificationConfig getOrCreate() {
@@ -175,12 +176,18 @@ public class EmailNotificationConfigService {
 
         for (EmailNotificationEvent event : EmailNotificationEvent.values()) {
             if (event.isPerStage()) {
-                for (RemediationStage stage : workflowConfigService.remediationStages()) {
-                    events.add(eventDto(config, event, stage.getId(),
-                            event.label() + " in " + stage.getName()));
+                // Every workflow's stages, archived ones included: their assessments still close
+                // findings, so their settings must stay reachable. Stage ids are unique per workflow,
+                // so two workflows that both call a stage "Staging" keep separate settings.
+                for (AssessmentWorkflow workflow : workflowCatalogService.load().workflows(true)) {
+                    for (RemediationStage stage : AssessmentWorkflows.stages(workflow)) {
+                        events.add(eventDto(config, event, stage.getId(),
+                                event.label() + " in " + stage.getName(),
+                                workflow.getId(), workflow.getName()));
+                    }
                 }
             } else {
-                events.add(eventDto(config, event, null, event.label()));
+                events.add(eventDto(config, event, null, event.label(), null, null));
             }
         }
 
@@ -196,7 +203,9 @@ public class EmailNotificationConfigService {
     private EmailNotificationConfigDto.EventDto eventDto(EmailNotificationConfig config,
                                                         EmailNotificationEvent event,
                                                         String stageId,
-                                                        String label) {
+                                                        String label,
+                                                        String workflowId,
+                                                        String workflowName) {
         String key = event.key(stageId);
         EventSettings settings = config.settingsFor(key);
         return EmailNotificationConfigDto.EventDto.builder()
@@ -213,6 +222,8 @@ public class EmailNotificationConfigService {
                 .customMessage(settings.getCustomMessage())
                 .perStage(event.isPerStage())
                 .stageId(stageId)
+                .workflowId(workflowId)
+                .workflowName(workflowName)
                 .build();
     }
 }

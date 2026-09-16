@@ -2,6 +2,7 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.RemediationQueueSummaryDto;
 import com.faction.clientportal.dto.RemediationRowDto;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.Retest;
 import com.faction.clientportal.model.VulnerabilitySeverity;
 import com.faction.clientportal.repository.RemediationQueueCriteria;
@@ -291,6 +292,7 @@ public class RemediationQueueService {
                     .vulnerabilityName(r.name())
                     .severity(severityFromOrdinal(r.severity()))
                     .assessmentId(r.assessmentId())
+                    .workflowId(r.workflowId() == null ? AssessmentWorkflow.DEFAULT_ID : r.workflowId())
                     .applicationId(r.applicationId())
                     .applicationName(r.applicationName())
                     .organizationId(r.organizationId())

@@ -36,7 +36,7 @@ import java.util.Collection;
  * {@code assignedToMe} / {@code assessorId} <em>filters</em>, which the user can clear. An empty
  * {@code scopeTeamIds} means "belongs to no team" and matches nothing.
  *
- * @param completed required when {@code pastDue} or {@code excludeCompleted} is set
+ * @param completed required when {@code pastDue}, {@code excludeCompleted} or {@code onlyCompleted} is set
  */
 @Builder
 public record AssessmentSearchCriteria(
@@ -62,6 +62,8 @@ public record AssessmentSearchCriteria(
         LocalDateTime completedDateTo,
         boolean pastDue,
         boolean excludeCompleted,
+        /** Only assessments their own workflow calls completed; the narrow twin of {@code excludeCompleted}. */
+        boolean onlyCompleted,
         boolean assignedToMe,
         String currentUserId,
         Collection<String> teamMemberIds,

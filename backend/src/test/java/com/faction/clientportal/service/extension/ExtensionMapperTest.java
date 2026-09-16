@@ -2,6 +2,7 @@ package com.faction.clientportal.service.extension;
 
 import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.AssessmentChecklist;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.ChecklistResponse;
 import com.faction.clientportal.model.ChecklistResult;
 import com.faction.clientportal.model.FieldType;
@@ -12,6 +13,7 @@ import com.faction.clientportal.model.VulnerabilitySeverity;
 import com.faction.elements.CheckList;
 import com.faction.elements.CheckListItem;
 import com.faction.elements.CustomField;
+import com.faction.elements.CustomType;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -21,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * {@link ExtensionMapper}: the bridge between Faction 2's entities and the
@@ -296,7 +299,7 @@ class ExtensionMapperTest {
         com.faction.elements.Assessment element = mapper.toElement(
                 assessment, "Web App Test", "Spring Campaign",
                 List.of(user("Ada", "Lovelace")), user("Eng", "Contact"),
-                user("Rem", "Contact"), List.of());
+                user("Rem", "Contact"), List.of(), "Default Workflow");
 
         assertThat(element.getName()).isEqualTo("Q1 Pentest");
         assertThat(element.getType()).isEqualTo("Web App Test");
@@ -306,7 +309,8 @@ class ExtensionMapperTest {
         assertThat(element.getAssessors().get(0).getFname()).isEqualTo("Ada");
         assertThat(element.getEngagementContact().getFname()).isEqualTo("Eng");
         assertThat(element.getRemediationContact().getFname()).isEqualTo("Rem");
-        assertThat(element.getCustomFields()).hasSize(1);
+        // The assessment's own UDF plus the two synthetic workflow fields appended after it.
+        assertThat(element.getCustomFields()).hasSize(3);
         // Faction 1 had a dedicated summary column; here it comes from a named UDF.
         assertThat(element.getSummary()).isEqualTo("<p>All good</p>");
     }
@@ -318,12 +322,178 @@ class ExtensionMapperTest {
         assessment.setName("Minimal");
 
         com.faction.elements.Assessment element =
-                mapper.toElement(assessment, null, null, null, null, null, null);
+                mapper.toElement(assessment, null, null, null, null, null, null, null);
 
         assertThat(element.getEngagementContact()).isNull();
         assertThat(element.getRemediationContact()).isNull();
         assertThat(element.getAssessors()).isEmpty();
         assertThat(element.getChecklists()).isEmpty();
+    }
+
+    @Test
+    void anAssessmentElementSaysWhichWorkflowItsStatusBelongsTo() {
+        Assessment assessment = Assessment.builder()
+                .id("a1").name("Q3 Pentest").applicationId("app").assessmentTypeId("t")
+                .workflowId("pci").status("Signed Off")
+                .build();
+
+        com.faction.elements.Assessment element =
+                mapper.toElement(assessment, "Web App", null, List.of(), null, null, List.of(), "PCI");
+
+        assertThat(element.getStatus()).isEqualTo("Signed Off");
+        assertThat(customFieldValue(element, "workflowId")).isEqualTo("pci");
+        assertThat(customFieldValue(element, "workflowName")).isEqualTo("PCI");
+    }
+
+    @Test
+    void anAssessmentOnNoNamedWorkflowStillSaysWhichIdItIsOn() {
+        Assessment assessment = Assessment.builder()
+                .id("a2").name("Legacy").applicationId("app").assessmentTypeId("t")
+                .status("Testing")
+                .build();
+
+        com.faction.elements.Assessment element =
+                mapper.toElement(assessment, "Web App", null, List.of(), null, null, List.of(), null);
+
+        assertThat(customFieldValue(element, "workflowId")).isEqualTo(AssessmentWorkflow.DEFAULT_ID);
+        assertThat(customFieldValue(element, "workflowName")).isEmpty();
+    }
+
+    @Test
+    void aUserDefinedFieldNamedLikeASyntheticFieldDoesNotShadowIt() {
+        // Nothing stops an admin from naming a UDF "workflowId". An extension's natural lookup is
+        // filter-then-findFirst by variable name, so whichever entry comes first wins.
+        UserDefinedField colliding = UserDefinedField.builder()
+                .id(UUID.randomUUID().toString())
+                .displayName("Workflow Id (custom)")
+                .variableName("workflowId")
+                .fieldType(FieldType.STRING)
+                .build();
+
+        Assessment assessment = Assessment.builder()
+                .id("a3").name("Collision").applicationId("app").assessmentTypeId("t")
+                .workflowId("pci").status("Testing")
+                .fieldDefinitions(List.of(colliding))
+                .fieldValues(new HashMap<>(Map.of("workflowId", "not-the-real-workflow")))
+                .build();
+
+        com.faction.elements.Assessment element =
+                mapper.toElement(assessment, "Web App", null, List.of(), null, null, List.of(), "PCI");
+
+        // The synthetic field comes first, so the natural lookup gets the real workflow id.
+        assertThat(customFieldValue(element, "workflowId")).isEqualTo("pci");
+        // Nothing is dropped: the colliding user-defined field is still present in the list.
+        assertThat(element.getCustomFields())
+                .filteredOn(field -> field.getType() != null && "workflowId".equals(field.getType().getVariable()))
+                .extracting(CustomField::getValue)
+                .containsExactly("pci", "not-the-real-workflow");
+    }
+
+    @Test
+    void syntheticWorkflowValuesAreNeverWrittenBackOntoACollidingUserDefinedField() {
+        // Same collision as above, but this time the round trip goes all the way through
+        // applyTo — an ExtensionManager extension that edits nothing else. The colliding UDF
+        // is unset, so if the synthetic "workflowId" field is allowed to reach
+        // applyCustomFields, applyCustomFields treats its non-null value ("pci") as an edit
+        // and writes it into the UDF's stored value.
+        UserDefinedField colliding = UserDefinedField.builder()
+                .id(UUID.randomUUID().toString())
+                .displayName("Workflow Id (custom)")
+                .variableName("workflowId")
+                .fieldType(FieldType.STRING)
+                .build();
+
+        Assessment assessment = Assessment.builder()
+                .id("a4").name("Round trip").applicationId("app").assessmentTypeId("t")
+                .workflowId("pci").status("Testing")
+                .fieldDefinitions(List.of(colliding))
+                .fieldValues(new HashMap<>())
+                .build();
+
+        com.faction.elements.Assessment element =
+                mapper.toElement(assessment, "Web App", null, List.of(), null, null, List.of(), "PCI");
+
+        mapper.applyTo(element, assessment);
+
+        // Unset, and stays unset: the synthetic value must not be adopted under any key —
+        // neither "workflowId" (the variable-name key) nor the definition's own id (the
+        // key applyCustomFields actually falls back to when the value map has no entry yet).
+        assertThat(assessment.getFieldValues()).isEmpty();
+    }
+
+    @Test
+    void aNonCollidingUserDefinedFieldEditIsStillWrittenBackByApplyTo() {
+        // The guard above must not be broad enough to swallow ordinary field edits.
+        UserDefinedField ticket = UserDefinedField.builder()
+                .id(UUID.randomUUID().toString())
+                .displayName("Ticket")
+                .variableName("ticket")
+                .fieldType(FieldType.STRING)
+                .build();
+
+        Assessment assessment = Assessment.builder()
+                .id("a5").name("Round trip").applicationId("app").assessmentTypeId("t")
+                .workflowId("pci").status("Testing")
+                .fieldDefinitions(List.of(ticket))
+                .fieldValues(new HashMap<>(Map.of("ticket", "KAN-1")))
+                .build();
+
+        com.faction.elements.Assessment element =
+                mapper.toElement(assessment, "Web App", null, List.of(), null, null, List.of(), "PCI");
+        element.getCustomFields().stream()
+                .filter(field -> field.getType() != null && "ticket".equals(field.getType().getVariable()))
+                .findFirst().orElseThrow()
+                .setValue("KAN-2");
+
+        mapper.applyTo(element, assessment);
+
+        assertThat(assessment.getFieldValues()).containsEntry("ticket", "KAN-2");
+    }
+
+    @Test
+    void aMalformedFieldWithNoVariableDoesNotDiscardOtherLegitimateEditsInApplyTo() {
+        // A buggy/adversarial extension can return a CustomField whose type is non-null but
+        // whose variable was never set. SYNTHETIC_ASSESSMENT_VARIABLES.contains(null) throws
+        // on an immutable Set, so that one malformed field must not be allowed to blow up the
+        // filter and, with it, every other legitimate edit riding alongside it in the same list.
+        UserDefinedField ticket = UserDefinedField.builder()
+                .id(UUID.randomUUID().toString())
+                .displayName("Ticket")
+                .variableName("ticket")
+                .fieldType(FieldType.STRING)
+                .build();
+
+        Assessment assessment = Assessment.builder()
+                .id("a6").name("Round trip").applicationId("app").assessmentTypeId("t")
+                .workflowId("pci").status("Testing")
+                .fieldDefinitions(List.of(ticket))
+                .fieldValues(new HashMap<>(Map.of("ticket", "KAN-1")))
+                .build();
+
+        com.faction.elements.Assessment element =
+                mapper.toElement(assessment, "Web App", null, List.of(), null, null, List.of(), "PCI");
+        element.getCustomFields().stream()
+                .filter(field -> field.getType() != null && "ticket".equals(field.getType().getVariable()))
+                .findFirst().orElseThrow()
+                .setValue("KAN-2");
+
+        CustomField malformed = new CustomField();
+        malformed.setType(new CustomType());
+        malformed.setValue("noise");
+        element.getCustomFields().add(malformed);
+
+        assertThatCode(() -> mapper.applyTo(element, assessment)).doesNotThrowAnyException();
+        // The point isn't just that applyTo survives the malformed field — it's that the
+        // legitimate edit riding alongside it still lands, instead of being silently discarded.
+        assertThat(assessment.getFieldValues()).containsEntry("ticket", "KAN-2");
+    }
+
+    /** The value of the element's custom field with this variable name, or null when it has none. */
+    private static String customFieldValue(com.faction.elements.Assessment element, String variable) {
+        return element.getCustomFields().stream()
+                .filter(field -> field.getType() != null && variable.equals(field.getType().getVariable()))
+                .map(CustomField::getValue)
+                .findFirst().orElse(null);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
