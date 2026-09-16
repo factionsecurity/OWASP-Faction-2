@@ -10,7 +10,6 @@ import {
   teamsApi,
   campaignsApi,
   inlineImagesApi,
-  workflowConfigApi,
   surveyTemplatesApi,
   assessmentSurveysApi,
   uploadFileContent,
@@ -20,7 +19,6 @@ import type {
   AssessmentType,
   AssessorAvailability,
   AssessmentFile,
-  AssessmentWorkflowConfig,
   Campaign,
   Team,
   User,
@@ -30,7 +28,7 @@ import type {
   Application,
   AssessmentPrefill,
 } from '../types';
-import { Button, FormLabel, Input, Select, Badge, RichTextEditor, DualListBox, ConfirmDialog } from '../components';
+import { Button, Checkbox, FormLabel, Input, Select, Badge, RichTextEditor, DualListBox, ConfirmDialog } from '../components';
 import SearchableApplicationSelect from '../components/SearchableApplicationSelect';
 import type { RichTextEditorRef } from '../components';
 import AssessmentCalendar from '../components/AssessmentCalendar';
@@ -39,6 +37,10 @@ import CreateAssessmentVariables from './CreateAssessmentVariables';
 import { AssessmentPrefillAction } from '@enterprise';
 import Page from '../components/Page';
 import { usePageTitle } from '../context/PageTitleContext';
+import { PaidBadge } from '../components/PaidFeature';
+import { useEdition } from '../context/EditionContext';
+import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
+import { usePermissions } from '../utils/permissions';
 import './CreateAssessment.css';
 
 // Planned end date is picked as a duration from the start date; "custom" falls back to a
@@ -175,7 +177,12 @@ export default function CreateAssessment() {
 
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(!!id);
-  const [workflowConfig, setWorkflowConfig] = useState<AssessmentWorkflowConfig | null>(null);
+  // Edit mode: the workflow the assessment is on. Create mode uses the selected type's workflow instead.
+  const [assessmentWorkflowId, setAssessmentWorkflowId] = useState<string | null>(null);
+  // Edit mode, type changed to one on another workflow: move the assessment there too when saving.
+  const [moveToTypeWorkflow, setMoveToTypeWorkflow] = useState(false);
+  const canMoveWorkflow = usePermissions().permissions.canManageAssessmentWorkflow;
+  const customWorkflows = useEdition().hasFeature('custom_workflows');
   const [error, setError] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -239,14 +246,27 @@ export default function CreateAssessment() {
   // edit mode overwrites this from the saved dates once the assessment loads.
   const [duration, setDuration] = useState<string>(DEFAULT_DURATION);
 
-  // A new assessment starts in the workflow's configured new-assessment status. Only a blank
-  // status is filled, so a status already chosen (or pre-filled) is never overwritten; keying on
-  // formData.status re-applies it after Clear Form empties the form.
+  // Statuses come from the workflow the assessment is on (edit), or the one it will be created under:
+  // the selected type's workflow, or Default Workflow until a type is chosen (create).
+  const selectedType = assessmentTypes.find((t) => t.id === formData.assessmentTypeId);
+  const typeWorkflowId = selectedType ? (selectedType.workflowId || DEFAULT_WORKFLOW_ID) : null;
+  const workflow = useWorkflow(mode === 'create' ? (typeWorkflowId ?? DEFAULT_WORKFLOW_ID) : assessmentWorkflowId);
+  // Edit mode: the chosen type is on another workflow, so saving can also move the assessment there.
+  const moveTargetId = mode === 'edit' && typeWorkflowId && assessmentWorkflowId && typeWorkflowId !== assessmentWorkflowId
+    ? typeWorkflowId
+    : null;
+  const moveTarget = useWorkflow(moveTargetId);
+  const moveGated = !!moveTargetId && !customWorkflows && moveTargetId !== DEFAULT_WORKFLOW_ID;
+
+  // A new assessment starts in its workflow's New status. That replaces a blank status, or one the
+  // workflow doesn't have because the type changed to another workflow. A status already chosen or
+  // pre-filled from this workflow is kept. Keying on formData.status re-applies it after Clear Form.
   useEffect(() => {
-    if (mode !== 'create' || !workflowConfig?.newAssessmentStatus) return;
-    const initialStatus = workflowConfig.newAssessmentStatus;
-    setFormData((prev) => (prev.status ? prev : { ...prev, status: initialStatus }));
-  }, [mode, workflowConfig, formData.status]);
+    if (mode !== 'create' || !workflow?.newAssessmentStatus) return;
+    const initialStatus = workflow.newAssessmentStatus;
+    const statuses = workflow.statuses;
+    setFormData((prev) => (prev.status && statuses.includes(prev.status) ? prev : { ...prev, status: initialStatus }));
+  }, [mode, workflow, formData.status]);
 
   const [engagementUrls, setEngagementUrls] = useState<Array<{ url: string; description: string }>>([]);
   const [newUrl, setNewUrl] = useState({ url: '', description: '' });
@@ -326,9 +346,6 @@ export default function CreateAssessment() {
         .then(r => { if (r.success && r.data) setAssessmentSurveys(r.data); })
         .catch(() => {});
     }
-    workflowConfigApi.getConfig()
-      .then(r => { if (r.success && r.data) setWorkflowConfig(r.data); })
-      .catch(() => {});
     if (!id) {
       assessmentsApi.getAll(0, 1000)
         .then(r => { if (r.success && r.data) setAllPreviousAssessments(r.data); })
@@ -495,7 +512,7 @@ export default function CreateAssessment() {
     // "In Progress" and "inprogress" are the same status.
     const squash = (s: string) => s.replace(/\s/g, '').toLowerCase();
     const status = prefill.status
-      ? workflowConfig?.statuses.find((s) => squash(s) === squash(prefill.status!))
+      ? workflow?.statuses.find((s) => squash(s) === squash(prefill.status!))
       : undefined;
     if (prefill.status && !status) notes.push(`"${prefill.status}" isn't one of the workflow statuses.`);
 
@@ -701,7 +718,9 @@ export default function CreateAssessment() {
         const loadedUrls = assessment.engagementUrls || [];
         const loadedStakeholders = assessment.stakeholders || [];
 
- setFormData(loadedFormData);
+        setFormData(loadedFormData);
+        setAssessmentWorkflowId(assessment.workflowId || DEFAULT_WORKFLOW_ID);
+        setMoveToTypeWorkflow(false);
         setEngagementUrls(loadedUrls);
         setStakeholders(loadedStakeholders);
         setAttachments(assessment.attachments || []);
@@ -1066,6 +1085,7 @@ export default function CreateAssessment() {
         engagementUrls,
         stakeholders,
         ...variablesPayload(),
+        ...(moveTargetId && moveToTypeWorkflow && !moveGated ? { moveToTypeWorkflow: true } : {}),
       };
 
       if (mode === 'create') {
@@ -1115,6 +1135,31 @@ export default function CreateAssessment() {
           setSavedTemplateId(updated.data.reportTemplateId || '');
           setVariableValues(savedVariables);
           setInitialVariableValues(savedVariables);
+          // The move ran after the update was saved. Staying on the form, re-read only what the move
+          // changed: the workflow the statuses come from, and the status mapped onto it.
+          if (moveTargetId && moveToTypeWorkflow) {
+            if (!shouldClose) {
+              try {
+                const fresh = await assessmentsApi.getById(id!);
+                if (fresh.success && fresh.data) {
+                  const moved = fresh.data;
+                  setAssessmentWorkflowId(moved.workflowId || DEFAULT_WORKFLOW_ID);
+                  setFormData((prev) => ({ ...prev, status: moved.status }));
+                  // Keep the mapped status out of the unsaved-changes comparison.
+                  setInitialFormData((prev) => {
+                    try {
+                      return JSON.stringify({ ...JSON.parse(prev), status: moved.status });
+                    } catch {
+                      return prev;
+                    }
+                  });
+                }
+              } catch {
+                // The move is saved; until the page is reloaded the form keeps showing the old workflow's statuses.
+              }
+            }
+            setMoveToTypeWorkflow(false);
+          }
         }
       }
 
@@ -1256,11 +1301,11 @@ export default function CreateAssessment() {
       {/* Workflow Timeline */}
       <div className="workflow-timeline-bar">
         <span className="wt-page-title">{mode === 'edit' ? 'Assessment View' : 'Create Assessment'}</span>
-        {workflowConfig && workflowConfig.statuses.length > 0 && (
+        {workflow && workflow.statuses.length > 0 && (
           <>
             <div className="wt-bar-divider" />
-            {workflowConfig.statuses.map((status, index) => {
-              const statuses = workflowConfig.statuses;
+            {workflow.statuses.map((status, index) => {
+              const statuses = workflow.statuses;
               const currentIndex = statuses.indexOf(formData.status);
               const isPast = currentIndex > index;
               const isActive = formData.status === status;
@@ -1391,6 +1436,7 @@ export default function CreateAssessment() {
                     onChange={(e) => {
                       setFormData({ ...formData, assessmentTypeId: e.target.value, reportTemplateId: '' });
                       setReportTemplates([]);
+                      setMoveToTypeWorkflow(false);
                     }}
                     required
                   >
@@ -1401,6 +1447,22 @@ export default function CreateAssessment() {
                       </option>
                     ))}
                   </Select>
+                  {moveTargetId && canMoveWorkflow && (
+                    <div className="mt-1">
+                      <Checkbox
+                        label={`Also move this assessment to ${moveTarget?.name ?? "the type's workflow"}`}
+                        checked={moveToTypeWorkflow}
+                        disabled={moveGated}
+                        onChange={(e) => setMoveToTypeWorkflow(e.target.checked)}
+                      />
+                      {moveGated && <PaidBadge />}
+                      <small className="text-muted d-block">
+                        {moveToTypeWorkflow
+                          ? 'Its status and findings are mapped onto that workflow when you save.'
+                          : `Otherwise it stays on ${workflow?.name ?? 'its current workflow'}.`}
+                      </small>
+                    </div>
+                  )}
                 </div>
                 <div className="col-md-4">
                   <FormLabel>Start Date</FormLabel>
@@ -1445,8 +1507,8 @@ export default function CreateAssessment() {
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   >
-                    {workflowConfig
-                      ? workflowConfig.statuses.map(s => <option key={s} value={s}>{s}</option>)
+                    {workflow
+                      ? workflow.statuses.map(s => <option key={s} value={s}>{s}</option>)
                       : <option value={formData.status}>{formData.status}</option>
                     }
                   </Select>

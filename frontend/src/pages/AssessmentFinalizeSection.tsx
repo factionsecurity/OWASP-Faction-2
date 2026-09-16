@@ -12,6 +12,7 @@ import {
   ChevronRight,
   FileJson,
   Pencil,
+  ArrowRightLeft,
 } from 'lucide-react';
 import type { Assessment, AssessmentChecklist, PeerReview } from '../types';
 import { assessmentsApi, peerReviewsApi, assessmentChecklistsApi, vulnerabilitiesApi } from '../api';
@@ -22,6 +23,7 @@ import ReportDocumentsPanel from '../components/ReportDocumentsPanel';
 import PeerReviewDiff from './PeerReviewDiff';
 import { peerReviewerLabel } from '../utils/peerReview';
 import { usePermissions } from '../utils/permissions';
+import MoveWorkflowDialog from '../components/MoveWorkflowDialog';
 import './AssessmentFinalizeSection.css';
 
 interface Props {
@@ -31,6 +33,8 @@ interface Props {
   completedStatus?: string;
   /** Status a reopened assessment returns to; reopening is unavailable until it is known. */
   inProgressStatus?: string;
+  /** Name of the assessment's workflow, shown on the Workflow card. */
+  workflowName?: string;
   onAssessmentUpdated: (updated: Assessment) => void;
 }
 
@@ -150,6 +154,7 @@ export default function AssessmentFinalizeSection({
   isFinalized,
   completedStatus,
   inProgressStatus,
+  workflowName,
   onAssessmentUpdated,
 }: Props) {
   const [submittingPeerReview, setSubmittingPeerReview] = useState(false);
@@ -166,7 +171,8 @@ export default function AssessmentFinalizeSection({
   const [blockingChecklists, setBlockingChecklists] = useState<AssessmentChecklist[]>([]);
   // Correcting the completion date: super-admin only, mirrored by the server. The date drives
   // the reopen window and the completed-work counts, so it is a deliberate edit behind a modal.
-  const { isSuperAdmin } = usePermissions();
+  const { isSuperAdmin, permissions } = usePermissions();
+  const [showMoveWorkflow, setShowMoveWorkflow] = useState(false);
   const [editingCompletedDate, setEditingCompletedDate] = useState(false);
   const [completedDateInput, setCompletedDateInput] = useState('');
   const [savingCompletedDate, setSavingCompletedDate] = useState(false);
@@ -463,6 +469,32 @@ export default function AssessmentFinalizeSection({
           </Button>
         </div>
       </div>
+
+      {/* Workflow — which one the assessment is on; admins can move it. */}
+      <div className="finalize-actions-card">
+        <h4 className="finalize-actions-title">Workflow</h4>
+        <div className="finalize-action-row">
+          <div className="finalize-action-info">
+            <span className="finalize-action-name">{workflowName ?? '…'}</span>
+            <span className="finalize-action-desc">
+              Statuses, SLAs and remediation stages come from this workflow.
+            </span>
+          </div>
+          {permissions.canManageAssessmentWorkflow && (
+            <Button variant="secondary" size="sm" onClick={() => setShowMoveWorkflow(true)}>
+              <ArrowRightLeft size={14} />
+              Move to workflow…
+            </Button>
+          )}
+        </div>
+      </div>
+      {showMoveWorkflow && (
+        <MoveWorkflowDialog
+          assessment={assessment}
+          onClose={() => setShowMoveWorkflow(false)}
+          onMoved={onAssessmentUpdated}
+        />
+      )}
 
       {/* Status Actions */}
       {/* Shown while the assessment is open (peer review / finalize) and once it's completed,

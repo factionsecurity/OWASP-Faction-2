@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Edit2, Trash2, Plus, Eye, EyeOff, Power, GripVertical, X, Upload, Download, Copy, Lock, ChevronUp, ChevronDown } from 'lucide-react';
-import { assessmentTypesApi, vulnerabilityCategoriesApi, checklistTemplatesApi, workflowConfigApi } from '../api';
-import type { AssessmentType, CreateAssessmentTypeRequest, UpdateAssessmentTypeRequest, VulnerabilityCategory, ChecklistTemplate, ChecklistTemplateQuestion, AssessmentWorkflowConfig, VulnerabilitySla, RemediationStage } from '../types';
+import { Edit2, Trash2, Plus, Eye, EyeOff, Power, GripVertical, X, Upload, Download, Copy } from 'lucide-react';
+import { assessmentTypesApi, assessmentsApi, vulnerabilityCategoriesApi, checklistTemplatesApi } from '../api';
+import type { AssessmentType, CreateAssessmentTypeRequest, UpdateAssessmentTypeRequest, VulnerabilityCategory, ChecklistTemplate, ChecklistTemplateQuestion } from '../types';
 
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
 import { applyClientSort, SortAccessors } from '../utils/tableSort';
@@ -20,19 +20,20 @@ import {
   FormHint,
   ErrorMessage,
   Select,
-  Toast,
 } from '../components';
 import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
-import { DEFAULT_VULN_STATUSES } from '../utils/vulnStatus';
-import { VULNERABILITY_SEVERITIES } from '../utils/vulnSeverity';
 import ApplicationIdConfig from './ApplicationIdConfig';
 import SeverityNamesConfig from './SeverityNamesConfig';
 import SurveyConfig from './SurveyConfig';
 import Campaigns from './Campaigns';
 import './AssessmentConfig.css';
-import { useTerminology } from '../context/TerminologyContext';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { useEdition } from '../context/EditionContext';
+import { PaidBadge } from '../components/PaidFeature';
+import { DEFAULT_WORKFLOW_ID, useWorkflows } from '../hooks/useWorkflow';
+import { workflowErrorMessages } from '../utils/workflowErrors';
+import WorkflowsTab from './workflows/WorkflowsTab';
 
 const TYPES_TABLE_KEY = 'assessmentConfig.assessmentTypes';
 const CATEGORIES_TABLE_KEY = 'assessmentConfig.vulnerabilityCategories';
@@ -40,7 +41,10 @@ const CHECKLISTS_TABLE_KEY = 'assessmentConfig.checklistTemplates';
 
 export default function AssessmentConfig() {
   const { permissions } = usePermissions();
-  const { severityLabel } = useTerminology();
+  const { hasFeature } = useEdition();
+  // Every workflow, archived ones too, so the types table can name whichever one a type is on.
+  const { workflows, reload: reloadWorkflows } = useWorkflows(true);
+  const workflowById = (id?: string) => workflows.find((w) => w.id === (id || DEFAULT_WORKFLOW_ID));
 
   // ── Assessment Types ────────────────────────────────────────────────────────
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
@@ -67,7 +71,11 @@ export default function AssessmentConfig() {
     name: '',
     description: '',
     active: true,
+    workflowId: DEFAULT_WORKFLOW_ID,
   });
+  // Editing a type onto another workflow: confirmed first, with how many assessments stay where they are.
+  const [workflowChange, setWorkflowChange] = useState<{ count: number; from: string; to: string } | null>(null);
+  const [savingType, setSavingType] = useState(false);
 
   // ── Vulnerability Categories ────────────────────────────────────────────────
   const [vulnCategories, setVulnCategories] = useState<VulnerabilityCategory[]>([]);
@@ -89,45 +97,14 @@ export default function AssessmentConfig() {
   // ── Assessment Type delete confirm ─────────────────────────────────────────
   const [typeToDelete, setTypeToDelete] = useState<string | null>(null);
 
-  // ── Workflow Config ─────────────────────────────────────────────────────────
-  const [workflowConfig, setWorkflowConfig] = useState<AssessmentWorkflowConfig | null>(null);
-  const [wfAllowSelfPeerReview, setWfAllowSelfPeerReview] = useState(false);
-  const [wfLoading, setWfLoading] = useState(true);
-  const [wfError, setWfError] = useState('');
-  const [wfStatuses, setWfStatuses] = useState<string[]>([]);
-  const [wfNewStatus, setWfNewStatus] = useState('');
-  const [wfNewAssessmentStatus, setWfNewAssessmentStatus] = useState('');
-  const [wfInProgressStatus, setWfInProgressStatus] = useState('');
-  const [wfCompletedStatus, setWfCompletedStatus] = useState('');
-  const [wfDragIndex, setWfDragIndex] = useState<number | null>(null);
-  const [wfStatusColors, setWfStatusColors] = useState<Record<string, string>>({});
-  const [colorPickerMenu, setColorPickerMenu] = useState<{ status: string; x: number; y: number } | null>(null);
-  const [wfVulnSlas, setWfVulnSlas] = useState<VulnerabilitySla[]>([]);
-  const [wfSlaForm, setWfSlaForm] = useState({ severity: '', pastDueDays: '', warningDays: '' });
-  const [wfSlaError, setWfSlaError] = useState('');
-  const [wfVulnStatuses, setWfVulnStatuses] = useState<string[]>([]);
-  const [wfNewVulnStatus, setWfNewVulnStatus] = useState('');
-  const [wfStages, setWfStages] = useState<RemediationStage[]>([]);
-  const [wfNewStageName, setWfNewStageName] = useState('');
-  // Autosave bookkeeping — last payload persisted to the server, as JSON
-  const wfLastSavedRef = useRef<string>('');
-  const wfSavingRef = useRef(false);
-
-  // ── Saved toast ─────────────────────────────────────────────────────────────
-  const [showToast, setShowToast] = useState(false);
-  const [toastKey, setToastKey] = useState(0);
-  const [toastMessage, setToastMessage] = useState('Saved');
-  const [toastVariant, setToastVariant] = useState<'success' | 'danger'>('success');
-
-  const showToastMessage = (message: string, variant: 'success' | 'danger' = 'success') => {
-    setToastMessage(message);
-    setToastVariant(variant);
-    setToastKey(k => k + 1);
-    setShowToast(true);
-  };
-
   // ── Tabs ────────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'types' | 'workflow' | 'checklists' | 'surveys' | 'campaigns' | 'applicationIds' | 'severityNames'>('types');
+  const [activeTab, setActiveTab] = useState<'types' | 'workflows' | 'checklists' | 'surveys' | 'campaigns' | 'applicationIds' | 'severityNames'>('types');
+  // The Workflows tab mounts on its first visit and is only hidden afterwards, so unsaved workflow
+  // edits survive a look at another tab.
+  const [workflowsVisited, setWorkflowsVisited] = useState(false);
+  useEffect(() => {
+    if (activeTab === 'workflows') setWorkflowsVisited(true);
+  }, [activeTab]);
   // ── Checklist Templates ─────────────────────────────────────────────────────
   const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplate[]>([]);
   const [checklistLoading, setChecklistLoading] = useState(true);
@@ -151,10 +128,6 @@ export default function AssessmentConfig() {
   useEffect(() => {
     loadAssessmentTypes();
   }, [pagination.page, pagination.pageSize, searchQuery, typeSort]);
-
-  useEffect(() => {
-    loadWorkflowConfig();
-  }, []);
 
   const loadAssessmentTypes = async () => {
     try {
@@ -184,6 +157,7 @@ export default function AssessmentConfig() {
       name: '',
       description: '',
       active: true,
+      workflowId: DEFAULT_WORKFLOW_ID,
     });
     setError('');
     setShowModal(true);
@@ -196,6 +170,7 @@ export default function AssessmentConfig() {
       name: type.name,
       description: type.description,
       active: type.active,
+      workflowId: type.workflowId || DEFAULT_WORKFLOW_ID,
     });
     setError('');
     setShowModal(true);
@@ -238,12 +213,33 @@ export default function AssessmentConfig() {
     e.preventDefault();
     setError('');
 
+    // Existing assessments keep their workflow when a type changes workflow, so say how many that is first.
+    const previousWorkflowId = selectedType?.workflowId || DEFAULT_WORKFLOW_ID;
+    if (modalMode === 'edit' && selectedType && formData.workflowId !== previousWorkflowId) {
+      try {
+        const res = await assessmentsApi.getAll(0, 1, undefined, undefined, selectedType.id);
+        setWorkflowChange({
+          count: res.pagination?.totalElements ?? 0,
+          from: workflowById(previousWorkflowId)?.name ?? previousWorkflowId,
+          to: workflowById(formData.workflowId)?.name ?? formData.workflowId,
+        });
+      } catch (err: any) {
+        setError(err.response?.data?.message || 'Failed to count the assessments of this type');
+      }
+      return;
+    }
+    await saveType();
+  };
+
+  const saveType = async () => {
+    setSavingType(true);
     try {
       if (modalMode === 'create') {
         const createData: CreateAssessmentTypeRequest = {
           name: formData.name,
           description: formData.description,
           active: formData.active,
+          workflowId: formData.workflowId,
         };
         await assessmentTypesApi.create(createData);
       } else if (selectedType) {
@@ -251,14 +247,19 @@ export default function AssessmentConfig() {
           name: formData.name,
           description: formData.description,
           active: formData.active,
+          workflowId: formData.workflowId,
         };
         await assessmentTypesApi.update(selectedType.id, updateData);
       }
 
+      setWorkflowChange(null);
       setShowModal(false);
       await loadAssessmentTypes();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to save assessment type');
+    } catch (err) {
+      setWorkflowChange(null);
+      setError(workflowErrorMessages(err, 'Failed to save assessment type').join(' '));
+    } finally {
+      setSavingType(false);
     }
   };
 
@@ -278,142 +279,6 @@ export default function AssessmentConfig() {
   const filteredTypes = showInactive
     ? assessmentTypes
     : assessmentTypes.filter(type => type.active);
-
-  // ── Workflow Config handlers ─────────────────────────────────────────────────
-
-  const loadWorkflowConfig = async () => {
-    try {
-      setWfLoading(true);
-      const res = await workflowConfigApi.getConfig();
-      if (res.success && res.data) {
-        applyWorkflowConfig(res.data);
-      }
-    } catch {
-      setWfError('Failed to load workflow config');
-    } finally {
-      setWfLoading(false);
-    }
-  };
-
-  const applyWorkflowConfig = (config: AssessmentWorkflowConfig) => {
-    setWorkflowConfig(config);
-    setWfStatuses(config.statuses || []);
-    setWfNewAssessmentStatus(config.newAssessmentStatus || '');
-    setWfInProgressStatus(config.inProgressStatus || '');
-    setWfCompletedStatus(config.completedStatus || '');
-    setWfStatusColors(config.statusColors || {});
-    setWfVulnSlas(config.vulnerabilitySlas || []);
-    setWfVulnStatuses(config.vulnerabilityStatuses || []);
-    setWfStages(config.remediationStages || []);
-    setWfAllowSelfPeerReview(!!config.allowSelfPeerReview);
-    wfLastSavedRef.current = JSON.stringify(wfPayloadOf(config));
-  };
-
-  // The subset of the workflow config this page edits — used for change detection
-  const wfPayloadOf = (c: AssessmentWorkflowConfig) => ({
-    statuses: c.statuses || [],
-    newAssessmentStatus: c.newAssessmentStatus || '',
-    inProgressStatus: c.inProgressStatus || '',
-    completedStatus: c.completedStatus || '',
-    statusColors: c.statusColors || {},
-    vulnerabilitySlas: c.vulnerabilitySlas || [],
-    vulnerabilityStatuses: c.vulnerabilityStatuses || [],
-    remediationStages: c.remediationStages || [],
-    allowSelfPeerReview: !!c.allowSelfPeerReview,
-  });
-
-  // Autosave: persist workflow edits ~1s after the last change
-  useEffect(() => {
-    if (!workflowConfig || wfLoading) return;
-    const payload = {
-      statuses: wfStatuses,
-      newAssessmentStatus: wfNewAssessmentStatus,
-      inProgressStatus: wfInProgressStatus,
-      completedStatus: wfCompletedStatus,
-      statusColors: wfStatusColors,
-      vulnerabilitySlas: wfVulnSlas,
-      vulnerabilityStatuses: wfVulnStatuses,
-      remediationStages: wfStages,
-      allowSelfPeerReview: wfAllowSelfPeerReview,
-    };
-    const serialized = JSON.stringify(payload);
-    if (serialized === wfLastSavedRef.current) return;
-
-    const timer = setTimeout(async () => {
-      if (wfSavingRef.current) return; // a save is in flight; the next effect run picks up remaining changes
-      wfSavingRef.current = true;
-      setWfError('');
-      try {
-        const res = await workflowConfigApi.updateConfig({ ...workflowConfig, ...payload });
-        if (res.success && res.data) {
-          // Don't re-apply server state to the form — the user may have kept
-          // typing while the request was in flight; just mark this payload saved.
-          setWorkflowConfig(res.data);
-          wfLastSavedRef.current = serialized;
-          showToastMessage('Saved');
-        } else {
-          setWfError(res.message || 'Failed to save workflow config');
-          showToastMessage('Failed to save', 'danger');
-        }
-      } catch (err: any) {
-        setWfError(err.response?.data?.message || 'Failed to save workflow config');
-        showToastMessage('Failed to save', 'danger');
-      } finally {
-        wfSavingRef.current = false;
-      }
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [wfStatuses, wfNewAssessmentStatus, wfInProgressStatus, wfCompletedStatus,
-      wfStatusColors, wfVulnSlas, wfVulnStatuses, wfStages, wfAllowSelfPeerReview, workflowConfig, wfLoading]);
-
-  const handleWfAddStatus = () => {
-    const trimmed = wfNewStatus.trim();
-    if (!trimmed || wfStatuses.includes(trimmed)) return;
-    setWfStatuses(prev => [...prev, trimmed]);
-    setWfNewStatus('');
-  };
-
-  const handleWfRemoveStatus = (status: string) => {
-    setWfStatuses(prev => prev.filter(s => s !== status));
-    if (wfNewAssessmentStatus === status) setWfNewAssessmentStatus('');
-    if (wfInProgressStatus === status) setWfInProgressStatus('');
-    if (wfCompletedStatus === status) setWfCompletedStatus('');
-  };
-
-  const handleWfDragStart = (index: number) => setWfDragIndex(index);
-
-  const handleWfDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (wfDragIndex === null || wfDragIndex === index) return;
-    const updated = [...wfStatuses];
-    const [moved] = updated.splice(wfDragIndex, 1);
-    updated.splice(index, 0, moved);
-    setWfStatuses(updated);
-    setWfDragIndex(index);
-  };
-
-  const handleWfDragEnd = () => setWfDragIndex(null);
-
-  const handleWfColorContextMenu = (e: React.MouseEvent, status: string) => {
-    e.preventDefault();
-    setColorPickerMenu({ status, x: e.clientX, y: e.clientY });
-  };
-
-  const handleWfColorSelect = (status: string, color: string | null) => {
-    if (color === null) {
-      setWfStatusColors(prev => { const next = { ...prev }; delete next[status]; return next; });
-    } else {
-      setWfStatusColors(prev => ({ ...prev, [status]: color }));
-    }
-    setColorPickerMenu(null);
-  };
-
-  useEffect(() => {
-    if (!colorPickerMenu) return;
-    const close = () => setColorPickerMenu(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [colorPickerMenu]);
 
   // ── Vulnerability Category handlers ─────────────────────────────────────────
 
@@ -723,6 +588,19 @@ export default function AssessmentConfig() {
       accessor: 'description',
     },
     {
+      header: 'Workflow',
+      render: (type) => {
+        const workflow = workflowById(type.workflowId);
+        if (!workflow) return '—';
+        return (
+          <>
+            {workflow.name}
+            {workflow.archived && <>{' '}<Badge variant="secondary" size="sm">Archived</Badge></>}
+          </>
+        );
+      },
+    },
+    {
       header: 'Status',
       sortKey: 'active',
       render: (type) => (
@@ -833,10 +711,10 @@ export default function AssessmentConfig() {
         </button>
         {permissions.canManageAssessmentWorkflow && (
           <button
-            className={`config-tab-btn${activeTab === 'workflow' ? ' active' : ''}`}
-            onClick={() => setActiveTab('workflow')}
+            className={`config-tab-btn${activeTab === 'workflows' ? ' active' : ''}`}
+            onClick={() => setActiveTab('workflows')}
           >
-            Assessment Workflow
+            Workflows
           </button>
         )}
         <button
@@ -943,7 +821,7 @@ export default function AssessmentConfig() {
             <Button variant="secondary" onClick={() => setShowModal(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary">
+            <Button type="submit" variant="primary" disabled={savingType}>
               {modalMode === 'create' ? 'Create' : 'Update'}
             </Button>
           </>
@@ -973,6 +851,30 @@ export default function AssessmentConfig() {
           />
         </FormGroup>
 
+        <FormGroup>
+          <FormLabel>Workflow</FormLabel>
+          <Select
+            value={formData.workflowId}
+            onChange={(e) => setFormData({ ...formData, workflowId: e.target.value })}
+          >
+            {workflows
+              .filter((w) => !w.archived || w.id === selectedType?.workflowId)
+              .map((w) => (
+                <option
+                  key={w.id}
+                  value={w.id}
+                  disabled={!hasFeature('custom_workflows') && w.id !== DEFAULT_WORKFLOW_ID && w.id !== selectedType?.workflowId}
+                >
+                  {w.name}{w.archived ? ' (archived)' : ''}
+                </option>
+              ))}
+          </Select>
+          <FormHint>
+            New assessments of this type use this workflow. Existing assessments keep the workflow they have.
+            {!hasFeature('custom_workflows') && <>{' '}<PaidBadge label="Other workflows: not in this edition" /></>}
+          </FormHint>
+        </FormGroup>
+
         <Checkbox
           label="Active"
           checked={formData.active}
@@ -982,6 +884,21 @@ export default function AssessmentConfig() {
           Inactive assessment types will not be available for new assessments
         </FormHint>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!workflowChange}
+        onClose={() => setWorkflowChange(null)}
+        onConfirm={saveType}
+        title="Change Workflow"
+        message={workflowChange
+          ? `New assessments of this type will use "${workflowChange.to}". The ${workflowChange.count} `
+            + `existing ${workflowChange.count === 1 ? 'assessment' : 'assessments'} of this type stay on `
+            + `"${workflowChange.from}". An existing assessment can be moved from its Finalize section.`
+          : ''}
+        confirmText="Change Workflow"
+        variant="warning"
+        isLoading={savingType}
+      />
 
       {/* ── Vulnerability Categories ─────────────────────────────────────── */}
       <div className="config-section">
@@ -1020,367 +937,11 @@ export default function AssessmentConfig() {
       </div>
       )}
 
-      {/* ── Assessment Workflow Config ──────────────────────────────────── */}
-      {activeTab === 'workflow' && permissions.canManageAssessmentWorkflow && (
-      <div className="config-section workflow-config-section">
-        <div className="section-header">
-          <h2>Assessment Workflow</h2>
+      {/* ── Workflows ──────────────────────────────────────────────────────── */}
+      {permissions.canManageAssessmentWorkflow && workflowsVisited && (
+        <div hidden={activeTab !== 'workflows'}>
+          <WorkflowsTab onWorkflowsChanged={reloadWorkflows} active={activeTab === 'workflows'} />
         </div>
-
-        {wfError && <ErrorMessage>{wfError}</ErrorMessage>}
-
-        {wfLoading ? (
-          <div style={{ padding: '1rem', color: 'var(--text-secondary)' }}>Loading…</div>
-        ) : (
-          <>
-            <FormGroup>
-              <FormLabel>Status List</FormLabel>
-              <FormHint>Drag to reorder. These statuses are available when managing assessments.</FormHint>
-              <div className="wf-status-list">
-                {wfStatuses.map((status, index) => (
-                  <div
-                    key={status}
-                    className={`wf-status-item${wfDragIndex === index ? ' dragging' : ''}`}
-                    draggable
-                    onDragStart={() => handleWfDragStart(index)}
-                    onDragOver={(e) => handleWfDragOver(e, index)}
-                    onDragEnd={handleWfDragEnd}
-                    onContextMenu={(e) => handleWfColorContextMenu(e, status)}
-                    title="Right-click to set color"
-                  >
-                    <GripVertical size={14} className="wf-drag-handle" />
-                    <span
-                      className="wf-status-color-dot"
-                      style={wfStatusColors[status] ? { backgroundColor: wfStatusColors[status] } : undefined}
-                    />
-                    <span className="wf-status-label">{status}</span>
-                    <button
-                      type="button"
-                      className="wf-status-remove"
-                      onClick={() => handleWfRemoveStatus(status)}
-                      title="Remove"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="wf-add-status">
-                <Input
-                  type="text"
-                  value={wfNewStatus}
-                  onChange={(e) => setWfNewStatus(e.target.value)}
-                  placeholder="New status name…"
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleWfAddStatus(); } }}
-                />
-                <Button variant="secondary" icon={Plus} onClick={handleWfAddStatus} disabled={!wfNewStatus.trim()}>
-                  Add
-                </Button>
-              </div>
-            </FormGroup>
-
-            <FormGroup>
-              <FormLabel>New Assessment Status</FormLabel>
-              <FormHint>Status assigned when a new assessment is created.</FormHint>
-              <Select
-                value={wfNewAssessmentStatus}
-                onChange={(e) => setWfNewAssessmentStatus(e.target.value)}
-              >
-                <option value="">— Select —</option>
-                {wfStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-              </Select>
-            </FormGroup>
-
-            <FormGroup>
-              <FormLabel>In Progress Status</FormLabel>
-              <FormHint>Status automatically applied when an assessment is within its scheduled date range.</FormHint>
-              <Select
-                value={wfInProgressStatus}
-                onChange={(e) => setWfInProgressStatus(e.target.value)}
-              >
-                <option value="">— Select —</option>
-                {wfStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-              </Select>
-            </FormGroup>
-
-            <FormGroup>
-              <FormLabel>Completed Status</FormLabel>
-              <FormHint>Status applied when an assessment is finalized. Assessments in this status cannot be modified.</FormHint>
-              <Select
-                value={wfCompletedStatus}
-                onChange={(e) => setWfCompletedStatus(e.target.value)}
-              >
-                <option value="">— Select —</option>
-                {wfStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-              </Select>
-            </FormGroup>
-
-            {/* ── Vulnerability SLAs ──────────────────────────────────────── */}
-            <FormGroup>
-              <FormLabel>Vulnerability SLAs</FormLabel>
-              <FormHint>
-                Set deadlines for opened vulnerabilities by severity. Warning days must be less than past due days.
-                Severities without an SLA will not be tracked.
-              </FormHint>
-
-              {wfVulnSlas.length > 0 && (
-                <table className="sla-table">
-                  <thead>
-                    <tr>
-                      <th>Severity</th>
-                      <th>Warning (days)</th>
-                      <th>Past Due (days)</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {wfVulnSlas.map(sla => (
-                      <tr key={sla.severity}>
-                        <td><span className={`sla-severity sla-severity--${sla.severity.toLowerCase()}`}>{severityLabel(sla.severity)}</span></td>
-                        <td>{sla.warningDays}</td>
-                        <td>{sla.pastDueDays}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="sla-remove"
-                            onClick={() => setWfVulnSlas(prev => prev.filter(s => s.severity !== sla.severity))}
-                            title="Remove"
-                          >
-                            <X size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {wfSlaError && <div className="sla-error">{wfSlaError}</div>}
-
-              {(() => {
-                const usedSeverities = new Set(wfVulnSlas.map(s => s.severity));
-                const availableSeverities = VULNERABILITY_SEVERITIES.filter(s => !usedSeverities.has(s));
-                if (availableSeverities.length === 0) return null;
-                return (
-                  <div className="sla-add-row">
-                    <Select
-                      value={wfSlaForm.severity}
-                      onChange={(e) => setWfSlaForm(f => ({ ...f, severity: e.target.value }))}
-                    >
-                      <option value="">Severity…</option>
-                      {availableSeverities.map(s => <option key={s} value={s}>{s}</option>)}
-                    </Select>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={wfSlaForm.warningDays}
-                      onChange={(e) => setWfSlaForm(f => ({ ...f, warningDays: e.target.value }))}
-                      placeholder="Warning days"
-                    />
-                    <Input
-                      type="number"
-                      min={1}
-                      value={wfSlaForm.pastDueDays}
-                      onChange={(e) => setWfSlaForm(f => ({ ...f, pastDueDays: e.target.value }))}
-                      placeholder="Past due days"
-                    />
-                    <Button
-                      variant="secondary"
-                      icon={Plus}
-                      onClick={() => {
-                        setWfSlaError('');
-                        const { severity, warningDays, pastDueDays } = wfSlaForm;
-                        const warn = parseInt(warningDays);
-                        const due = parseInt(pastDueDays);
-                        if (!severity) return setWfSlaError('Select a severity.');
-                        if (!warningDays || !pastDueDays || isNaN(warn) || isNaN(due)) return setWfSlaError('Enter valid day values.');
-                        if (warn <= 0 || due <= 0) return setWfSlaError('Days must be greater than 0.');
-                        if (warn >= due) return setWfSlaError('Warning days must be less than past due days.');
-                        setWfVulnSlas(prev => [...prev, { severity, warningDays: warn, pastDueDays: due }]);
-                        setWfSlaForm({ severity: '', warningDays: '', pastDueDays: '' });
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                );
-              })()}
-            </FormGroup>
-
-            {/* ── Remediation Stages ──────────────────────────────────────── */}
-            <FormGroup>
-              <FormLabel>Remediation Stages</FormLabel>
-              <FormHint>
-                Ordered environments a fix moves through (e.g. Development, Staging, Production).
-                Closing a vulnerability in the last stage closes the finding outright; earlier stages
-                record the date but leave it open. Stages can be completed in any order and never
-                affect the SLA clock.
-              </FormHint>
-
-              <div className="rs-list">
-                {wfStages.map((stage, i) => (
-                  <div key={stage.id} className="rs-item">
-                    <span className="rs-order">{i + 1}</span>
-                    <input
-                      className="rs-name-input"
-                      value={stage.name}
-                      onChange={e => setWfStages(prev =>
-                        prev.map((s, idx) => idx === i ? { ...s, name: e.target.value } : s))}
-                    />
-                    {i === wfStages.length - 1 && (
-                      <span className="rs-terminal-badge">closes the finding</span>
-                    )}
-                    <button
-                      type="button"
-                      className="rs-move"
-                      disabled={i === 0}
-                      title="Move up"
-                      onClick={() => setWfStages(prev => {
-                        const next = [...prev];
-                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                        return next;
-                      })}
-                    >
-                      <ChevronUp size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="rs-move"
-                      disabled={i === wfStages.length - 1}
-                      title="Move down"
-                      onClick={() => setWfStages(prev => {
-                        const next = [...prev];
-                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
-                        return next;
-                      })}
-                    >
-                      <ChevronDown size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="rs-remove"
-                      disabled={wfStages.length === 1}
-                      title={wfStages.length === 1 ? 'At least one stage is required' : 'Remove stage'}
-                      onClick={() => setWfStages(prev => prev.filter((_, idx) => idx !== i))}
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="rs-add-row">
-                <Input
-                  value={wfNewStageName}
-                  onChange={e => setWfNewStageName(e.target.value)}
-                  placeholder="New stage name (e.g. QA)"
-                  onKeyDown={e => {
-                    if (e.key !== 'Enter') return;
-                    e.preventDefault();
-                    const name = wfNewStageName.trim();
-                    if (!name) return;
-                    setWfStages(prev => [...prev, { id: crypto.randomUUID(), name }]);
-                    setWfNewStageName('');
-                  }}
-                />
-                <Button
-                  variant="secondary"
-                  icon={Plus}
-                  onClick={() => {
-                    const name = wfNewStageName.trim();
-                    if (!name) return;
-                    setWfStages(prev => [...prev, { id: crypto.randomUUID(), name }]);
-                    setWfNewStageName('');
-                  }}
-                >
-                  Add
-                </Button>
-              </div>
-            </FormGroup>
-
-            {/* ── Vulnerability Statuses ──────────────────────────────────── */}
-            <FormGroup>
-              <FormLabel>Vulnerability Statuses</FormLabel>
-              <FormHint>
-                Default statuses are built-in and cannot be removed — this includes the retest statuses
-                (In Retest, Passed Retest, Failed Retest) set automatically by the retest workflow.
-                Add custom statuses for your workflow below.
-              </FormHint>
-
-              <div className="vs-list">
-                {DEFAULT_VULN_STATUSES.map(s => (
-                  <div key={s} className="vs-item vs-item--locked">
-                    <span className="vs-lock-icon"><Lock size={12} /></span>
-                    <span className="vs-label">{s}</span>
-                    <span className="vs-badge">default</span>
-                  </div>
-                ))}
-                {wfVulnStatuses.map(s => (
-                  <div key={s} className="vs-item">
-                    <span className="vs-label">{s}</span>
-                    <button
-                      type="button"
-                      className="vs-remove"
-                      onClick={() => setWfVulnStatuses(prev => prev.filter(v => v !== s))}
-                      title="Remove"
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="vs-add-row">
-                <Input
-                  type="text"
-                  value={wfNewVulnStatus}
-                  onChange={(e) => setWfNewVulnStatus(e.target.value)}
-                  placeholder="New status name…"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const trimmed = wfNewVulnStatus.trim();
-                      const locked = DEFAULT_VULN_STATUSES;
-                      if (!trimmed || wfVulnStatuses.includes(trimmed) || locked.includes(trimmed)) return;
-                      setWfVulnStatuses(prev => [...prev, trimmed]);
-                      setWfNewVulnStatus('');
-                    }
-                  }}
-                />
-                <Button
-                  variant="secondary"
-                  icon={Plus}
-                  disabled={!wfNewVulnStatus.trim()}
-                  onClick={() => {
-                    const trimmed = wfNewVulnStatus.trim();
-                    const locked = DEFAULT_VULN_STATUSES;
-                    if (!trimmed || wfVulnStatuses.includes(trimmed) || locked.includes(trimmed)) return;
-                    setWfVulnStatuses(prev => [...prev, trimmed]);
-                    setWfNewVulnStatus('');
-                  }}
-                >
-                  Add
-                </Button>
-              </div>
-            </FormGroup>
-
-            {/* ── Peer Review ─────────────────────────────────────────────── */}
-            <FormGroup>
-              <FormLabel>Peer Review</FormLabel>
-              <Checkbox
-                label="Allow reviewing your own submissions"
-                checked={wfAllowSelfPeerReview}
-                onChange={(e) => setWfAllowSelfPeerReview(e.target.checked)}
-              />
-              <FormHint>
-                Off by default: whoever submits an assessment for peer review cannot also review it.
-                Turn this on for small teams where a second reviewer isn&apos;t always available.
-                Accepting or rejecting a completed review is always done by the submitter.
-              </FormHint>
-            </FormGroup>
-          </>
-        )}
-      </div>
       )}
 
       {/* ── Checklist Templates ──────────────────────────────────────────── */}
@@ -1617,46 +1178,6 @@ export default function AssessmentConfig() {
 
     </Page>
 
-    {colorPickerMenu && (
-      <div
-        className="wf-color-picker"
-        style={{ top: colorPickerMenu.y, left: colorPickerMenu.x }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="wf-color-swatches">
-          {['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280'].map((color) => (
-            <button
-              key={color}
-              type="button"
-              className="wf-color-swatch"
-              style={{ backgroundColor: color }}
-              onClick={() => handleWfColorSelect(colorPickerMenu.status, color)}
-              title={color}
-            />
-          ))}
-        </div>
-        <div className="wf-color-custom-row">
-          <label className="wf-color-custom-label">Custom</label>
-          <input
-            type="color"
-            className="wf-color-input"
-            value={wfStatusColors[colorPickerMenu.status] || '#3b82f6'}
-            onChange={(e) => handleWfColorSelect(colorPickerMenu.status, e.target.value)}
-          />
-        </div>
-        <button
-          type="button"
-          className="wf-color-reset"
-          onClick={() => handleWfColorSelect(colorPickerMenu.status, null)}
-        >
-          Remove color
-        </button>
-      </div>
-    )}
-
-    {showToast && (
-      <Toast key={toastKey} message={toastMessage} variant={toastVariant} onDone={() => setShowToast(false)} />
-    )}
     </>
   );
 }

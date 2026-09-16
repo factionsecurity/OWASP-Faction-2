@@ -203,6 +203,8 @@ export interface AssessmentType {
   name: string;
   description: string;
   active: boolean;
+  /** The workflow new assessments of this type are created under. */
+  workflowId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -211,12 +213,16 @@ export interface CreateAssessmentTypeRequest {
   name: string;
   description: string;
   active: boolean;
+  /** Omitted: Default Workflow. */
+  workflowId?: string;
 }
 
 export interface UpdateAssessmentTypeRequest {
   name: string;
   description: string;
   active: boolean;
+  /** Omitted: the type keeps its workflow. */
+  workflowId?: string;
 }
 
 export interface AssignedUser {
@@ -587,6 +593,105 @@ export interface AssessmentWorkflowConfig {
   allowSelfPeerReview?: boolean;
 }
 
+/** One assessment workflow: its statuses, SLAs, vulnerability statuses and remediation stages. */
+export interface Workflow {
+  id: string;
+  name: string;
+  /** Default Workflow (id `default`): it can't be archived or deleted. */
+  defaultWorkflow: boolean;
+  /** Hidden from pickers; its assessments keep working. */
+  archived: boolean;
+  statuses: string[];
+  newAssessmentStatus: string;
+  inProgressStatus: string;
+  completedStatus: string;
+  statusColors: Record<string, string> | null;
+  vulnerabilitySlas: VulnerabilitySla[] | null;
+  /** This workflow's own vulnerability statuses; the built-in ones are listed separately. */
+  vulnerabilityStatuses: string[] | null;
+  builtInVulnerabilityStatuses: string[];
+  remediationStages: RemediationStage[];
+  allowSelfPeerReview: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** Vulnerability status renames still updating findings in the background. */
+  renamesInProgress: WorkflowRenameInProgress[];
+}
+
+export interface WorkflowRenameInProgress {
+  fromName: string;
+  toName: string;
+  /** Findings updated so far. */
+  processed: number;
+}
+
+/** How many assessment types and assessments use a workflow. */
+export interface WorkflowUsage {
+  workflowId: string;
+  assessmentTypeCount: number;
+  assessmentCount: number;
+}
+
+/** A status row in a workflow edit: its name when the editor loaded (null for a new row) and its name now. */
+export interface WorkflowNamedEntry {
+  originalName: string | null;
+  name: string;
+}
+
+export interface CreateWorkflowRequest {
+  /** The workflow whose settings the new one copies. */
+  sourceWorkflowId: string;
+  name: string;
+}
+
+export interface UpdateWorkflowRequest {
+  name: string;
+  statuses: WorkflowNamedEntry[];
+  newAssessmentStatus: string;
+  inProgressStatus: string;
+  completedStatus: string;
+  /** Keyed by the statuses' new names. */
+  statusColors: Record<string, string>;
+  vulnerabilitySlas: VulnerabilitySla[];
+  vulnerabilityStatuses: WorkflowNamedEntry[];
+  remediationStages: RemediationStage[];
+  allowSelfPeerReview: boolean;
+}
+
+/** One reason the server refused a workflow change (the `violations` of a 409). */
+export interface WorkflowViolation {
+  kind:
+    | 'ASSESSMENT_STATUS_IN_USE'
+    | 'VULNERABILITY_STATUS_IN_USE'
+    | 'REMEDIATION_STAGE_IN_USE'
+    | 'RENAME_IN_PROGRESS'
+    | 'NAME_TAKEN'
+    | 'DEFAULT_WORKFLOW'
+    | 'USED_BY_ASSESSMENT_TYPES'
+    | 'USED_BY_ASSESSMENTS'
+    | 'TARGET_ARCHIVED';
+  name: string;
+  /** How many things use it; 0 when the kind is not a count. */
+  count: number;
+}
+
+/** What moving an assessment to another workflow changes; `applied` is false for a dry run. */
+export interface WorkflowMovePreview {
+  assessmentId: string;
+  fromWorkflowId: string;
+  toWorkflowId: string;
+  fromStatus: string;
+  toStatus: string;
+  findingCount: number;
+  findingStatusChanges: { from: string; to: string; count: number }[];
+  /** Findings whose stored due or warning date changes under the target's SLAs. */
+  dueDateChanges: number;
+  remappedStageCompletions: number;
+  /** Completions whose stage has no same-named stage on the target: kept, but not shown. */
+  unmappedStageCompletions: number;
+  applied: boolean;
+}
+
 export type AssessmentPeerReviewStatus = 'IN_PROGRESS' | 'IN_PEER_REVIEW' | 'NEEDS_ACCEPTANCE' | 'COMPLETE';
 
 export type PeerReviewStatus = 'PENDING' | 'IN_REVIEW' | 'COMPLETED';
@@ -708,6 +813,8 @@ export interface Assessment {
   applicationName?: string; // For display in tables
   assessmentTypeId: string;
   assessmentTypeName?: string; // For display in tables
+  /** The workflow this assessment runs on: its type's workflow when created, unless it has been moved. */
+  workflowId?: string;
   organizationId: string;
   campaignId?: string;
   campaignName?: string; // For display in tables
@@ -831,6 +938,8 @@ export interface UpdateAssessmentRequest {
   scope?: string;
   engagementUrls?: EngagementUrl[];
   stakeholders?: Stakeholder[];
+  /** With a type change, also move the assessment to the new type's workflow. Needs config:write. */
+  moveToTypeWorkflow?: boolean;
 }
 
 export interface ManagerDashboardPeriodCounts {
@@ -2092,7 +2201,8 @@ export type FeatureKey =
   | 'ai_observability'
   | 'external_owners'
   | 'custom_roles'
-  | 'report_sections';
+  | 'report_sections'
+  | 'custom_workflows';
 
 /** Quota keys from the backend `Quota` enum. Capabilities that ship, but capped. */
 export type QuotaKey = 'ai_providers' | 'ai_prompts' | 'extensions';

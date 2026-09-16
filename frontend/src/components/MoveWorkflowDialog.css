@@ -1,0 +1,41 @@
+.move-workflow-current {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.move-workflow-note {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.move-workflow-errors {
+  font-size: 0.8125rem;
+  color: var(--danger-color, #ef4444);
+}
+
+.move-workflow-preview {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--tertiary-bg);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+.move-workflow-preview-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.move-workflow-preview ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.move-workflow-preview li + li {
+  margin-top: 0.15rem;
+}
+
+.move-workflow-warning {
+  color: var(--warning-color, #f59e0b);
+}
