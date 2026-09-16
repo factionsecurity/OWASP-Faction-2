@@ -64,5 +64,9 @@ public class EmailNotificationConfigDto {
 
         /** Remediation stage id, for per-stage entries only. */
         private String stageId;
+
+        /** Which workflow's stage this setting belongs to; null when the event is not per stage. */
+        private String workflowId;
+        private String workflowName;
     }
 }

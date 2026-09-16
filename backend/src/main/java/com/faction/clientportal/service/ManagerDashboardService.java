@@ -270,7 +270,7 @@ public class ManagerDashboardService {
                 f.getSearch(), f.getApplicationId(), null, null, f.getAssessmentTypeId(), null,
                 f.getAssessorId(), f.getStatus(), null, null,
                 f.getStartDateFrom(), f.getStartDateTo(), f.getEndDateFrom(), f.getEndDateTo(), null, null,
-                null, f.getShowCompleted(), null, null,
+                null, f.getShowCompleted(), null, null, null,
                 f.getTeamId(), f.getCampaignId(), f.getSeverities(),
                 pageable, authentication);
     }

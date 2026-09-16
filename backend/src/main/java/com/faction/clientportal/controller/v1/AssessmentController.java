@@ -131,6 +131,7 @@ public class AssessmentController {
             @Parameter(name = "completedDateTo", description = "Filter by completion date to (ISO format)"),
             @Parameter(name = "pastDue", description = "Filter for past due assessments only", example = "true"),
             @Parameter(name = "showCompleted", description = "Include completed/approved/archived assessments", example = "false"),
+            @Parameter(name = "onlyCompleted", description = "Only assessments their workflow calls completed", example = "true"),
             @Parameter(name = "assignedToMe", description = "Show only assessments assigned to current user", example = "true"),
             @Parameter(name = "sort", description = "Sort field and direction", example = "createdAt,desc")
         },
@@ -165,6 +166,7 @@ public class AssessmentController {
         @Parameter(hidden = true) @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime completedDateTo,
         @Parameter(hidden = true) @RequestParam(required = false) Boolean pastDue,
         @Parameter(hidden = true) @RequestParam(required = false) Boolean showCompleted,
+        @Parameter(hidden = true) @RequestParam(required = false) Boolean onlyCompleted,
         @Parameter(hidden = true) @RequestParam(required = false) Boolean assignedToMe,
         @Parameter(hidden = true) @RequestParam(defaultValue = "createdAt,desc") String sort,
         Authentication authentication
@@ -199,6 +201,7 @@ public class AssessmentController {
             completedDateTo,
             pastDue,
             showCompleted,
+            onlyCompleted,
             assignedToMe,
             currentUserId,
             null,

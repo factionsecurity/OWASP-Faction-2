@@ -2,6 +2,7 @@ package com.faction.clientportal.service.extension;
 
 import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.AssessmentChecklist;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.ChecklistResponse;
 import com.faction.clientportal.model.ChecklistResult;
 import com.faction.clientportal.model.FieldType;
@@ -27,6 +28,7 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Translates between Faction's entities and the {@code com.faction.elements} model
@@ -57,6 +59,23 @@ import java.util.Map;
  */
 @Component
 public class ExtensionMapper {
+
+    // ── Assessment custom-field synthesis ────────────────────────────────────
+
+    /** Variable names of the two synthetic custom fields {@link #toElement(Assessment, String, String,
+     * List, User, User, List, String)} adds ahead of an assessment's own user-defined fields. */
+    private static final String WORKFLOW_ID_VARIABLE = "workflowId";
+    private static final String WORKFLOW_NAME_VARIABLE = "workflowName";
+
+    /**
+     * Both synthesized field variables, in one place, so the field-out list in {@code toElement}
+     * and the write-back guard in {@code applyTo(com.faction.elements.Assessment, Assessment)}
+     * cannot drift apart. These two values are Faction-supplied on the way out — an admin's own
+     * user-defined field can happen to share the name, but the synthetic value is never what that
+     * field's edit form produced, so it is not the extension's to write back on the way in.
+     */
+    private static final Set<String> SYNTHETIC_ASSESSMENT_VARIABLES =
+            Set.of(WORKFLOW_ID_VARIABLE, WORKFLOW_NAME_VARIABLE);
 
     // ── Identifier projection ────────────────────────────────────────────────
 
@@ -187,7 +206,8 @@ public class ExtensionMapper {
                                                      List<User> assessors,
                                                      User engagementContact,
                                                      User remediationContact,
-                                                     List<AssessmentChecklist> checklists) {
+                                                     List<AssessmentChecklist> checklists,
+                                                     String workflowName) {
         com.faction.elements.Assessment element = new com.faction.elements.Assessment();
         element.setName(assessment.getName());
         element.setAppId(assessment.getApplicationId());
@@ -198,7 +218,19 @@ public class ExtensionMapper {
         element.setEnd(toDate(assessment.getPlannedEndDate()));
         element.setCompleted(toDate(assessment.getCompletedDate()));
         element.setAccessNotes(assessment.getScope());
-        element.setCustomFields(toCustomFields(assessment.getFieldDefinitions(), assessment.getFieldValues()));
+        // Status text is per workflow now — "Completed" completes one workflow and means nothing on
+        // another — so an extension reading the status is told whose vocabulary it is. The published
+        // element API can't be changed, and its Integer `workflow` can't hold a Faction 2 id, so the
+        // workflow travels as custom fields like every other Faction 2 field. Listed first, ahead of
+        // the assessment's own user-defined fields: an extension's natural lookup is filter-then-
+        // findFirst by variable name, and nothing stops an admin from naming a UDF "workflowId" or
+        // "workflowName" — if that field came first it would silently shadow the real workflow.
+        List<CustomField> customFields = new ArrayList<>();
+        customFields.add(syntheticField(WORKFLOW_ID_VARIABLE, "Workflow Id",
+                assessment.getWorkflowId() == null ? AssessmentWorkflow.DEFAULT_ID : assessment.getWorkflowId()));
+        customFields.add(syntheticField(WORKFLOW_NAME_VARIABLE, "Workflow", workflowName == null ? "" : workflowName));
+        customFields.addAll(toCustomFields(assessment.getFieldDefinitions(), assessment.getFieldValues()));
+        element.setCustomFields(customFields);
         element.setChecklists(toChecklists(checklists));
 
         List<com.faction.elements.User> mappedAssessors = new ArrayList<>();
@@ -217,11 +249,34 @@ public class ExtensionMapper {
         return element;
     }
 
-    /** Mirrors {@link #applyTo(com.faction.elements.Vulnerability, Vulnerability)} for assessments. */
+    /**
+     * Mirrors {@link #applyTo(com.faction.elements.Vulnerability, Vulnerability)} for assessments.
+     *
+     * <p>{@code workflowId}/{@code workflowName} are filtered out before the list reaches
+     * {@link #applyCustomFields}. Those two variables are Faction-supplied on the way out (see
+     * {@link #toElement(Assessment, String, String, List, User, User, List, String)}), not
+     * something the extension edited — even though {@code applyCustomFields} would otherwise
+     * treat their always-non-null value as a legitimate edit if an admin happens to have named
+     * a user-defined field the same thing. The entity's own same-named field simply keeps
+     * whatever value it already had.
+     *
+     * <p>The filter lives here rather than inside {@code applyCustomFields} because that method
+     * is shared with the vulnerability path, where no synthetic fields exist and a UDF named
+     * e.g. "workflowId" is an ordinary user field an extension is entitled to write.
+     */
     public void applyTo(com.faction.elements.Assessment element, Assessment assessment) {
         if (element == null || assessment == null) return;
-        applyCustomFields(element.getCustomFields(),
-                assessment.getFieldDefinitions(), assessment.getFieldValues());
+        // Permissive by design: anything this filter can't classify (a null entry, a null
+        // type, or a type with a null variable) is kept rather than dropped, so it flows
+        // through to applyCustomFields and hits its existing null-tolerant skip logic exactly
+        // as it did before this filter existed.
+        List<CustomField> editableFields = element.getCustomFields() == null ? null
+                : element.getCustomFields().stream()
+                        .filter(field -> field == null || field.getType() == null
+                                || field.getType().getVariable() == null
+                                || !SYNTHETIC_ASSESSMENT_VARIABLES.contains(field.getType().getVariable()))
+                        .toList();
+        applyCustomFields(editableFields, assessment.getFieldDefinitions(), assessment.getFieldValues());
     }
 
     private String fieldValueByVariable(Assessment assessment, String... variableNames) {
@@ -329,6 +384,19 @@ public class ExtensionMapper {
             fields.add(field);
         }
         return fields;
+    }
+
+    /** A custom field Faction 2 supplies itself, rather than one somebody defined on the assessment. */
+    private static CustomField syntheticField(String variable, String label, String value) {
+        CustomType type = new CustomType();
+        type.setKey(label);
+        type.setVariable(variable);
+        type.setType(FieldType.STRING.ordinal());
+
+        CustomField field = new CustomField();
+        field.setType(type);
+        field.setValue(value);
+        return field;
     }
 
     /**

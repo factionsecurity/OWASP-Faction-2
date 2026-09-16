@@ -28,6 +28,7 @@ public class RemediationRowDto {
     private String vulnerabilityName;
     private VulnerabilitySeverity severity;
     private String assessmentId;
+    private String workflowId;          // the assessment's workflow, for merged stage columns and colours
     private String applicationId;
     private String applicationName;
     private String organizationId;

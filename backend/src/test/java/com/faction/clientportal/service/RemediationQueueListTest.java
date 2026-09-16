@@ -21,6 +21,7 @@ import com.faction.clientportal.repository.RetestRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.repository.VulnerabilityRepository;
 import com.faction.clientportal.security.RequiresPermissionAuthorizationManager;
+import com.faction.clientportal.testsupport.TestWorkflows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -197,6 +198,31 @@ class RemediationQueueListTest extends TestContainersConfig {
                 PageRequest.of(0, 1), superAdmin());
         assertThat(page.getTotalElements()).isEqualTo(2);
         assertThat(page.getContent()).hasSize(1);
+    }
+
+    @Test
+    void everyRowSaysWhichWorkflowItsAssessmentIsOn() {
+        String secondAssessment = assessment(orgId, appId, "PCI Review");
+        assessmentRepository.findById(secondAssessment).ifPresent(a -> {
+            a.setWorkflowId(TestWorkflows.SECOND_ID);
+            assessmentRepository.save(a);
+        });
+        vuln("On default", VulnerabilitySeverity.CRITICAL, 30);
+        vulnBuilder("On second", VulnerabilitySeverity.CRITICAL, 30).assessment(secondAssessment).save();
+
+        var rows = list();
+
+        assertThat(row(rows, "On default").getWorkflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID);
+        assertThat(row(rows, "On second").getWorkflowId()).isEqualTo(TestWorkflows.SECOND_ID);
+    }
+
+    @Test
+    void retestRowsSayItToo() {
+        retest("Retest target", "SCHEDULED", -2, 5);
+
+        var rows = withCompletedRetests();
+
+        assertThat(row(rows, "Retest target").getWorkflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID);
     }
 
     // ── Interleaving + ordering (the crux) ───────────────────────────────────────

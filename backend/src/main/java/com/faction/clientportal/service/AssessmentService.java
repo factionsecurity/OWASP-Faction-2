@@ -805,7 +805,7 @@ public class AssessmentService {
             // the single-column finders below cannot express — route through the scoped search.
             return searchAssessmentsAdvanced(name, applicationId, null, organizationId, assessmentTypeId, null,
                     assessorId, status, null, null, null, null, null, null, null, null, null, Boolean.TRUE, null,
-                    null, null, null, null, pageable, authentication);
+                    null, null, null, null, null, pageable, authentication);
         }
         return searchAssessments(applicationId, organizationId, assessmentTypeId, assessorId, status, name, pageable);
     }
@@ -866,8 +866,8 @@ public class AssessmentService {
         Authentication authentication
     ) {
         return searchAssessmentsAdvanced(search, applicationId, applicationIds, organizationId, assessmentTypeId, null, assessorId,
-            status, null, null, startDateFrom, startDateTo, endDateFrom, endDateTo, null, null, pastDue, showCompleted, assignedToMe,
-            currentUserId, null, null, null, pageable, authentication);
+            status, null, null, startDateFrom, startDateTo, endDateFrom, endDateTo, null, null, pastDue, showCompleted, null,
+            assignedToMe, currentUserId, null, null, null, pageable, authentication);
     }
 
     /**
@@ -894,6 +894,7 @@ public class AssessmentService {
         LocalDateTime completedDateTo,
         Boolean pastDue,
         Boolean showCompleted,
+        Boolean onlyCompleted,
         Boolean assignedToMe,
         String currentUserId,
         String teamId,
@@ -981,7 +982,8 @@ public class AssessmentService {
                 .completedDateFrom(completedDateFrom)
                 .completedDateTo(completedDateTo)
                 .pastDue(Boolean.TRUE.equals(pastDue))
-                .excludeCompleted(Boolean.FALSE.equals(showCompleted))
+                .excludeCompleted(Boolean.FALSE.equals(showCompleted) && !Boolean.TRUE.equals(onlyCompleted))
+                .onlyCompleted(Boolean.TRUE.equals(onlyCompleted))
                 .assignedToMe(Boolean.TRUE.equals(assignedToMe))
                 .currentUserId(currentUserId)
                 .teamMemberIds(teamMemberIds)
@@ -1546,10 +1548,12 @@ public class AssessmentService {
         AssessmentDto dto = AssessmentDto.fromEntity(assessment);
         enrichWithDisplayNames(dto);
         dto.setVulnerabilitySummary(computeVulnerabilitySummary(assessment));
+        AssessmentWorkflow workflow = catalog.forAssessment(assessment);
+        dto.setCompleted(AssessmentWorkflows.isCompleted(workflow, assessment.getStatus()));
         // Compute isPastDue using the assessment's own workflow (status-aware)
         dto.setIsPastDue(assessment.getPlannedEndDate() != null
                 && LocalDateTime.now().isAfter(assessment.getPlannedEndDate())
-                && !AssessmentWorkflows.isCompleted(catalog.forAssessment(assessment), assessment.getStatus()));
+                && !AssessmentWorkflows.isCompleted(workflow, assessment.getStatus()));
         return dto;
     }
 

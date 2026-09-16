@@ -186,6 +186,12 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
             CompletedStatusFilter completed = Objects.requireNonNull(c.completed(), "completed");
             clauses.add(Clause.of("AND " + CompletedStatusFilter.NOT_COMPLETED_SQL, completed::bind));
         }
+        if (c.onlyCompleted()) {
+            // The done queue: an assessment sitting in its own workflow's completed status, whichever
+            // workflow that is. The same pairs as NOT_COMPLETED_SQL, asserted rather than denied.
+            CompletedStatusFilter completed = Objects.requireNonNull(c.completed(), "completed");
+            clauses.add(Clause.of("AND NOT (" + CompletedStatusFilter.NOT_COMPLETED_SQL + ")", completed::bind));
+        }
         if (c.assignedToMe() && c.currentUserId() != null) {
             clauses.add(Clause.of("""
                     AND (a.engagement_manager_id = :meId OR a.remediation_manager_id = :meId
