@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -118,6 +119,53 @@ public class EmailNotificationConfigService {
         }
 
         return toDto(repository.save(config));
+    }
+
+    /**
+     * Gives each new remediation stage the per-stage email settings of the stage it was copied from. A
+     * source stage with no settings of its own is skipped (it reads as all-off either way).
+     */
+    public void copyStageSettings(Map<String, String> newStageIdByOldStageId) {
+        EmailNotificationConfig config = getOrCreate();
+        Map<String, EventSettings> events = config.getEvents();
+        boolean changed = false;
+        for (EmailNotificationEvent event : EmailNotificationEvent.values()) {
+            if (!event.isPerStage()) continue;
+            for (Map.Entry<String, String> stage : newStageIdByOldStageId.entrySet()) {
+                EventSettings source = events.get(event.key(stage.getKey()));
+                if (source == null) continue;
+                events.put(event.key(stage.getValue()), EventSettings.builder()
+                        .notifyAssessors(source.isNotifyAssessors())
+                        .notifyStakeholders(source.isNotifyStakeholders())
+                        .notifyAppOwner(source.isNotifyAppOwner())
+                        .includeMentionedUsers(source.isIncludeMentionedUsers())
+                        .notifyOrgUsers(source.isNotifyOrgUsers())
+                        .customMessage(source.getCustomMessage())
+                        .build());
+                changed = true;
+            }
+        }
+        if (changed) {
+            config.setEvents(events);
+            repository.save(config);
+        }
+    }
+
+    /** Drops the per-stage email settings of stages that no longer exist (their workflow was deleted). */
+    public void removeStageSettings(Collection<String> stageIds) {
+        EmailNotificationConfig config = getOrCreate();
+        Map<String, EventSettings> events = config.getEvents();
+        boolean changed = false;
+        for (EmailNotificationEvent event : EmailNotificationEvent.values()) {
+            if (!event.isPerStage()) continue;
+            for (String stageId : stageIds) {
+                changed |= events.remove(event.key(stageId)) != null;
+            }
+        }
+        if (changed) {
+            config.setEvents(events);
+            repository.save(config);
+        }
     }
 
     // ── Rendering ─────────────────────────────────────────────────────────────

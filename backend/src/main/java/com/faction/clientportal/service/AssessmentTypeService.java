@@ -3,9 +3,14 @@ package com.faction.clientportal.service;
 import com.faction.clientportal.dto.AssessmentTypeDto;
 import com.faction.clientportal.dto.CreateAssessmentTypeRequest;
 import com.faction.clientportal.dto.UpdateAssessmentTypeRequest;
+import com.faction.clientportal.edition.EditionPolicy;
+import com.faction.clientportal.edition.Feature;
 import com.faction.clientportal.exception.ResourceNotFoundException;
+import com.faction.clientportal.exception.WorkflowConflictException;
 import com.faction.clientportal.model.AssessmentType;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.repository.AssessmentTypeRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,7 +26,8 @@ import java.util.stream.Collectors;
 public class AssessmentTypeService {
 
     private final AssessmentTypeRepository assessmentTypeRepository;
-    // TODO: Inject AssessmentRepository once Assessment model is created
+    private final AssessmentWorkflowRepository workflowRepository;
+    private final EditionPolicy editionPolicy;
 
     /**
      * Create a new assessment type
@@ -41,6 +47,7 @@ public class AssessmentTypeService {
                 .name(request.getName())
                 .description(request.getDescription())
                 .active(request.getActive())
+                .workflowId(resolveWorkflowId(request.getWorkflowId(), null))
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
@@ -75,6 +82,7 @@ public class AssessmentTypeService {
         assessmentType.setName(request.getName());
         assessmentType.setDescription(request.getDescription());
         assessmentType.setActive(request.getActive());
+        assessmentType.setWorkflowId(resolveWorkflowId(request.getWorkflowId(), assessmentType.getWorkflowId()));
         assessmentType.setUpdatedAt(LocalDateTime.now());
 
         AssessmentType updatedAssessmentType = assessmentTypeRepository.save(assessmentType);
@@ -161,6 +169,28 @@ public class AssessmentTypeService {
     }
 
     /**
+     * The workflow a type ends up on. No workflow given keeps the current one, or Default Workflow for a new
+     * type. Keeping the current workflow or choosing Default Workflow is always allowed. Any other workflow
+     * must exist and not be archived, and needs Custom Workflows.
+     */
+    private String resolveWorkflowId(String requested, String current) {
+        if (requested == null || requested.isBlank()) {
+            return current == null ? AssessmentWorkflow.DEFAULT_ID : current;
+        }
+        if (requested.equals(current) || AssessmentWorkflow.DEFAULT_ID.equals(requested)) {
+            return requested;
+        }
+        AssessmentWorkflow workflow = workflowRepository.findById(requested)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown workflow: " + requested));
+        if (workflow.isArchived()) {
+            throw new WorkflowConflictException(new WorkflowConflictException.Violation(
+                    WorkflowConflictException.TARGET_ARCHIVED, workflow.getName(), 0));
+        }
+        editionPolicy.require(Feature.CUSTOM_WORKFLOWS);
+        return requested;
+    }
+
+    /**
      * Check if an assessment type is assigned to any assessments
      * TODO: Implement this once Assessment model is created
      *
@@ -185,6 +215,7 @@ public class AssessmentTypeService {
                 .name(assessmentType.getName())
                 .description(assessmentType.getDescription())
                 .active(assessmentType.getActive())
+                .workflowId(assessmentType.getWorkflowId())
                 .createdAt(assessmentType.getCreatedAt())
                 .updatedAt(assessmentType.getUpdatedAt())
                 .build();

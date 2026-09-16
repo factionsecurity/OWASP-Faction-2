@@ -111,9 +111,10 @@ public class SlaRecalculationService {
         try {
             RecalculationResult result = workflowId == null
                     ? recalculateOpenFindings() : recalculateOpenFindings(workflowId);
-            log.info("SLA recalculation ({}): {} open finding(s) got new due dates, {} returned from Past Due to Open",
-                    workflowId == null ? "all workflows" : "workflow " + workflowId,
-                    result.recalculated(), result.clearedPastDue());
+            if (workflowId == null) {
+                log.info("SLA recalculation (all workflows): {} open finding(s) got new due dates, {} returned from Past Due to Open",
+                        result.recalculated(), result.clearedPastDue());
+            }
         } catch (Exception e) {
             log.error("SLA recalculation failed: {}", e.getMessage(), e);
         }
@@ -121,10 +122,11 @@ public class SlaRecalculationService {
 
     /** Recalculates every workflow's open findings now, on the calling thread. */
     public RecalculationResult recalculateOpenFindings() {
+        WorkflowCatalog catalog = workflowCatalogService.load();
         int recalculated = 0;
         int clearedPastDue = 0;
-        for (AssessmentWorkflow workflow : workflowCatalogService.load().workflows(true)) {
-            RecalculationResult result = recalculateOpenFindings(workflow.getId());
+        for (AssessmentWorkflow workflow : catalog.workflows(true)) {
+            RecalculationResult result = recalculate(catalog, workflow, workflow.getId());
             recalculated += result.recalculated();
             clearedPastDue += result.clearedPastDue();
         }
@@ -134,7 +136,10 @@ public class SlaRecalculationService {
     /** Recalculates the open findings of the workflow {@code workflowId} resolves to, on the calling thread. */
     public RecalculationResult recalculateOpenFindings(String workflowId) {
         WorkflowCatalog catalog = workflowCatalogService.load();
-        AssessmentWorkflow target = catalog.forId(workflowId);
+        return recalculate(catalog, catalog.forId(workflowId), workflowId);
+    }
+
+    private RecalculationResult recalculate(WorkflowCatalog catalog, AssessmentWorkflow target, String requestedId) {
         boolean isDefault = target == catalog.defaultWorkflow();
         List<String> others = catalog.workflows(true).stream()
                 .map(AssessmentWorkflow::getId)
@@ -159,6 +164,10 @@ public class SlaRecalculationService {
             }
             afterId = outcome.lastId();
         }
+        log.info("SLA recalculation for workflow {} ({}){}: {} open finding(s) got new due dates, {} returned from Past Due to Open",
+                target.getId(), target.getName(),
+                requestedId == null || requestedId.equals(target.getId()) ? "" : ", requested " + requestedId,
+                recalculated, clearedPastDue);
         return new RecalculationResult(recalculated, clearedPastDue);
     }
 

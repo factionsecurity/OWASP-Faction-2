@@ -5,6 +5,7 @@ import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.LoginOption;
 import com.faction.clientportal.model.Role;
 import com.faction.clientportal.model.User;
+import com.faction.clientportal.repository.AssessmentRepository;
 import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.RoleRepository;
 import com.faction.clientportal.repository.UserRepository;
@@ -41,6 +42,7 @@ class AssessmentWorkflowConfigControllerTest extends TestContainersConfig {
     @Autowired private UserRepository userRepository;
     @Autowired private RoleRepository roleRepository;
     @Autowired private AssessmentWorkflowRepository configRepository;
+    @Autowired private AssessmentRepository assessmentRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtService jwtService;
 
@@ -48,6 +50,7 @@ class AssessmentWorkflowConfigControllerTest extends TestContainersConfig {
 
     @BeforeEach
     void setUp() {
+        assessmentRepository.deleteAll();
         configRepository.deleteAll();
         userRepository.deleteAll();
         roleRepository.deleteAll();
@@ -75,6 +78,7 @@ class AssessmentWorkflowConfigControllerTest extends TestContainersConfig {
 
     @AfterEach
     void resetWorkflows() {
+        assessmentRepository.deleteAll();
         configRepository.deleteAll();
     }
 
@@ -334,6 +338,28 @@ class AssessmentWorkflowConfigControllerTest extends TestContainersConfig {
                 .andExpect(jsonPath("$.data.statusColors.Done").value("#00ff00"))
                 .andExpect(jsonPath("$.data.name").value("Default Workflow"))
                 .andExpect(jsonPath("$.data.id").value("default"));
+    }
+
+    @Test
+    void updateConfig_refusesToRemoveAStatusAnAssessmentIsIn() throws Exception {
+        assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
+                .name("In Testing").assessmentTypeId("type-1").organizationId("org-1")
+                .workflowId("default").status("Testing").createdAt(LocalDateTime.now()).build());
+        Map<String, Object> payload = Map.of(
+                "statuses", List.of("New", "Done"),
+                "newAssessmentStatus", "New",
+                "inProgressStatus", "New",
+                "completedStatus", "Done");
+
+        mockMvc.perform(put("/api/v1/config/assessment-workflow")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.violations[0].kind").value("ASSESSMENT_STATUS_IN_USE"))
+                .andExpect(jsonPath("$.violations[0].name").value("Testing"))
+                .andExpect(jsonPath("$.violations[0].count").value(1))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Testing")));
     }
 
     private void assertThatKeysArePresent(Map<String, Object> data, String... keys) {

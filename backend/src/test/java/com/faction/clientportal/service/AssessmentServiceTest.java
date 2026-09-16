@@ -102,6 +102,9 @@ class AssessmentServiceTest {
     @Mock
     private WorkflowCatalogService workflowCatalogService;
 
+    @Mock
+    private AssessmentWorkflowMoveService workflowMoveService;
+
     @InjectMocks
     private AssessmentService assessmentService;
 
@@ -2090,6 +2093,32 @@ class AssessmentServiceTest {
         // (the Default-only check counted the two "Signed Off" ones instead).
         assertThat(metrics.getPastDueCount()).isEqualTo(1L);
         verify(workflowCatalogService, times(1)).load();
+    }
+
+    @Test
+    void updateAssessment_moveToTypeWorkflowLoadsTheCatalogOnlyOnce() {
+        AssessmentWorkflow second = secondWorkflowInCatalog();
+        testAssessment.setWorkflowId("default");
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
+                .thenReturn(Optional.of(testAssessment));
+        when(assessmentRepository.findById(testAssessment.getId())).thenReturn(Optional.of(testAssessment));
+        when(assessmentRepository.save(any(Assessment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(assessmentTypeRepository.findById(testAssessmentType.getId())).thenReturn(Optional.of(
+                AssessmentType.builder().id(testAssessmentType.getId()).name(testAssessmentType.getName())
+                        .workflowId(second.getId()).createdAt(LocalDateTime.now()).build()));
+
+        var superAdmin = new UsernamePasswordAuthenticationToken("root", null,
+                List.of(new SimpleGrantedAuthority(
+                        com.faction.clientportal.security.RequiresPermissionAuthorizationManager.SUPER_ADMIN)));
+
+        assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder().moveToTypeWorkflow(true).build(), "root", superAdmin);
+
+        // One catalog load for the whole request: the pre-save validation (checkMove) and the
+        // post-save move both take the same already-loaded catalog rather than loading their own.
+        verify(workflowCatalogService, times(1)).load();
+        verify(workflowMoveService).checkMove(eq(testAssessment), eq(second.getId()), any());
+        verify(workflowMoveService).move(eq(testAssessment.getId()), eq(second.getId()), eq(false), any());
     }
 
     private static Assessment lateAssessment(String id, String workflowId, String status) {
