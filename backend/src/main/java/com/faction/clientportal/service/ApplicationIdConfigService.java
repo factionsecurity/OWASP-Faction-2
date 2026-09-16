@@ -4,6 +4,7 @@ import com.faction.clientportal.dto.ApplicationIdConfigDto;
 import com.faction.clientportal.dto.ApplicationIdConfigUpdateRequest;
 import com.faction.clientportal.model.ApplicationIdConfig;
 import com.faction.clientportal.repository.ApplicationIdConfigRepository;
+import com.faction.clientportal.repository.ApplicationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ public class ApplicationIdConfigService {
     private static final String CONFIG_ID = "default";
 
     private final ApplicationIdConfigRepository repository;
+    private final ApplicationRepository applicationRepository;
 
     public ApplicationIdConfigDto getConfig() {
         ApplicationIdConfig config = getOrCreate();
@@ -54,8 +56,22 @@ public class ApplicationIdConfigService {
                             .orElseThrow(() -> new IllegalStateException("ApplicationIdConfig row missing"));
                 });
 
-        String appId = config.getPrefix() + "-" + config.getNextNumber();
-        config.setNextNumber(config.getNextNumber() + 1);
+        String prefix = config.getPrefix();
+        // Applications that arrived with ids of their own — imported, or typed in — leave this counter
+        // behind them. Handing out its number regardless collides with the unique index on app_id and
+        // fails the insert, so start above whatever is already in use.
+        long highestUsed = applicationRepository.highestAppIdNumber(prefix + "-%");
+        int number = highestUsed >= config.getNextNumber()
+                ? Math.toIntExact(highestUsed + 1)
+                : config.getNextNumber();
+        String appId = prefix + "-" + number;
+        // An id the highest-number query cannot see (one that doesn't end in a number) is still never
+        // handed out twice.
+        while (applicationRepository.existsByAppId(appId)) {
+            number++;
+            appId = prefix + "-" + number;
+        }
+        config.setNextNumber(number + 1);
         repository.save(config);
         return appId;
     }
