@@ -6,6 +6,7 @@ import { getCurrentUser } from './utils/permissions';
 import { BrandingProvider } from './context/BrandingContext';
 import { EditionProvider } from './context/EditionContext';
 import { TerminologyProvider } from './context/TerminologyContext';
+import { WorkflowsProvider } from './context/WorkflowsContext';
 import UpgradeDialog from './components/UpgradeDialog';
 import { PaidFeature } from './components/PaidFeature';
 import { SsoConfig, BrandingPage, InboundEmailConfigPage } from '@enterprise';
@@ -130,11 +131,10 @@ function App() {
     );
   }
 
-  return (
-    <BrandingProvider>
-    <EditionProvider>
-      <TerminologyProvider>
-    <PageTitleProvider>
+  // Router and everything inside it, split out so it can be wrapped in WorkflowsProvider
+  // only once a session is authenticated (see the comment on the return below).
+  const content = (
+    <>
     <UpgradeDialog />
     <Router>
       <Routes>
@@ -809,6 +809,23 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
+    </>
+  );
+
+  return (
+    <BrandingProvider>
+    <EditionProvider>
+      <TerminologyProvider>
+    <PageTitleProvider>
+    {/*
+      WorkflowsProvider fetches from an authenticated-only endpoint, unlike its three
+      siblings above (branding/edition/terminology are meant to render on the sign-in
+      page too). Gating it here — rather than mounting it unconditionally like they do —
+      keeps that fetch from firing for a signed-out visitor, while still mounting it once
+      per session rather than once per route (which nesting it inside DashboardLayout,
+      remounted on every navigation, would cause).
+    */}
+    {isAuthenticated ? <WorkflowsProvider>{content}</WorkflowsProvider> : content}
     </PageTitleProvider>
       </TerminologyProvider>
     </EditionProvider>

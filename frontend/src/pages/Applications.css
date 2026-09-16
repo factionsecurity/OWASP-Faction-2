@@ -418,6 +418,24 @@
   accent-color: var(--primary-color);
 }
 
+/* Inline toggle beside the status filter — mirrors .app-vulns-show-closed / the Operational
+   Dashboard's "Include archived workflows" control. */
+.vulns-include-archived-workflows {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.vulns-include-archived-workflows input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;

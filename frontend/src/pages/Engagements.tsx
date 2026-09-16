@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Edit2, Trash2, Plus, Calendar, List, Download, Eye } from 'lucide-react';
-import { assessmentsApi, applicationsApi, assessmentTypesApi, workflowConfigApi, vulnerabilitiesApi } from '../api';
+import { assessmentsApi, applicationsApi, assessmentTypesApi, vulnerabilitiesApi } from '../api';
 import type {
   Assessment,
   AssessmentMetrics,
@@ -16,6 +16,8 @@ import AssessmentCalendar from '../components/AssessmentCalendar';
 import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { usePermissions } from '../utils/permissions';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { colorFor, isAmbiguous, mergedStatusNames, statusLabel } from '../utils/workflowLookup';
 import './Engagements.css';
 
 /** A calendar Date as the zone-less ISO datetime the API uses for these date-only fields. */
@@ -32,6 +34,7 @@ export default function Engagements() {
   // The View action opens the assessment detail page, which sits behind its own permission —
   // scheduling access alone does not imply it.
   const { permissions } = usePermissions();
+  const { workflows } = useWorkflowsContext();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -44,8 +47,15 @@ export default function Engagements() {
   // Reference data
   const [applications, setApplications] = useState<Application[]>([]);
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
-  const [statusColors, setStatusColors] = useState<Record<string, string>>({});
-  const [wfStatuses, setWfStatuses] = useState<string[]>([]);
+
+  // Archived workflows still colour their own past assessments elsewhere, but they don't
+  // contribute new stat pills or filter options.
+  const activeWorkflows = useMemo(() => workflows.filter((w) => !w.archived), [workflows]);
+
+  // The merged (deduped-by-name) status list across all active workflows — drives both the
+  // stat pills and the status filter options. A name defined in several workflows collapses
+  // to one entry here; the server's statusCounts already combine assessments by name too.
+  const mergedNames = useMemo(() => mergedStatusNames(activeWorkflows), [activeWorkflows]);
 
   const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
@@ -254,13 +264,6 @@ export default function Engagements() {
     } catch (err) {
       console.error('Failed to load reference data:', err);
     }
-
-    workflowConfigApi.getConfig().then(res => {
-      if (res.success && res.data) {
-        if (res.data.statusColors) setStatusColors(res.data.statusColors);
-        if (res.data.statuses) setWfStatuses(res.data.statuses);
-      }
-    }).catch(() => {});
   };
 
   const loadMetrics = async () => {
@@ -437,10 +440,10 @@ export default function Engagements() {
       sortKey: 'status',
       accessor: 'status',
       render: (assessment) => {
-        const custom = statusColors[assessment.status];
+        const custom = colorFor(workflows, assessment.workflowId, assessment.status);
         return (
           <Badge variant={custom ? undefined : 'secondary'} customColor={custom}>
-            {assessment.status.replace('_', ' ')}
+            {statusLabel(workflows, assessment.workflowId, assessment.status)}
           </Badge>
         );
       },
@@ -547,8 +550,15 @@ export default function Engagements() {
             <span className="eng-stat-dot" style={{ background: '#ef4444' }} />
             Past Due <strong>{metrics?.pastDueCount ?? 0}</strong>
           </button>
-          {wfStatuses.map(status => {
-            const color = statusColors[status] || '#94a3b8';
+          {mergedNames.map(status => {
+            // A pill aggregates this name's count across every active workflow that defines
+            // it. When those workflows disagree on colour (isAmbiguous), painting the dot
+            // from just one of them would assert an ownership the pill doesn't have — and
+            // silently, unlike the legend/labels, which make such collisions visible. So an
+            // ambiguous name gets the same neutral dot as Total/Past Due instead of a pick.
+            const color = isAmbiguous(activeWorkflows, status)
+              ? '#94a3b8'
+              : activeWorkflows.find((w) => w.statusColors?.[status])?.statusColors?.[status] ?? '#94a3b8';
             const count = metrics?.statusCounts?.[status] ?? 0;
             return (
               <button
@@ -587,7 +597,7 @@ export default function Engagements() {
             if (filters.statuses.length > 0) return filters.statuses.includes(a.status);
             return true;
           })}
-          statusColors={statusColors}
+          workflows={workflows}
           loading={loading}
           onEventClick={handleEventClick}
           onEventDrop={handleEventDrop}

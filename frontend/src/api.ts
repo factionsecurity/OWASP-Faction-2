@@ -1003,6 +1003,7 @@ export const assessmentsApi = {
     completedDateTo?: string;
     pastDue?: boolean;
     showCompleted?: boolean;
+    onlyCompleted?: boolean;
     assignedToMe?: boolean;
     status?: string;
     /** Multi-select status filter; ORed with each other, ANDed with the rest. */
@@ -1032,6 +1033,7 @@ export const assessmentsApi = {
     if (filters.completedDateTo) params.completedDateTo = filters.completedDateTo;
     if (filters.pastDue !== undefined) params.pastDue = filters.pastDue;
     if (filters.showCompleted !== undefined) params.showCompleted = filters.showCompleted;
+    if (filters.onlyCompleted !== undefined) params.onlyCompleted = filters.onlyCompleted;
     if (filters.assignedToMe !== undefined) params.assignedToMe = filters.assignedToMe;
     if (filters.status) params.status = filters.status;
     // Comma-joined so Spring binds it to List<String> statuses.

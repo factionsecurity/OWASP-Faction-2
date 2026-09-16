@@ -815,6 +815,8 @@ export interface Assessment {
   assessmentTypeName?: string; // For display in tables
   /** The workflow this assessment runs on: its type's workflow when created, unless it has been moved. */
   workflowId?: string;
+  /** Computed by the server from this assessment's own workflow — never compare status text to decide this. */
+  completed: boolean;
   organizationId: string;
   campaignId?: string;
   campaignName?: string; // For display in tables
@@ -1211,6 +1213,8 @@ export interface VulnerabilityListItem {
   exceptionState?: string;
   exceptionApproval?: string;
   assessmentId: string;
+  /** The workflow the finding's assessment runs on; findings have no workflow of their own. */
+  workflowId?: string;
   applicationId?: string;
   organizationId?: string;
   assessmentName?: string;
@@ -1749,6 +1753,9 @@ export interface EmailNotificationEvent {
   customMessage?: string | null;
   perStage: boolean;
   stageId?: string | null;
+  /** Present on per-stage events: which workflow's stage this setting belongs to. */
+  workflowId?: string;
+  workflowName?: string;
 }
 
 export interface EmailNotificationConfig {

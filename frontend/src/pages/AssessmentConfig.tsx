@@ -33,6 +33,7 @@ import { useEdition } from '../context/EditionContext';
 import { PaidBadge } from '../components/PaidFeature';
 import { DEFAULT_WORKFLOW_ID, useWorkflows } from '../hooks/useWorkflow';
 import { workflowErrorMessages } from '../utils/workflowErrors';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
 import WorkflowsTab from './workflows/WorkflowsTab';
 
 const TYPES_TABLE_KEY = 'assessmentConfig.assessmentTypes';
@@ -45,6 +46,14 @@ export default function AssessmentConfig() {
   // Every workflow, archived ones too, so the types table can name whichever one a type is on.
   const { workflows, reload: reloadWorkflows } = useWorkflows(true);
   const workflowById = (id?: string) => workflows.find((w) => w.id === (id || DEFAULT_WORKFLOW_ID));
+  // The nine screens elsewhere that render rows from more than one workflow read the shared
+  // WorkflowsContext, not this page's own local copy — refresh both after a save/create/archive/delete
+  // so an edit made here shows up on them without a full reload.
+  const { reload: reloadWorkflowsContext } = useWorkflowsContext();
+  const handleWorkflowsChanged = useCallback(() => {
+    reloadWorkflows();
+    reloadWorkflowsContext();
+  }, [reloadWorkflows, reloadWorkflowsContext]);
 
   // ── Assessment Types ────────────────────────────────────────────────────────
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
@@ -940,7 +949,7 @@ export default function AssessmentConfig() {
       {/* ── Workflows ──────────────────────────────────────────────────────── */}
       {permissions.canManageAssessmentWorkflow && workflowsVisited && (
         <div hidden={activeTab !== 'workflows'}>
-          <WorkflowsTab onWorkflowsChanged={reloadWorkflows} active={activeTab === 'workflows'} />
+          <WorkflowsTab onWorkflowsChanged={handleWorkflowsChanged} active={activeTab === 'workflows'} />
         </div>
       )}
 
