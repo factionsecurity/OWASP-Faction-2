@@ -4,6 +4,7 @@ import com.faction.clientportal.dto.ApplicationIdConfigDto;
 import com.faction.clientportal.dto.ApplicationIdConfigUpdateRequest;
 import com.faction.clientportal.model.ApplicationIdConfig;
 import com.faction.clientportal.repository.ApplicationIdConfigRepository;
+import com.faction.clientportal.repository.ApplicationRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -24,6 +25,9 @@ class ApplicationIdConfigServiceTest {
 
     @Mock
     private ApplicationIdConfigRepository repository;
+
+    @Mock
+    private ApplicationRepository applicationRepository;
 
     @InjectMocks
     private ApplicationIdConfigService service;
@@ -150,5 +154,34 @@ class ApplicationIdConfigServiceTest {
 
         assertThat(dto.getPrefix()).isEqualTo("ASMT");
         assertThat(dto.getEnabled()).isFalse();
+    }
+
+    /**
+     * Applications imported or created with their own ids leave the counter behind them. Handing out
+     * the counter's number regardless means the insert fails on the unique index on app_id, which is
+     * what took down creating an assessment for a new application.
+     */
+    @Test
+    void generateNextAppId_skipsNumbersExistingApplicationsAlreadyUse() {
+        when(repository.findByIdForUpdate("default")).thenReturn(Optional.of(config("ASMT", 112, true)));
+        when(applicationRepository.highestAppIdNumber("ASMT-%")).thenReturn(12345L);
+
+        String appId = service.generateNextAppId();
+
+        assertThat(appId).isEqualTo("ASMT-12346");
+        ArgumentCaptor<ApplicationIdConfig> captor = ArgumentCaptor.forClass(ApplicationIdConfig.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getNextNumber()).isEqualTo(12347);
+    }
+
+    /** Belt and braces: an id in a shape the highest-number query can't see is still never handed out twice. */
+    @Test
+    void generateNextAppId_skipsAnIdThatAlreadyExists() {
+        when(repository.findByIdForUpdate("default")).thenReturn(Optional.of(config("ASMT", 7, true)));
+        when(applicationRepository.highestAppIdNumber("ASMT-%")).thenReturn(0L);
+        when(applicationRepository.existsByAppId("ASMT-7")).thenReturn(true);
+        when(applicationRepository.existsByAppId("ASMT-8")).thenReturn(false);
+
+        assertThat(service.generateNextAppId()).isEqualTo("ASMT-8");
     }
 }

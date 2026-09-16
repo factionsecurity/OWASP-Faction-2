@@ -25,6 +25,20 @@ public interface ApplicationRepository extends JpaRepository<Application, String
      */
     Optional<Application> findByAppIdIgnoreCase(String appId);
 
+    boolean existsByAppId(String appId);
+
+    /**
+     * The highest number already used by application ids matching this LIKE pattern ({@code "ASMT-%"}),
+     * or 0 when none do. Ids that don't end in a number are ignored: generated ids are prefix-number,
+     * while an id somebody typed or imported can hold anything.
+     */
+    @Query(value = """
+            SELECT COALESCE(MAX(CAST(SUBSTRING(app_id FROM '[0-9]+$') AS BIGINT)), 0)
+            FROM applications
+            WHERE app_id LIKE :prefixPattern
+            """, nativeQuery = true)
+    long highestAppIdNumber(@org.springframework.data.repository.query.Param("prefixPattern") String prefixPattern);
+
     Optional<Application> findByNameIgnoreCase(String name);
 
     List<Application> findByOrganizationId(String organizationId);
