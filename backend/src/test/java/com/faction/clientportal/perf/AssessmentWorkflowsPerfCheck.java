@@ -84,7 +84,8 @@ class AssessmentWorkflowsPerfCheck extends TestContainersConfig {
     private static final List<String> STARTUP_INDEXES = List.of(
             "idx_assessments_workflow_status", "idx_vulnerabilities_assessment_status",
             "idx_vulnerability_stage_completions_stage",
-            "idx_vulnerabilities_open_due_at", "idx_vulnerabilities_open_warning_at");
+            "idx_vulnerabilities_open_due_at", "idx_vulnerabilities_open_warning_at",
+            "idx_vulnerabilities_alltime_summary");
     /** Mirrors VulnerabilityPastDueJob.SKIPPED_STATUSES, which is package-private. */
     private static final Set<String> PAST_DUE_SKIPPED =
             Set.of("Past Due", "Closed", "In Retest", "Passed Retest", "Failed Retest");
@@ -133,7 +134,7 @@ class AssessmentWorkflowsPerfCheck extends TestContainersConfig {
         seed();
         jdbcTemplate.execute("VACUUM ANALYZE");
         indexSeconds.put("Workflow indexes (3)", seconds(workflowIndexInitializer::ensureIndexes));
-        indexSeconds.put("SLA due-date partial indexes (2)", seconds(slaIndexInitializer::ensureIndexes));
+        indexSeconds.put("SLA due-date + all-time summary indexes (3)", seconds(slaIndexInitializer::ensureIndexes));
         for (String index : STARTUP_INDEXES) {
             assertThat(valid(index)).as(index + " built and valid").isTrue();
         }
@@ -158,7 +159,12 @@ class AssessmentWorkflowsPerfCheck extends TestContainersConfig {
                 RemediationQueueCriteria.builder().build(), PageRequest.of(200, 50)));
         check("Remediation queue badge counts", true, () -> vulnerabilityRepository.countRemediationBuckets(
                 RemediationQueueCriteria.builder().build()));
-        check("Severity summary tiles", true, () -> vulnerabilityRepository.summarizeBySeverity(
+        // Split in phase 5c (task 4): the open-only half rides the SLA partial indexes, the
+        // all-time half needs its own covering index (task 5) — measured separately so the report
+        // shows which half is still failing the no-seq-scan rule.
+        check("Severity summary tiles, open-only", true, () -> vulnerabilityRepository.summarizeOpenBySeverity(
+                VulnerabilitySearchCriteria.builder().includeClosed(true).build()));
+        check("Severity summary tiles, all-time", true, () -> vulnerabilityRepository.summarizeAllTimeBySeverity(
                 List.of(0, 1, 2, 3), VulnerabilitySearchCriteria.builder().includeClosed(true).build()));
         check("Assessment search, exclude completed", true, () -> assessmentRepository.searchAdvanced(
                 AssessmentSearchCriteria.builder().excludeCompleted(true)
