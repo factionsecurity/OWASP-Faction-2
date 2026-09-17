@@ -17,15 +17,18 @@ import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.AssessmentRepository;
 import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.OrganizationRepository;
+import com.faction.clientportal.repository.RemediationQueueCriteria;
 import com.faction.clientportal.repository.RetestRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.repository.VulnerabilityRepository;
+import com.faction.clientportal.repository.VulnerabilityRepositoryCustom.RemediationDueRow;
 import com.faction.clientportal.security.RequiresPermissionAuthorizationManager;
 import com.faction.clientportal.testsupport.TestWorkflows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -35,6 +38,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
@@ -243,6 +247,240 @@ class RemediationQueueListTest extends TestContainersConfig {
                 .containsExactly("UrgentVuln", "UrgentRetest", "WarningVuln", "FutureRetest", "RequestedRetest");
         assertThat(result).extracting(RemediationRowDto::getType)
                 .containsExactly("VULNERABILITY", "RETEST", "VULNERABILITY", "RETEST", "RETEST");
+    }
+
+    /**
+     * The safety net for the retest-lookup restructuring (Task 2 of the queue-performance phase):
+     * pins {@code listRemediationDue}'s full row content — every field {@code toRemediationRow} reads
+     * off the native query's {@code Object[]} by hardcoded index — for a known ordering that mixes a
+     * never-retested urgent vuln, an urgent open retest, and a warning-tier vuln with a history of
+     * completed retests (so {@code last_retest_status}/{@code last_retest_date} are exercised, not just
+     * left null). A restructuring that changes the outer projection's column order/arity without
+     * updating the mapper in lockstep, or that resolves the retest lookup incorrectly once deferred to
+     * only the surviving page, shows up here.
+     */
+    @Test
+    void pinsFullRowContentAndOrdering_includingLastRetestColumns() {
+        String urgentVulnId = vuln("UrgentVuln", VulnerabilitySeverity.HIGH, 40); // HIGH due at 30 → due today-10
+        String warningVulnId = vuln("WarningVulnWithRetests", VulnerabilitySeverity.HIGH, 20); // due today+10
+
+        LocalDateTime olderClosed = LocalDateTime.now().minusDays(10).truncatedTo(ChronoUnit.MICROS);
+        LocalDateTime newerClosed = LocalDateTime.now().minusDays(1).truncatedTo(ChronoUnit.MICROS);
+        retestRepository.save(baseRetest(warningVulnId, "PASSED", assessmentId, appId)
+                .closedDate(olderClosed).updatedAt(olderClosed).build());
+        retestRepository.save(baseRetest(warningVulnId, "FAILED", assessmentId, appId)
+                .closedDate(newerClosed).updatedAt(newerClosed).build());
+
+        String urgentRetestVulnId = freshVuln("UrgentRetestTarget");
+        LocalDateTime retestStart = LocalDateTime.now().minusDays(10).truncatedTo(ChronoUnit.MICROS);
+        LocalDateTime retestEnd = LocalDateTime.now().minusDays(5).truncatedTo(ChronoUnit.MICROS);
+        Retest urgentRetest = retestRepository.save(baseRetest(urgentRetestVulnId, "IN_PROGRESS", assessmentId, appId)
+                .scheduledStartDate(retestStart).scheduledEndDate(retestEnd).build());
+
+        Vulnerability urgentVuln = vulnerabilityRepository.findById(urgentVulnId).orElseThrow();
+        Vulnerability warningVuln = vulnerabilityRepository.findById(warningVulnId).orElseThrow();
+
+        Page<RemediationDueRow> page = vulnerabilityRepository.listRemediationDue(
+                RemediationQueueCriteria.builder().build(), PAGE);
+
+        assertThat(page.getTotalElements()).isEqualTo(3);
+        List<RemediationDueRow> rows = page.getContent();
+        // tier0 (urgent), due_date ascending: UrgentVuln (today-10) before the open retest (today-5);
+        // tier1 (warning): WarningVulnWithRetests (today+10).
+        assertThat(rows).extracting(RemediationDueRow::name)
+                .containsExactly("UrgentVuln", "UrgentRetestTarget", "WarningVulnWithRetests");
+
+        RemediationDueRow r0 = rows.get(0);
+        assertThat(r0.rowType()).isEqualTo("VULNERABILITY");
+        assertThat(r0.rowId()).isEqualTo(urgentVulnId);
+        assertThat(r0.vulnerabilityId()).isEqualTo(urgentVulnId);
+        assertThat(r0.assessmentId()).isEqualTo(assessmentId);
+        assertThat(r0.workflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID);
+        assertThat(r0.applicationId()).isEqualTo(appId);
+        assertThat(r0.applicationName()).isEqualTo("Payments API");
+        assertThat(r0.organizationId()).isEqualTo(orgId);
+        assertThat(r0.organizationName()).isEqualTo("Acme");
+        assertThat(r0.name()).isEqualTo("UrgentVuln");
+        assertThat(r0.severity()).isEqualTo(VulnerabilitySeverity.HIGH.ordinal());
+        assertThat(r0.urgent()).isTrue();
+        assertThat(r0.warning()).isFalse();
+        assertThat(r0.dueDate()).isEqualTo(urgentVuln.getDueAt().toLocalDate());
+        assertThat(r0.startDate()).isNull();
+        assertThat(r0.endDate()).isNull();
+        assertThat(r0.vulnerabilityStatus()).isEqualTo("Open");
+        assertThat(r0.retestStatus()).isNull();
+        assertThat(r0.lastRetestStatus()).isNull();
+        assertThat(r0.lastRetestDate()).isNull();
+
+        RemediationDueRow r1 = rows.get(1);
+        assertThat(r1.rowType()).isEqualTo("RETEST");
+        assertThat(r1.rowId()).isEqualTo(urgentRetest.getId());
+        assertThat(r1.vulnerabilityId()).isEqualTo(urgentRetestVulnId);
+        assertThat(r1.assessmentId()).isEqualTo(assessmentId);
+        assertThat(r1.workflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID);
+        assertThat(r1.applicationId()).isEqualTo(appId);
+        assertThat(r1.applicationName()).isEqualTo("Payments API");
+        assertThat(r1.organizationId()).isEqualTo(orgId);
+        assertThat(r1.organizationName()).isEqualTo("Acme");
+        assertThat(r1.name()).isEqualTo("UrgentRetestTarget");
+        assertThat(r1.severity()).isEqualTo(VulnerabilitySeverity.HIGH.ordinal());
+        assertThat(r1.urgent()).isTrue();
+        assertThat(r1.warning()).isFalse();
+        assertThat(r1.dueDate()).isEqualTo(retestEnd.toLocalDate());
+        assertThat(r1.startDate()).isEqualTo(retestStart);
+        assertThat(r1.endDate()).isEqualTo(retestEnd);
+        assertThat(r1.vulnerabilityStatus()).isEqualTo("Open");
+        assertThat(r1.retestStatus()).isEqualTo("IN_PROGRESS");
+        assertThat(r1.lastRetestStatus()).isNull();
+        assertThat(r1.lastRetestDate()).isNull();
+
+        RemediationDueRow r2 = rows.get(2);
+        assertThat(r2.rowType()).isEqualTo("VULNERABILITY");
+        assertThat(r2.rowId()).isEqualTo(warningVulnId);
+        assertThat(r2.vulnerabilityId()).isEqualTo(warningVulnId);
+        assertThat(r2.assessmentId()).isEqualTo(assessmentId);
+        assertThat(r2.workflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID);
+        assertThat(r2.applicationId()).isEqualTo(appId);
+        assertThat(r2.applicationName()).isEqualTo("Payments API");
+        assertThat(r2.organizationId()).isEqualTo(orgId);
+        assertThat(r2.organizationName()).isEqualTo("Acme");
+        assertThat(r2.name()).isEqualTo("WarningVulnWithRetests");
+        assertThat(r2.severity()).isEqualTo(VulnerabilitySeverity.HIGH.ordinal());
+        assertThat(r2.urgent()).isFalse();
+        assertThat(r2.warning()).isTrue();
+        assertThat(r2.dueDate()).isEqualTo(warningVuln.getDueAt().toLocalDate());
+        assertThat(r2.startDate()).isNull();
+        assertThat(r2.endDate()).isNull();
+        assertThat(r2.vulnerabilityStatus()).isEqualTo("Open");
+        assertThat(r2.retestStatus()).isNull();
+        // The later-updated (FAILED) retest wins for both the result and its date.
+        assertThat(r2.lastRetestStatus()).isEqualTo("FAILED");
+        assertThat(r2.lastRetestDate()).isEqualTo(newerClosed);
+    }
+
+    /**
+     * Guards the deferred lookup's {@code page.row_type = 'VULNERABILITY'} gate specifically — the
+     * shape the other tests can't catch. A RETEST-branch row's {@code vulnerability_id} points at the
+     * vuln under retest, not at itself, so without that gate the deferred outer LATERAL (keyed only on
+     * {@code vulnerability_id}) would resolve the *same* vuln's last verified retest onto the retest
+     * row too. Every other test's open retest carries no completed (PASSED/FAILED) retest of its own,
+     * so the LATERAL's own {@code status IN ('PASSED','FAILED')} filter already excludes it — the gate
+     * being absent would look identical. Here the same vulnerability carries both a completed retest
+     * and a separate open one, so a missing gate has something to leak.
+     */
+    @Test
+    void retestBranchRow_neverCarriesLastRetestColumns_evenWhenItsOwnVulnHasACompletedRetestToo() {
+        String vulnId = vuln("DoubleRetestVuln", VulnerabilitySeverity.HIGH, 20); // due today+10 -> warning
+        LocalDateTime completedClosed = LocalDateTime.now().minusDays(3).truncatedTo(ChronoUnit.MICROS);
+        retestRepository.save(baseRetest(vulnId, "FAILED", assessmentId, appId)
+                .closedDate(completedClosed).updatedAt(completedClosed).build());
+        Retest openRetest = retestRepository.save(baseRetest(vulnId, "SCHEDULED", assessmentId, appId)
+                .scheduledEndDate(LocalDateTime.now().plusDays(5)).build());
+
+        List<RemediationDueRow> rows = vulnerabilityRepository.listRemediationDue(
+                RemediationQueueCriteria.builder().build(), PAGE).getContent();
+
+        RemediationDueRow vulnRow = rows.stream()
+                .filter(r -> "VULNERABILITY".equals(r.rowType()) && vulnId.equals(r.rowId()))
+                .findFirst().orElseThrow();
+        RemediationDueRow retestRow = rows.stream()
+                .filter(r -> "RETEST".equals(r.rowType()) && openRetest.getId().equals(r.rowId()))
+                .findFirst().orElseThrow();
+
+        assertThat(vulnRow.lastRetestStatus()).isEqualTo("FAILED");
+        assertThat(vulnRow.lastRetestDate()).isEqualTo(completedClosed);
+        // The regression this guards: without the row_type gate, the retest row would pick up the
+        // same FAILED/completedClosed values the VULNERABILITY row above just asserted.
+        assertThat(retestRow.lastRetestStatus()).isNull();
+        assertThat(retestRow.lastRetestDate()).isNull();
+    }
+
+    /**
+     * Pins the queue's contract for a deep page: a page taken at any offset must return exactly the
+     * same rows, in the same order, as the equivalent slice of an unpaged call. 400 rows span both
+     * branches and all three tiers, sized so tier boundaries land on page boundaries: tier0
+     * (urgentVuln 150 + urgentRetest 50 = 200 rows, global ranks 0-199) is mixed across both branches,
+     * but tier1 (warningVuln, 100 rows, global ranks 200-299) comes from the vulnerability branch
+     * alone — so the deep page below (offset 200, size 50) sits entirely inside the warning tier and
+     * entirely inside one branch.
+     *
+     * <p>The fixtures are sized this way because an earlier per-branch-limiting implementation (a
+     * "fence" subquery with its own {@code LIMIT}, taken as {@code pageSize} instead of
+     * {@code offset + pageSize}) was built, measured and reverted — that shape would have returned
+     * only the vulnerability branch's top 50 locally-sorted (most-urgent) rows and never reached the
+     * warning tier at all. See {@code docs/superpowers/notes/2026-09-16-workflows-carry-forward.md}.
+     */
+    @Test
+    void pagesDeepOffsetsCorrectly_matchingTheUnpagedOrder() {
+        for (int i = 0; i < 150; i++) {
+            vuln("urgentVuln-" + i, VulnerabilitySeverity.HIGH, 40 + (i % 5)); // due today-(10..14) -> urgent
+        }
+        for (int i = 0; i < 50; i++) {
+            retest("urgentRetest-" + i, "IN_PROGRESS", -20, -(5 + (i % 5))); // overdue -> urgent
+        }
+        for (int i = 0; i < 100; i++) {
+            vuln("warningVuln-" + i, VulnerabilitySeverity.HIGH, 20 + (i % 5)); // due today+(6..10) -> warning
+        }
+        for (int i = 0; i < 100; i++) {
+            retest("futureRetest-" + i, "SCHEDULED", 5, 20 + (i % 5)); // not yet due -> tier 2
+        }
+
+        List<RemediationDueRow> all = vulnerabilityRepository.listRemediationDue(
+                RemediationQueueCriteria.builder().build(), Pageable.unpaged()).getContent();
+        assertThat(all).hasSize(400);
+
+        List<RemediationDueRow> firstPage = vulnerabilityRepository.listRemediationDue(
+                RemediationQueueCriteria.builder().build(), PageRequest.of(0, 50)).getContent();
+        assertThat(firstPage).containsExactlyElementsOf(all.subList(0, 50));
+
+        List<RemediationDueRow> deepPage = vulnerabilityRepository.listRemediationDue(
+                RemediationQueueCriteria.builder().build(), PageRequest.of(4, 50)).getContent();
+        assertThat(deepPage).containsExactlyElementsOf(all.subList(200, 250));
+        assertThat(deepPage).extracting(RemediationDueRow::rowType).containsOnly("VULNERABILITY");
+    }
+
+    /** Pins the final tiebreaker: rows sharing the same tier and the same stored due date must come
+     *  back in {@code row_id} ascending order, not whatever order Postgres happens to produce. */
+    @Test
+    void tiesOnDueDate_areBrokenByRowIdAscending() {
+        String a = vuln("TiedA", VulnerabilitySeverity.HIGH, 40);
+        String b = vuln("TiedB", VulnerabilitySeverity.HIGH, 40);
+        String c = vuln("TiedC", VulnerabilitySeverity.HIGH, 40);
+
+        List<RemediationDueRow> rows = vulnerabilityRepository.listRemediationDue(
+                RemediationQueueCriteria.builder().build(), PAGE).getContent();
+        List<String> tiedInOrder = rows.stream().map(RemediationDueRow::rowId)
+                .filter(id -> id.equals(a) || id.equals(b) || id.equals(c)).toList();
+
+        assertThat(tiedInOrder).containsExactlyElementsOf(
+                java.util.stream.Stream.of(a, b, c).sorted().toList());
+    }
+
+    /**
+     * Pins the other half of the queue's contract: an unpaged call must never be capped. The CSV
+     * export calls {@code listRemediationDue} with {@code Pageable.unpaged()} specifically so it can
+     * never come back truncated — 200 rows here, well past the default 50-row page size.
+     *
+     * <p>The fixture is sized past that default because an earlier per-branch-limiting
+     * implementation (see the note on {@link #pagesDeepOffsetsCorrectly_matchingTheUnpagedOrder})
+     * would have had nothing to derive a per-branch limit from on an unpaged {@code Pageable} (no
+     * offset/pageSize), and this pins that a bogus derived limit does not silently reappear and cap
+     * the result. See {@code docs/superpowers/notes/2026-09-16-workflows-carry-forward.md}.
+     */
+    @Test
+    void unpagedCall_returnsEveryMatchingRow() {
+        for (int i = 0; i < 120; i++) {
+            vuln("unpagedVuln-" + i, VulnerabilitySeverity.HIGH, 40);
+        }
+        for (int i = 0; i < 80; i++) {
+            retest("unpagedRetest-" + i, "IN_PROGRESS", -20, -5);
+        }
+
+        Page<RemediationDueRow> page = vulnerabilityRepository.listRemediationDue(
+                RemediationQueueCriteria.builder().build(), Pageable.unpaged());
+
+        assertThat(page.getContent()).hasSize(200);
+        assertThat(page.getTotalElements()).isEqualTo(200);
     }
 
     @Test
