@@ -1274,14 +1274,31 @@ public class AssessmentService {
     /**
      * Get assessment metrics/statistics
      */
-    public AssessmentMetricsDto getMetrics(String organizationId, Authentication authentication) {
+    public AssessmentMetricsDto getMetrics(String organizationId, List<String> assessmentTypeIds,
+                                           Authentication authentication) {
+        java.util.function.Predicate<Assessment> ofTypes = ofTypes(assessmentTypeIds);
         if (isOrgScopedUser(authentication)) {
             var scope = accessScopeService.resolveAssessmentScope(authentication);
             final String requested = organizationId;
             return getMetrics(a -> scope.permits(a)
-                    && (requested == null || requested.equals(a.getOrganizationId())));
+                    && (requested == null || requested.equals(a.getOrganizationId()))
+                    && ofTypes.test(a));
         }
-        return getMetrics(organizationId);
+        return getMetrics(a -> (organizationId == null || organizationId.equals(a.getOrganizationId()))
+                && ofTypes.test(a));
+    }
+
+    /**
+     * Narrows metrics to assessments of the given types, so the Scheduling pills count only what the
+     * calendar and list beneath them show. No types counts every type, as before. Blank ids are
+     * ignored: a stray empty value would otherwise match nothing and zero every pill.
+     */
+    private static java.util.function.Predicate<Assessment> ofTypes(List<String> assessmentTypeIds) {
+        Set<String> ids = assessmentTypeIds == null ? Set.of() : assessmentTypeIds.stream()
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) return a -> true;
+        return a -> ids.contains(a.getAssessmentTypeId());
     }
 
     public AssessmentMetricsDto getMetrics(String organizationId) {

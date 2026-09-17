@@ -45,7 +45,7 @@ import './ManagerDashboard.css';
 import { useTerminology } from '../context/TerminologyContext';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
-import { mergedStatusNames } from '../utils/workflowLookup';
+import { mergedStatusNames, workflowsForSelectedTypes } from '../utils/workflowLookup';
 
 const TABLE_KEY = 'managerDashboard';
 
@@ -384,9 +384,26 @@ export default function ManagerDashboard() {
 
   // ── Filter option lists + active-filter chips ───────────────────────────────
   const typeOptions: SelectOption[] = assessmentTypes.map((t) => ({ value: t.id, label: t.name }));
-  const statusOptions: SelectOption[] = mergedStatusNames(
-    includeArchivedWorkflows ? workflows : workflows.filter((w) => !w.archived)
-  ).map((s) => ({ value: s, label: s }));
+  // Statuses follow the selected type: none selected lets the archived toggle decide the list, as
+  // before; a type selected offers only the statuses of the workflow that type runs on.
+  const statusOptions: SelectOption[] = useMemo(() => {
+    const offered = workflowsForSelectedTypes(
+      workflows,
+      assessmentTypes,
+      applied.assessmentTypeId ? [applied.assessmentTypeId] : [],
+      includeArchivedWorkflows ? workflows : workflows.filter((w) => !w.archived),
+    );
+    return mergedStatusNames(offered).map((s) => ({ value: s, label: s }));
+  }, [workflows, assessmentTypes, applied.assessmentTypeId, includeArchivedWorkflows]);
+
+  // Clear a selected status the list no longer offers, so the table is never filtered by a value
+  // the status select can't show. Waits for types and workflows: a persisted selection is restored
+  // before either loads, and clearing it in that window would wipe a saved filter on reload.
+  useEffect(() => {
+    if (!applied.status || assessmentTypes.length === 0 || workflows.length === 0) return;
+    if (statusOptions.some((o) => o.value === applied.status)) return;
+    applyInline({ status: '' });
+  }, [statusOptions, applied.status, assessmentTypes.length, workflows.length]);
   const assessorOptions: SelectOption[] = assessors.map((u) => ({ value: u.id, label: userDisplayName(u) }));
   const teamOptions: SelectOption[] = teams.map((t) => ({ value: t.id, label: t.name }));
   const campaignOptions: SelectOption[] = campaigns.map((c) => ({ value: c.id, label: c.name }));

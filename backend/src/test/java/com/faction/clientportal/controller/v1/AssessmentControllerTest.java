@@ -641,6 +641,46 @@ class AssessmentControllerTest extends TestContainersConfig {
     }
 
     @Test
+    void testGetMetrics_FilteredBySeveralTypes() throws Exception {
+        AssessmentType mobile = assessmentTypeRepository.save(AssessmentType.builder()
+                .name("Mobile").createdAt(LocalDateTime.now()).build());
+        AssessmentType cloud = assessmentTypeRepository.save(AssessmentType.builder()
+                .name("Cloud").createdAt(LocalDateTime.now()).build());
+        createTestAssessment("Web one", "New");
+        Assessment m = createTestAssessment("Mobile one", "Testing");
+        m.setAssessmentTypeId(mobile.getId());
+        assessmentRepository.save(m);
+        Assessment c = createTestAssessment("Cloud one", "Completed");
+        c.setAssessmentTypeId(cloud.getId());
+        assessmentRepository.save(c);
+
+        // The Scheduling pills count only the selected types, so each pill agrees with the calendar
+        // and list beneath it instead of counting every assessment on the install.
+        mockMvc.perform(get("/api/v1/assessments/metrics")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .param("assessmentTypeIds", mobile.getId(), cloud.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
+                .andExpect(jsonPath("$.data.statusCounts.Testing").value(1))
+                .andExpect(jsonPath("$.data.statusCounts.Completed").value(1))
+                // The unselected type's assessment is gone, not merely outnumbered.
+                .andExpect(jsonPath("$.data.statusCounts.New").doesNotExist());
+
+        // Comma-joined works too — that is how the UI sends a multi-select.
+        mockMvc.perform(get("/api/v1/assessments/metrics")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .param("assessmentTypeIds", mobile.getId() + "," + cloud.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2));
+
+        // No types selected: every assessment still counts, as before.
+        mockMvc.perform(get("/api/v1/assessments/metrics")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3));
+    }
+
+    @Test
     void testSearchAssessments_FilteredBySeveralTypes() throws Exception {
         AssessmentType mobile = assessmentTypeRepository.save(AssessmentType.builder()
                 .name("Mobile").createdAt(LocalDateTime.now()).build());

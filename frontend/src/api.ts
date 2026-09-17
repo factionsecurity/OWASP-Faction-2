@@ -939,9 +939,11 @@ export const assessmentsApi = {
     return response.data;
   },
 
-  getMetrics: async (organizationId?: string): Promise<ApiResponse<AssessmentMetrics>> => {
+  getMetrics: async (organizationId?: string, assessmentTypeIds?: string[]): Promise<ApiResponse<AssessmentMetrics>> => {
     const params: Record<string, string> = {};
     if (organizationId) params.organizationId = organizationId;
+    // Comma-joined, as the list endpoint takes a multi-select. Omitted when empty: no types counts every type.
+    if (assessmentTypeIds && assessmentTypeIds.length > 0) params.assessmentTypeIds = assessmentTypeIds.join(',');
     const response = await api.get<ApiResponse<AssessmentMetrics>>('/assessments/metrics', { params });
     return response.data;
   },

@@ -387,7 +387,9 @@ public class AssessmentController {
         summary = "Get assessment metrics",
         description = "Get assessment statistics by status and past due count",
         parameters = {
-            @Parameter(name = "organizationId", description = "Filter metrics by organization ID (optional)")
+            @Parameter(name = "organizationId", description = "Filter metrics by organization ID (optional)"),
+            @Parameter(name = "assessmentTypeIds", description = "Count only assessments of any of these type IDs "
+                + "(repeatable or comma-separated); omit to count every type")
         },
         responses = {
             @ApiResponse(
@@ -401,9 +403,10 @@ public class AssessmentController {
     )
     public ResponseEntity<JsonApiResponse<AssessmentMetricsDto>> getMetrics(
         @Parameter(hidden = true) @RequestParam(required = false) String organizationId,
+        @Parameter(hidden = true) @RequestParam(required = false) List<String> assessmentTypeIds,
         Authentication authentication
     ) {
-        AssessmentMetricsDto metrics = assessmentService.getMetrics(organizationId, authentication);
+        AssessmentMetricsDto metrics = assessmentService.getMetrics(organizationId, assessmentTypeIds, authentication);
         return ResponseUtil.success("Metrics retrieved successfully", metrics);
     }
 
