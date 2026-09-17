@@ -139,6 +139,24 @@
   color: #ef4444;
 }
 
+/* Inline toggle beside the status filter — mirrors the Operational Dashboard's
+   "Include archived workflows" control. */
+.aod-include-archived-workflows {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.aod-include-archived-workflows input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+
 @media (max-width: 1024px) {
   .aod-stats {
     grid-template-columns: 1fr;

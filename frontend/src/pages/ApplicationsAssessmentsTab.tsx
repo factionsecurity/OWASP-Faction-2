@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Eye, ClipboardList } from 'lucide-react';
-import { assessmentsApi, workflowConfigApi, assessmentSurveysApi, applicationsApi } from '../api';
+import { assessmentsApi, assessmentSurveysApi, applicationsApi } from '../api';
 import type { Assessment, AssessmentSurvey } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
 import { Badge, IconButton, ActionButtons } from '../components';
 import { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import ReportPreviewDrawer from '../components/ReportPreviewDrawer';
 import SurveyDrawer from '../components/SurveyDrawer';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { colorFor, statusLabel, mergedStatusNames } from '../utils/workflowLookup';
 import '../components/SearchableSelect.css';
 
 const PAGE_SIZE = 10;
@@ -17,9 +19,8 @@ const APP_OPTION_LIMIT = 250;
 
 // ── Tab ───────────────────────────────────────────────────────────────────────
 export default function ApplicationsAssessmentsTab() {
+  const { workflows } = useWorkflowsContext();
   const [allAssessments, setAllAssessments] = useState<Assessment[]>([]);
-  const [statusColors, setStatusColors] = useState<Record<string, string>>({});
-  const [completedStatus, setCompletedStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [tablePage, setTablePage] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
@@ -30,8 +31,8 @@ export default function ApplicationsAssessmentsTab() {
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   // Only assessments still waiting on a survey response.
   const [openSurveysOnly, setOpenSurveysOnly] = useState(false);
-  // Statuses are configured per install, so the options come from the workflow config.
-  const [statusOptions, setStatusOptions] = useState<string[]>([]);
+  // Statuses are configured per install, so the options come from the workflows themselves.
+  const statusOptions = mergedStatusNames(workflows.filter((w) => !w.archived));
   const [appOptions, setAppOptions] = useState<SelectOption[]>([]);
   const [appSearchLoading, setAppSearchLoading] = useState(false);
   const [selectedAppLabels, setSelectedAppLabels] = useState<Record<string, string>>({});
@@ -100,15 +101,9 @@ export default function ApplicationsAssessmentsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tablePage, pageSize, search, filterApplicationIds, filterStatuses, openSurveysOnly, sort]);
 
-  // One-time: workflow config, default app options, and the chat deep link
-  // (?assessment=&survey=) — the target may not be on the current page, so fetch it directly.
+  // One-time: default app options and the chat deep link (?assessment=&survey=) — the target
+  // may not be on the current page, so fetch it directly.
   useEffect(() => {
-    workflowConfigApi.getConfig().then(res => {
-      if (res.success && res.data?.statusColors) setStatusColors(res.data.statusColors);
-      if (res.success && res.data?.completedStatus) setCompletedStatus(res.data.completedStatus);
-      if (res.success && res.data?.statuses) setStatusOptions(res.data.statuses);
-    }).catch(() => {});
-
     searchApps('');
 
     const linkedAssessmentId = searchParams.get('assessment');
@@ -162,13 +157,13 @@ export default function ApplicationsAssessmentsTab() {
       header: 'Status',
       sortKey: 'status',
       render: (a) => {
-        const custom = statusColors[a.status];
+        const custom = colorFor(workflows, a.workflowId, a.status);
         return (
           <Badge
             variant={custom ? undefined : 'secondary'}
             customColor={custom}
           >
-            {a.status}
+            {statusLabel(workflows, a.workflowId, a.status)}
           </Badge>
         );
       },
@@ -188,7 +183,7 @@ export default function ApplicationsAssessmentsTab() {
       render: (a) => {
         // Counts only apply once the assessment is finalized (its vulns are opened); read the
         // server-computed per-assessment summary on the DTO instead of a client-side fan-out.
-        const isFinalized = !!completedStatus && a.status === completedStatus;
+        const isFinalized = a.completed;
         if (!isFinalized) return <span className="text-muted">-</span>;
         const vs = a.vulnerabilitySummary;
         const critical = vs?.critical ?? 0;

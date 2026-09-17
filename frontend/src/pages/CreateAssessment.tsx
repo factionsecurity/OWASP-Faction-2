@@ -307,6 +307,7 @@ export default function CreateAssessment() {
         fieldDefinitions: [],
         fieldValues: {},
         status: formData.status,
+        completed: false,
         startDate: toApiDate(formData.startDate),
         plannedEndDate: toApiDate(formData.plannedEndDate),
         assessorIds: formData.assessorIds,

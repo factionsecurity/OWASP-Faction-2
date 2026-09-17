@@ -56,6 +56,7 @@ function retestToCalendarItem(r: Retest): Assessment {
     startDate: r.scheduledStartDate,
     plannedEndDate: r.scheduledEndDate,
     assessorIds: r.assignedAssessorIds,
+    completed: false,
   } as unknown as Assessment;
 }
 
@@ -280,6 +281,7 @@ export default function ScheduleRetestPage() {
     startDate: toApiDate(startDate),
     plannedEndDate: toApiDate(endDate),
     assessorIds: assessorIds,
+    completed: false,
   } as unknown as Assessment : null;
 
   const internalUsers = users.filter(u => u.isInternal);

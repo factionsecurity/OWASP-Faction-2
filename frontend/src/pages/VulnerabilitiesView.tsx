@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, Eye, RefreshCw } from 'lucide-react';
-import { assessmentsApi, applicationsApi, organizationsApi, vulnerabilitiesApi, workflowConfigApi } from '../api';
-import type { Assessment, RemediationStage, Vulnerability, VulnerabilityListItem } from '../types';
+import { assessmentsApi, applicationsApi, organizationsApi, vulnerabilitiesApi } from '../api';
+import type { Assessment, Vulnerability, VulnerabilityListItem } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import { Badge, Button, SeverityBadge, IconButton, ActionButtons, FormLabel, Checkbox, Input } from '../components';
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
@@ -10,6 +10,8 @@ import VulnerabilityDetailDrawer from '../components/VulnerabilityDetailDrawer';
 import type { VulnSummaryFilters } from '../components/VulnSummaryPanel';
 import { DEFAULT_VULN_STATUSES, vulnStatusBadgeVariant } from '../utils/vulnStatus';
 import { usePermissions } from '../utils/permissions';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { mergedVulnerabilityStatuses, mergedStageNames, stageIdForName } from '../utils/workflowLookup';
 import './Applications.css';
 import { useTerminology } from '../context/TerminologyContext';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -52,13 +54,23 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
   // it on the account flag, so the panel must open read-only for them too.
   const canEditVulns = userPerms.canEditVulnerabilities && !isExternal;
 
+  const { workflows } = useWorkflowsContext();
   const [vulns, setVulns] = useState<VulnerabilityListItem[]>([]);
-  const [remediationStages, setRemediationStages] = useState<RemediationStage[]>([]);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = usePersistedState(TABLE_KEY, 'pageSize', PAGE_SIZE);
   // Starts true so DataTable doesn't clamp a restored page against the empty pre-load total.
   const [loading, setLoading] = useState(true);
-  const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(DEFAULT_VULN_STATUSES);
+  // Off by default: an archived workflow's statuses still stay filterable on request, but
+  // shouldn't clutter the everyday dropdown. Coloring a row still always uses the full
+  // `workflows` list — an archived workflow's rows still need their colors resolved.
+  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = usePersistedState(TABLE_KEY, 'includeArchivedWorkflows', false);
+  // Built-ins plus every workflow's configured statuses, merged — the built-ins are still
+  // built in, they just aren't part of `mergedVulnerabilityStatuses`.
+  const configuredStatuses = [
+    ...DEFAULT_VULN_STATUSES,
+    ...mergedVulnerabilityStatuses(includeArchivedWorkflows ? workflows : workflows.filter(w => !w.archived))
+      .filter(s => !DEFAULT_VULN_STATUSES.includes(s)),
+  ];
 
   // Filters
   const [search, setSearch] = usePersistedState(TABLE_KEY, 'search', '');
@@ -161,14 +173,9 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
   useEffect(() => { setDraftOpenedFrom(filterOpenedFrom); }, [filterOpenedFrom]);
   useEffect(() => { setDraftOpenedTo(filterOpenedTo); }, [filterOpenedTo]);
 
-  // One-time: statuses config, all organizations, default app/assessment option lists.
+  // One-time: all organizations, default app/assessment option lists. Statuses and stage columns
+  // come from WorkflowsContext instead of a one-time fetch.
   useEffect(() => {
-    workflowConfigApi.getConfig().then(res => {
-      const custom = res.success && res.data ? (res.data.vulnerabilityStatuses || []) : [];
-      setConfiguredStatuses([...DEFAULT_VULN_STATUSES, ...custom.filter(s => !DEFAULT_VULN_STATUSES.includes(s))]);
-      setRemediationStages(res.success && res.data ? (res.data.remediationStages || []) : []);
-    }).catch(() => { setConfiguredStatuses(DEFAULT_VULN_STATUSES); setRemediationStages([]); });
-
     organizationsApi.getAll(0, 1000)
       .then(r => setOrgOptions((r.data || []).map(o => ({ value: o.id, label: o.name }))))
       .catch(() => setOrgOptions([]));
@@ -423,18 +430,23 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
     { header: 'Assessment', sortKey: 'assessmentName', render: (v) => <span>{v.assessmentName || '-'}</span> },
     { header: organizationSingular, sortKey: 'organizationName', render: (v) => <span>{v.organizationName || '-'}</span> },
     { header: 'Opened', sortKey: 'openedAt', render: (v) => v.openedAt ? new Date(v.openedAt).toLocaleDateString() : '-' },
-    // One column per configured non-terminal remediation stage, shown only when a row on this
-    // page carries that stage's date (the terminal stage IS the Closed column). The header is
-    // the stage name exactly as configured — nothing prepended, since names are often already
-    // phrases like "Closed in Dev".
-    ...remediationStages.slice(0, -1)
-      .filter(stage => vulns.some(v => v.stageCompletions?.[stage.id]))
-      .map((stage): Column<VulnerabilityListItem> => ({
-        header: stage.name,
-        sortKey: `stage:${stage.id}`,
-        render: (v) => v.stageCompletions?.[stage.id]
-          ? new Date(v.stageCompletions[stage.id]).toLocaleDateString()
-          : '-',
+    // One column per non-terminal remediation stage name across every workflow, shown only when a
+    // row on this page carries that stage's date (the terminal stage IS the Closed column). Each
+    // row resolves the stage id from its OWN assessment's workflow — a column is a name, but
+    // `stageCompletions` is keyed by stage id, and different workflows can use different ids for
+    // stages of the same name (or have no such stage at all, which renders an empty cell).
+    ...mergedStageNames(workflows)
+      .filter(stageName => vulns.some(v => {
+        const stageId = stageIdForName(workflows, v.workflowId, stageName);
+        return stageId && v.stageCompletions?.[stageId];
+      }))
+      .map((stageName): Column<VulnerabilityListItem> => ({
+        header: stageName,
+        render: (v) => {
+          const stageId = stageIdForName(workflows, v.workflowId, stageName);
+          const completion = stageId ? v.stageCompletions?.[stageId] : undefined;
+          return completion ? new Date(completion).toLocaleDateString() : '-';
+        },
       })),
     { header: 'Closed', sortKey: 'closedAt', render: (v) => v.closedAt ? new Date(v.closedAt).toLocaleDateString() : '-' },
     {
@@ -494,6 +506,14 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
         searchable={false}
         placeholder="All Statuses"
       />
+      <label className="vulns-include-archived-workflows">
+        <input
+          type="checkbox"
+          checked={includeArchivedWorkflows}
+          onChange={(e) => setIncludeArchivedWorkflows(e.target.checked)}
+        />
+        Include archived workflows
+      </label>
       <Button
         variant="secondary"
         icon={Download}
@@ -580,7 +600,6 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
         allowStatusEdit={canEditVulns}
         allowFieldEdit={canEditVulns}
         showException={true}
-        configuredStatuses={configuredStatuses}
         onVulnUpdate={handleVulnUpdate}
         onScheduleRetest={() => {
           if (selectedVuln) {

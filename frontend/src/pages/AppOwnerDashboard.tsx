@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Timer, CalendarClock, AlertTriangle } from 'lucide-react';
-import { applicationsApi, assessmentsApi, remediationApi, vulnerabilitiesApi, workflowConfigApi } from '../api';
+import { applicationsApi, assessmentsApi, remediationApi, vulnerabilitiesApi } from '../api';
 import { Badge, SeverityBadge } from '../components';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import VulnerabilityDetailDrawer from '../components/VulnerabilityDetailDrawer';
 import SeverityPillCard, { positiveEmpty } from '../components/SeverityPillCard';
 import Page from '../components/Page';
-import { DEFAULT_VULN_STATUSES } from '../utils/vulnStatus';
+import { DEFAULT_VULN_STATUSES, vulnStatusBadgeVariant } from '../utils/vulnStatus';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { mergedVulnerabilityStatuses } from '../utils/workflowLookup';
 import type {
   Assessment, RemediationQueueRow, Vulnerability, VulnerabilityTrendSummary,
 } from '../types';
@@ -23,14 +25,6 @@ const TABLE_KEY = 'appOwnerDashboard';
 // and server-filtered, so the page never holds more than one screenful of findings.
 const PAGE_SIZE = 10; // must match a DataTable page-size option (10/25/50/100)
 const OPTION_LIMIT = 250; // starter list for the application dropdown; typing server-searches
-
-const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  'None': 'secondary',
-  'Open': 'warning',
-  'Past Due': 'danger',
-  'Closed': 'success',
-  'Exception': 'info',
-};
 
 const fmtDate = (d?: string | Date) => (d ? new Date(d).toLocaleDateString() : '—');
 
@@ -79,7 +73,18 @@ export default function AppOwnerDashboard() {
   // Saved with the filter so a restored application still shows its name when it is not in the
   // starter option list. Only the selected application's label is kept, so it never grows.
   const [appLabels, setAppLabels] = usePersistedState<Record<string, string>>(TABLE_KEY, 'appLabels', {});
-  const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(DEFAULT_VULN_STATUSES);
+  const { workflows } = useWorkflowsContext();
+  // Off by default: an archived workflow's statuses still stay filterable on request, but
+  // shouldn't clutter the everyday dropdown. Coloring a row still always uses the full
+  // `workflows` list — an archived workflow's rows still need their colors resolved.
+  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = usePersistedState(TABLE_KEY, 'includeArchivedWorkflows', false);
+  // Built-ins plus every workflow's configured statuses, merged — the built-ins are still
+  // built in, they just aren't part of `mergedVulnerabilityStatuses`.
+  const configuredStatuses = [
+    ...DEFAULT_VULN_STATUSES,
+    ...mergedVulnerabilityStatuses(includeArchivedWorkflows ? workflows : workflows.filter(w => !w.archived))
+      .filter(s => !DEFAULT_VULN_STATUSES.includes(s)),
+  ];
 
   const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
   const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null);
@@ -93,14 +98,6 @@ export default function AppOwnerDashboard() {
       .then(res => setNextAssessment(res.data?.[0] ?? null))
       .catch(() => setNextAssessment(null))
       .finally(() => setNextLoading(false));
-
-    workflowConfigApi.getConfig()
-      .then(res => {
-        const custom = res.data?.vulnerabilityStatuses || [];
-        setConfiguredStatuses([...DEFAULT_VULN_STATUSES,
-          ...custom.filter(st => !DEFAULT_VULN_STATUSES.includes(st))]);
-      })
-      .catch(() => setConfiguredStatuses(DEFAULT_VULN_STATUSES));
 
     searchApps('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,7 +226,7 @@ export default function AppOwnerDashboard() {
       header: 'Status',
       sortKey: 'vulnerabilityStatus',
       render: r => (
-        <Badge variant={STATUS_COLORS[r.vulnerabilityStatus || 'None'] ?? 'info'} size="sm">
+        <Badge variant={vulnStatusBadgeVariant(r.vulnerabilityStatus)} size="sm">
           {r.vulnerabilityStatus || 'None'}
         </Badge>
       ),
@@ -285,6 +282,14 @@ export default function AppOwnerDashboard() {
         searchable={false}
         placeholder="All Statuses"
       />
+      <label className="aod-include-archived-workflows">
+        <input
+          type="checkbox"
+          checked={includeArchivedWorkflows}
+          onChange={(e) => setIncludeArchivedWorkflows(e.target.checked)}
+        />
+        Include archived workflows
+      </label>
     </div>
   );
 

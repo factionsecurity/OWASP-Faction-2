@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, Download, AlertCircle } from 'lucide-react';
-import { assessmentsApi, applicationsApi, assessmentTypesApi, workflowConfigApi } from '../api';
+import { assessmentsApi, applicationsApi, assessmentTypesApi } from '../api';
 import type {
   Assessment,
   Application,
@@ -13,6 +13,8 @@ import { Button, Badge, FormLabel, Input, Checkbox } from '../components';
 import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { colorFor, statusLabel, mergedStatusNames } from '../utils/workflowLookup';
 import './Assessments.css';
 
 // localStorage key for this table's saved search, filters, sort and paging.
@@ -21,6 +23,7 @@ const TABLE_KEY = 'assessments';
 export default function Assessments() {
   const navigate = useNavigate();
   const { hasAnyPermission } = usePermissions();
+  const { workflows } = useWorkflowsContext();
 
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,8 +33,6 @@ export default function Assessments() {
   // Reference data
   const [applications, setApplications] = useState<Application[]>([]);
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
-  const [statusColors, setStatusColors] = useState<Record<string, string>>({});
-  const [wfStatuses, setWfStatuses] = useState<string[]>([]);
 
   const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
@@ -77,7 +78,7 @@ export default function Assessments() {
   const typeOptions: SelectOption[] = useMemo(
     () => assessmentTypes.map((t) => ({ value: t.id, label: t.name })), [assessmentTypes]);
   const statusOptions: SelectOption[] = useMemo(
-    () => wfStatuses.map((s) => ({ value: s, label: s })), [wfStatuses]);
+    () => mergedStatusNames(workflows.filter((w) => !w.archived)).map((s) => ({ value: s, label: s })), [workflows]);
 
   // ── Zone 2: inline filters apply immediately ───────────────────────────────
   const applyInline = (patch: Partial<typeof filters>) => {
@@ -195,13 +196,6 @@ export default function Assessments() {
     } catch (err) {
       console.error('Failed to load reference data:', err);
     }
-
-    workflowConfigApi.getConfig().then(res => {
-      if (res.success && res.data) {
-        if (res.data.statusColors) setStatusColors(res.data.statusColors);
-        if (res.data.statuses) setWfStatuses(res.data.statuses);
-      }
-    }).catch(() => {});
   };
 
   const handleViewClick = (assessment: Assessment) => {
@@ -320,10 +314,10 @@ export default function Assessments() {
       sortKey: 'status',
       accessor: 'status',
       render: (assessment) => {
-        const custom = statusColors[assessment.status];
+        const custom = colorFor(workflows, assessment.workflowId, assessment.status);
         return (
           <Badge variant={custom ? undefined : 'secondary'} customColor={custom}>
-            {assessment.status.replace('_', ' ')}
+            {statusLabel(workflows, assessment.workflowId, assessment.status)}
           </Badge>
         );
       },

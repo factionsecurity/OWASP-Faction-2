@@ -136,6 +136,13 @@
   font-size: 0.86rem;
 }
 
+/* Beside a per-stage event's label, names which workflow the stage belongs to —
+   installations with more than one workflow can share a stage name (e.g. "Staging"). */
+.email-notifications-workflow-qualifier {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
 .email-notifications-description {
   margin-top: 0.15rem;
   font-size: 0.76rem;

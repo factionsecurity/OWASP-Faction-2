@@ -18,7 +18,6 @@ import {
   teamsApi,
   usersApi,
   campaignsApi,
-  workflowConfigApi,
 } from '../api';
 import type {
   Assessment,
@@ -45,6 +44,8 @@ import { formatCompact as fmtStat } from '../utils/formatNumber';
 import './ManagerDashboard.css';
 import { useTerminology } from '../context/TerminologyContext';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { mergedStatusNames } from '../utils/workflowLookup';
 
 const TABLE_KEY = 'managerDashboard';
 
@@ -154,6 +155,7 @@ export default function ManagerDashboard() {
   const navigate = useNavigate();
   const { setPageTitle } = usePageTitle();
   const { severityLabel, severityOptions } = useTerminology();
+  const { workflows } = useWorkflowsContext();
 
   const [summary, setSummary] = useState<ManagerDashboardSummary | null>(null);
   const [stats, setStats] = useState<ManagerDashboardStats | null>(null);
@@ -194,7 +196,9 @@ export default function ManagerDashboard() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [assessors, setAssessors] = useState<User[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [wfStatuses, setWfStatuses] = useState<string[]>([]);
+  // Off by default: an archived workflow's statuses still stay filterable on request, but
+  // shouldn't clutter the everyday dropdown.
+  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = usePersistedState(TABLE_KEY, 'includeArchivedWorkflows', false);
 
   // Results table
   const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>([]);
@@ -231,12 +235,11 @@ export default function ManagerDashboard() {
   };
 
   const loadDropdownData = async () => {
-    const [typesRes, teamsRes, usersRes, campaignsRes, wfRes, earliestRes] = await Promise.all([
+    const [typesRes, teamsRes, usersRes, campaignsRes, earliestRes] = await Promise.all([
       assessmentTypesApi.getAll(0, 1000).catch(() => null),
       teamsApi.getAll(0, 1000).catch(() => null),
       usersApi.getAll(0, 1000).catch(() => null),
       campaignsApi.getAllUnpaged().catch(() => null),
-      workflowConfigApi.getConfig().catch(() => null),
       // Oldest dated assessment, for the All Time hint. startDateFrom excludes undated rows,
       // so the first ascending row is the true earliest start date rather than a null.
       assessmentsApi.search({ page: 0, size: 1, sort: 'startDate,asc', startDateFrom: '1970-01-01T00:00:00' })
@@ -247,7 +250,6 @@ export default function ManagerDashboard() {
     if (teamsRes?.data) setTeams(teamsRes.data);
     if (usersRes?.data) setAssessors(usersRes.data);
     if (campaignsRes?.data) setCampaigns(campaignsRes.data);
-    if (wfRes?.data?.statuses) setWfStatuses(wfRes.data.statuses);
   };
 
   const loadStats = async () => {
@@ -382,7 +384,9 @@ export default function ManagerDashboard() {
 
   // ── Filter option lists + active-filter chips ───────────────────────────────
   const typeOptions: SelectOption[] = assessmentTypes.map((t) => ({ value: t.id, label: t.name }));
-  const statusOptions: SelectOption[] = wfStatuses.map((s) => ({ value: s, label: s }));
+  const statusOptions: SelectOption[] = mergedStatusNames(
+    includeArchivedWorkflows ? workflows : workflows.filter((w) => !w.archived)
+  ).map((s) => ({ value: s, label: s }));
   const assessorOptions: SelectOption[] = assessors.map((u) => ({ value: u.id, label: userDisplayName(u) }));
   const teamOptions: SelectOption[] = teams.map((t) => ({ value: t.id, label: t.name }));
   const campaignOptions: SelectOption[] = campaigns.map((c) => ({ value: c.id, label: c.name }));
@@ -657,6 +661,14 @@ export default function ManagerDashboard() {
               searchable={false}
               placeholder="All Statuses"
             />
+            <label className="md-include-archived-workflows">
+              <input
+                type="checkbox"
+                checked={includeArchivedWorkflows}
+                onChange={(e) => setIncludeArchivedWorkflows(e.target.checked)}
+              />
+              Include archived workflows
+            </label>
             <SearchableSelect
               value={applied.assessorId}
               onChange={(v) => applyInline({ assessorId: v })}
