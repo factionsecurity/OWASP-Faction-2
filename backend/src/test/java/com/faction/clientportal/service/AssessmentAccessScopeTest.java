@@ -438,7 +438,12 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
     @Test
     void reassigningTheTypeIsRejectedWhenTheReportTemplateBelongsToAnotherType() {
         // The template carries the field definitions, so letting the two drift apart would leave
-        // the assessment with fields that belong to the old type.
+        // the assessment with fields that belong to the old type. A caller naming no template now
+        // has the new type's own resolved for it instead of being rejected outright — but the Mobile
+        // type here has no template and no installable default, so there is nothing to move to and
+        // the update is still refused, now saying which template is missing rather than which two
+        // ids disagree. A caller that names a wrong-type template explicitly is still rejected on
+        // sight (AssessmentControllerTest#testUpdateAssessment_TypeChangeWithMismatchedTemplate...).
         var template = reportTemplateRepository.save(com.faction.clientportal.model.ReportTemplate.builder()
                 .name("Type-1 Template").assessmentTypeId(webTypeId).css("").version(1).active(true)
                 .userDefinedFields(new ArrayList<>()).sections(new ArrayList<>())
@@ -452,7 +457,7 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
 
         assertThatThrownBy(() -> assessmentService.updateAssessment(aliceOnly, request, "system"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Report template assessment type does not match");
+                .hasMessageContaining("No report template is available");
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────────

@@ -314,24 +314,49 @@ public class AssessmentService {
             assessment.setName(request.getName());
         }
 
-        // Update assessment type. The report template is chosen per type, so a type change has to
-        // arrive with a template of the new type (or leave the existing template already matching);
-        // otherwise the assessment would keep field definitions that belong to the old type.
+        // Update assessment type. The report template is chosen per type, so a type change needs a
+        // template of the new type. A caller that names one belonging to another type is rejected —
+        // that is a mistake, not something to resolve away. A caller that names none at all (the
+        // Edit info dialog, and the API) has the new type's own template resolved for it, exactly as
+        // creation resolves one; otherwise changing type could only ever fail.
+        // Blank counts as "named none": the edit form clears its template picker when the type
+        // changes and still sends the empty field, which must resolve rather than 404.
+        final String requestedTemplateId =
+                request.getReportTemplateId() == null || request.getReportTemplateId().isBlank()
+                        ? null : request.getReportTemplateId();
+
+        String typeChangeTemplateId = null;
         if (request.getAssessmentTypeId() != null
                 && !request.getAssessmentTypeId().equals(assessment.getAssessmentTypeId())) {
             assessmentTypeRepository.findById(request.getAssessmentTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                     "Assessment type not found with id: " + request.getAssessmentTypeId()));
-            String templateId = request.getReportTemplateId() != null
-                    ? request.getReportTemplateId() : assessment.getReportTemplateId();
-            if (templateId != null) {
-                ReportTemplate template = reportTemplateRepository.findById(templateId)
+            if (requestedTemplateId != null) {
+                ReportTemplate template = reportTemplateRepository.findById(requestedTemplateId)
                     .orElseThrow(() -> new ResourceNotFoundException(
-                        "Report template not found with id: " + templateId));
+                        "Report template not found with id: " + requestedTemplateId));
                 if (!request.getAssessmentTypeId().equals(template.getAssessmentTypeId())) {
                     throw new IllegalArgumentException(
                         "Report template assessment type does not match. Expected: "
                             + request.getAssessmentTypeId() + ", Template has: " + template.getAssessmentTypeId());
+                }
+            } else {
+                ReportTemplate current = assessment.getReportTemplateId() == null ? null
+                        : reportTemplateRepository.findById(assessment.getReportTemplateId()).orElse(null);
+                // Only a template belonging to the old type needs replacing. An assessment carrying
+                // none, or one already of the new type, keeps what it has — as it always did.
+                if (current != null && !request.getAssessmentTypeId().equals(current.getAssessmentTypeId())) {
+                    try {
+                        typeChangeTemplateId = defaultReportTemplateService
+                                .resolveForAssessmentType(request.getAssessmentTypeId()).getId();
+                    } catch (IllegalStateException e) {
+                        // The new type has nothing to move to. That is fixed by uploading a template,
+                        // not by retrying, so it answers 400 with the reason instead of 500.
+                        throw new IllegalArgumentException(e.getMessage(), e);
+                    }
+                    // The values were snapshotted from the old type's template and mean nothing under
+                    // the new one, so the assessment starts from the new template's fields.
+                    assessment.setFieldValues(new HashMap<>());
                 }
             }
             assessment.setAssessmentTypeId(request.getAssessmentTypeId());
@@ -546,13 +571,15 @@ public class AssessmentService {
             assessment.setStakeholders(stakeholders);
         }
 
-        // Switch report template: re-snapshot metadata and force a field-definition re-sync
-        if (request.getReportTemplateId() != null
-                && !request.getReportTemplateId().equals(assessment.getReportTemplateId())) {
+        // Switch report template: re-snapshot metadata and force a field-definition re-sync. Either
+        // the caller named a template, or a type change above resolved the new type's own.
+        String switchTemplateId = requestedTemplateId != null ? requestedTemplateId : typeChangeTemplateId;
+        if (switchTemplateId != null && !switchTemplateId.equals(assessment.getReportTemplateId())) {
+            final String resolvedTemplateId = switchTemplateId;
             ReportTemplate newTemplate = reportTemplateRepository
-                    .findById(request.getReportTemplateId())
+                    .findById(resolvedTemplateId)
                     .orElseThrow(() -> new ResourceNotFoundException(
-                            "Report template not found: " + request.getReportTemplateId()));
+                            "Report template not found: " + resolvedTemplateId));
             assessment.setReportTemplateId(newTemplate.getId());
             assessment.setTemplateName(newTemplate.getName());
             assessment.setTemplateCss(newTemplate.getCss());
@@ -903,6 +930,49 @@ public class AssessmentService {
         Pageable pageable,
         Authentication authentication
     ) {
+        return searchAssessmentsAdvanced(search, applicationId, applicationIds, organizationId,
+                assessmentTypeId, assessmentTypeIds, assessorId, status, statuses, openSurveysOnly,
+                startDateFrom, startDateTo, endDateFrom, endDateTo, completedDateFrom, completedDateTo,
+                null, null, pastDue, showCompleted, onlyCompleted, assignedToMe, currentUserId,
+                teamId, campaignId, severities, pageable, authentication);
+    }
+
+    /**
+     * As above, plus the activity window: one date range matched against an assessment's start,
+     * planned end, or completed date (see {@link AssessmentSearchCriteria#activityFrom()}). The
+     * operational dashboard filters this way, because most assessments carry no start date and a
+     * start-date-only window hid the finished work its stats-cards were counting.
+     */
+    public Page<AssessmentDto> searchAssessmentsAdvanced(
+        String search,
+        String applicationId,
+        Collection<String> applicationIds,
+        String organizationId,
+        String assessmentTypeId,
+        Collection<String> assessmentTypeIds,
+        String assessorId,
+        String status,
+        Collection<String> statuses,
+        Boolean openSurveysOnly,
+        LocalDateTime startDateFrom,
+        LocalDateTime startDateTo,
+        LocalDateTime endDateFrom,
+        LocalDateTime endDateTo,
+        LocalDateTime completedDateFrom,
+        LocalDateTime completedDateTo,
+        LocalDateTime activityFrom,
+        LocalDateTime activityTo,
+        Boolean pastDue,
+        Boolean showCompleted,
+        Boolean onlyCompleted,
+        Boolean assignedToMe,
+        String currentUserId,
+        String teamId,
+        String campaignId,
+        List<VulnerabilitySeverity> severities,
+        Pageable pageable,
+        Authentication authentication
+    ) {
         // Force-scope the result set to what the caller may read. The tiers are resolved centrally
         // (AccessScopeService#resolveAssessmentScope) and applied here as mandatory query filters —
         // an org-scoped caller can never query another org, and a team- or assigned-scoped pentester
@@ -981,6 +1051,8 @@ public class AssessmentService {
                 .endDateTo(endDateTo)
                 .completedDateFrom(completedDateFrom)
                 .completedDateTo(completedDateTo)
+                .activityFrom(activityFrom)
+                .activityTo(activityTo)
                 .pastDue(Boolean.TRUE.equals(pastDue))
                 .excludeCompleted(Boolean.FALSE.equals(showCompleted) && !Boolean.TRUE.equals(onlyCompleted))
                 .onlyCompleted(Boolean.TRUE.equals(onlyCompleted))
@@ -1274,14 +1346,31 @@ public class AssessmentService {
     /**
      * Get assessment metrics/statistics
      */
-    public AssessmentMetricsDto getMetrics(String organizationId, Authentication authentication) {
+    public AssessmentMetricsDto getMetrics(String organizationId, List<String> assessmentTypeIds,
+                                           Authentication authentication) {
+        java.util.function.Predicate<Assessment> ofTypes = ofTypes(assessmentTypeIds);
         if (isOrgScopedUser(authentication)) {
             var scope = accessScopeService.resolveAssessmentScope(authentication);
             final String requested = organizationId;
             return getMetrics(a -> scope.permits(a)
-                    && (requested == null || requested.equals(a.getOrganizationId())));
+                    && (requested == null || requested.equals(a.getOrganizationId()))
+                    && ofTypes.test(a));
         }
-        return getMetrics(organizationId);
+        return getMetrics(a -> (organizationId == null || organizationId.equals(a.getOrganizationId()))
+                && ofTypes.test(a));
+    }
+
+    /**
+     * Narrows metrics to assessments of the given types, so the Scheduling pills count only what the
+     * calendar and list beneath them show. No types counts every type, as before. Blank ids are
+     * ignored: a stray empty value would otherwise match nothing and zero every pill.
+     */
+    private static java.util.function.Predicate<Assessment> ofTypes(List<String> assessmentTypeIds) {
+        Set<String> ids = assessmentTypeIds == null ? Set.of() : assessmentTypeIds.stream()
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) return a -> true;
+        return a -> ids.contains(a.getAssessmentTypeId());
     }
 
     public AssessmentMetricsDto getMetrics(String organizationId) {

@@ -1,4 +1,4 @@
-import type { Workflow } from '../types';
+import type { AssessmentType, Workflow } from '../types';
 import { DEFAULT_WORKFLOW_ID } from '../hooks/useWorkflow';
 
 /** The workflow a row belongs to, falling back to Default Workflow exactly as the backend does. */
@@ -79,4 +79,33 @@ export function mergedStageNames(workflows: Workflow[]): string[] {
 /** The stage id this workflow uses for a column's name, or undefined when it has no such stage. */
 export function stageIdForName(workflows: Workflow[], workflowId: string | null | undefined, stageName: string): string | undefined {
   return workflowFor(workflows, workflowId)?.remediationStages.find((stage) => stage.name === stageName)?.id;
+}
+
+/**
+ * The workflows whose statuses a status filter should offer, given the assessment types selected
+ * beside it. With no type selected nothing narrows and `whenNoneSelected` is returned, because each
+ * screen decides that list itself (most offer active workflows; one has an "include archived"
+ * toggle). With types selected, each contributes the workflow it runs on: a type with no
+ * `workflowId` runs on Default Workflow, as the backend resolves it, and a type on an archived
+ * workflow still contributes it, because the user picked that type explicitly.
+ *
+ * Also returns `whenNoneSelected` when no selected id matches a loaded type. Types load
+ * asynchronously and a selection restored from storage arrives before them; narrowing to nothing in
+ * that window would empty the status list and let a caller's prune wipe a saved filter on reload.
+ */
+export function workflowsForSelectedTypes(
+  workflows: Workflow[],
+  types: Pick<AssessmentType, 'id' | 'workflowId'>[],
+  selectedTypeIds: string[],
+  whenNoneSelected: Workflow[],
+): Workflow[] {
+  if (selectedTypeIds.length === 0) return whenNoneSelected;
+  const selected = types.filter((t) => selectedTypeIds.includes(t.id));
+  if (selected.length === 0) return whenNoneSelected;
+  const offered: Workflow[] = [];
+  for (const type of selected) {
+    const workflow = workflowFor(workflows, type.workflowId);
+    if (workflow && !offered.includes(workflow)) offered.push(workflow);
+  }
+  return offered;
 }

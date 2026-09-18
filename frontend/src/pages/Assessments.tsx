@@ -14,7 +14,7 @@ import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
-import { colorFor, statusLabel, mergedStatusNames } from '../utils/workflowLookup';
+import { colorFor, statusLabel, mergedStatusNames, workflowsForSelectedTypes } from '../utils/workflowLookup';
 import './Assessments.css';
 
 // localStorage key for this table's saved search, filters, sort and paging.
@@ -77,14 +77,31 @@ export default function Assessments() {
     () => applications.map((a) => ({ value: a.id, label: a.name })), [applications]);
   const typeOptions: SelectOption[] = useMemo(
     () => assessmentTypes.map((t) => ({ value: t.id, label: t.name })), [assessmentTypes]);
-  const statusOptions: SelectOption[] = useMemo(
-    () => mergedStatusNames(workflows.filter((w) => !w.archived)).map((s) => ({ value: s, label: s })), [workflows]);
+  // Statuses follow the selected types: none selected offers every active workflow's statuses, as
+  // before; types selected offer only the statuses of the workflows those types run on.
+  const statusOptions: SelectOption[] = useMemo(() => {
+    const offered = workflowsForSelectedTypes(
+      workflows, assessmentTypes, filters.assessmentTypeIds, workflows.filter((w) => !w.archived));
+    return mergedStatusNames(offered).map((s) => ({ value: s, label: s }));
+  }, [workflows, assessmentTypes, filters.assessmentTypeIds]);
 
   // ── Zone 2: inline filters apply immediately ───────────────────────────────
   const applyInline = (patch: Partial<typeof filters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
     setPagination((prev) => ({ ...prev, page: 0 }));
   };
+
+  // Drop selected statuses the list no longer offers. MultiSelect labels a lone selection it can't
+  // find among its options as the placeholder ("All Statuses") while still filtering by it, so a
+  // stale selection would empty the table behind a label claiming no status filter at all.
+  // Waits for types and workflows: a persisted selection is restored before either loads, and
+  // pruning in that window would wipe a saved status filter on every reload.
+  useEffect(() => {
+    if (assessmentTypes.length === 0 || workflows.length === 0) return;
+    const offered = new Set(statusOptions.map((o) => o.value));
+    if (filters.statuses.every((s) => offered.has(s))) return;
+    applyInline({ statuses: filters.statuses.filter((s) => offered.has(s)) });
+  }, [statusOptions, filters.statuses, assessmentTypes.length, workflows.length]);
 
   // ── Zone 3: advanced panel stages in `draft`, commits on Apply ─────────────
   const applyAdvanced = () => {

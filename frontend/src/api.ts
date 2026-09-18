@@ -481,12 +481,15 @@ export const managerDashboardApi = {
   },
 
   searchAssessments: async (
-    filters: ManagerDashboardFilters, page = 0, size = 25, sort = 'startDate,desc'
+    filters: ManagerDashboardFilters, page = 0, size = 25, sort?: string
   ): Promise<PagedApiResponse<ManagerDashboardAssessment[]>> => {
     const params = managerDashboardParams(filters);
     params.append('page', page.toString());
     params.append('size', size.toString());
-    params.append('sort', sort);
+    // No sort means the endpoint's own default, newest first. Defaulting to a start-date sort
+    // here sank every assessment without a start date — most of them — below the few that have
+    // one, so work finished yesterday sat pages behind assessments years old.
+    if (sort) params.append('sort', sort);
     const response = await api.get<PagedApiResponse<ManagerDashboardAssessment[]>>(
       `/manager-dashboard/assessments?${params.toString()}`);
     return response.data;
@@ -939,9 +942,11 @@ export const assessmentsApi = {
     return response.data;
   },
 
-  getMetrics: async (organizationId?: string): Promise<ApiResponse<AssessmentMetrics>> => {
+  getMetrics: async (organizationId?: string, assessmentTypeIds?: string[]): Promise<ApiResponse<AssessmentMetrics>> => {
     const params: Record<string, string> = {};
     if (organizationId) params.organizationId = organizationId;
+    // Comma-joined, as the list endpoint takes a multi-select. Omitted when empty: no types counts every type.
+    if (assessmentTypeIds && assessmentTypeIds.length > 0) params.assessmentTypeIds = assessmentTypeIds.join(',');
     const response = await api.get<ApiResponse<AssessmentMetrics>>('/assessments/metrics', { params });
     return response.data;
   },
