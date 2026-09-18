@@ -376,6 +376,124 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                 .andExpect(jsonPath("$.data[*].assessment.name", not(hasItem("Long Finished"))));
     }
 
+    /**
+     * With no column picked the repository's own order applies — newest first. The old default
+     * sorted by start date with nulls last, so an assessment created today with no start date sat
+     * behind every dated assessment however old, which is where the newest work actually lives.
+     */
+    @Test
+    void assessments_WithNoSortRequested_PutsTheNewestFirstEvenWithNoStartDate() throws Exception {
+        assessmentRepository.save(Assessment.builder()
+                .name("Newest Undated")
+                .status("New")
+                // A minute ahead of the fixture's rows, so "newest" is unambiguous in the assertion.
+                .createdAt(LocalDateTime.now().plusMinutes(1))
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/assessments")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].assessment.name").value("Newest Undated"));
+    }
+
+    /**
+     * Ranking findings by severity tier, not by a total. Six lows outweigh one critical on any
+     * additive score (6×2 against 5), and on real data that pushed assessments with no critical at
+     * all to the top of the list. Criticals and highs are the work that has to be addressed.
+     */
+    @Test
+    void assessments_SortedByFindings_RanksOneCriticalAboveAnyNumberOfLows() throws Exception {
+        Assessment noisy = assessmentRepository.save(Assessment.builder()
+                .name("Many Low Findings")
+                .status("Completed")
+                .startDate(LocalDateTime.now().minusDays(9))
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+        for (int i = 0; i < 6; i++) {
+            vulnerabilityRepository.save(Vulnerability.builder()
+                    .name("Low " + i)
+                    .severity(VulnerabilitySeverity.LOW)
+                    .status("Open")
+                    .assessmentId(noisy.getId())
+                    .openedAt(LocalDateTime.now().minusDays(2))
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/assessments")
+                        .param("sort", "findings,desc")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                // redCompleted carries the only CRITICAL in the fixture.
+                .andExpect(jsonPath("$.data[0].assessment.name").value("Red Completed Assessment"))
+                .andExpect(jsonPath("$.data[1].assessment.name").value("Blue Draft Assessment"));
+    }
+
+    /**
+     * What the "Show Incomplete Only" filter sends. Completion is each assessment's own workflow's
+     * completed status, so this drops the finished work and leaves what is still being worked on.
+     */
+    @Test
+    void assessments_ShowCompletedFalse_ReturnsOnlyWorkStillInProgress() throws Exception {
+        mockMvc.perform(get("/api/v1/manager-dashboard/assessments")
+                        .param("showCompleted", "false")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].assessment.name").value("Blue Draft Assessment"));
+    }
+
+    /** Each assessment is judged by its own workflow, so "incomplete" is not a shared status name. */
+    @Test
+    void assessments_ShowCompletedFalse_JudgesCompletionByTheAssessmentsOwnWorkflow() throws Exception {
+        TestWorkflows.saveSecondWorkflow(workflowRepository);
+        // Two assessments, the same status, different workflows: "Completed" finishes the default
+        // workflow but not the second, whose completed status is "Signed Off". The filter must keep
+        // one and drop the other — asserting only that the second-workflow one survives would pass
+        // just as well with no filtering at all.
+        redCompleted.setWorkflowId(TestWorkflows.SECOND_ID);
+        assessmentRepository.save(redCompleted);
+        assessmentRepository.save(Assessment.builder()
+                .name("Default Workflow Completed")
+                .status("Completed")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/assessments")
+                        .param("showCompleted", "false")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].assessment.name", hasItem("Red Completed Assessment")))
+                .andExpect(jsonPath("$.data[*].assessment.name", not(hasItem("Default Workflow Completed"))));
+    }
+
+    /**
+     * The past-due badge the table draws under an assessment's name reads this flag, so the rows
+     * have to carry it. redCompleted is the control: its planned end date passed days ago too, but
+     * it is finished, so it must not be flagged.
+     */
+    @Test
+    void assessments_FlagAnOverdueUnfinishedAssessmentAsPastDue() throws Exception {
+        assessmentRepository.save(Assessment.builder()
+                .name("Overdue Assessment")
+                .status("New")
+                .plannedEndDate(LocalDateTime.now().minusDays(2))
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/assessments")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.assessment.name == 'Overdue Assessment')].assessment.isPastDue",
+                        contains(true)))
+                .andExpect(jsonPath("$.data[?(@.assessment.name == 'Red Completed Assessment')].assessment.isPastDue",
+                        contains(false)));
+    }
+
     @Test
     void vulnerabilities_NoFilters_ReturnsAllOpenedAcrossAssessments() throws Exception {
         mockMvc.perform(get("/api/v1/manager-dashboard/vulnerabilities")

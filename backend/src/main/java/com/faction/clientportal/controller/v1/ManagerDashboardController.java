@@ -50,8 +50,9 @@ public class ManagerDashboardController {
 
     /**
      * Assessments-tab columns → the sort keys the assessment search query whitelists. Absent by
-     * design: Team and Assessors (resolved from the assessors' JSONB id list after the page is
-     * fetched) and Findings (per-severity counts aggregated per row) — none is a column to order by.
+     * design: Team and Assessors, resolved from the assessors' JSONB id list after the page is
+     * fetched. {@code findings} is not a column but a severity ranking the query builds by joining
+     * the per-assessment severity counts.
      */
     private static final Map<String, SortField> ASSESSMENT_SORTABLE_FIELDS = Map.of(
             "appId", SortField.text("appId"),
@@ -60,9 +61,15 @@ public class ManagerDashboardController {
             "startDate", SortField.value("startDate"),
             "plannedEndDate", SortField.value("plannedEndDate"),
             "completedDate", SortField.value("completedDate"),
-            "status", SortField.text("status"));
+            "status", SortField.text("status"),
+            "findings", SortField.value("findings"));
 
-    private static final Sort DEFAULT_ASSESSMENT_SORT = Sort.by(Sort.Direction.DESC, "startDate");
+    /**
+     * No sort requested leaves the repository's own order — newest first. Defaulting to a start
+     * date sorted nulls-last put the few assessments carrying one above everything else, so the
+     * newest work sat pages deep.
+     */
+    private static final Sort DEFAULT_ASSESSMENT_SORT = Sort.unsorted();
 
     /** Vulnerabilities-tab columns; the service orders these in memory over the collected rows. */
     private static final Map<String, SortField> VULN_SORTABLE_FIELDS = Map.ofEntries(
@@ -104,7 +111,7 @@ public class ManagerDashboardController {
             ManagerDashboardFilterParams params,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
-            @RequestParam(defaultValue = "startDate,desc") String sort,
+            @RequestParam(required = false) String sort,
             Authentication authentication) {
         Page<ManagerDashboardAssessmentDto> result = managerDashboardService.searchAssessments(
                 params.toFilters(),

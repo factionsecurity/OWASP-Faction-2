@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePageTitle } from '../context/PageTitleContext';
 import {
+  AlertCircle,
   Calendar,
   CalendarCheck,
   CalendarClock,
@@ -34,7 +35,7 @@ import type {
 type AssessmentRow = Assessment & { teamNames: string[] };
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
-import { Button, Checkbox, FormLabel, Input, Select, IconButton } from '../components';
+import { Badge, Button, Checkbox, FormLabel, Input, Select, IconButton } from '../components';
 import Page from '../components/Page';
 import { VULNERABILITY_SEVERITIES, SEVERITY_COLORS } from '../utils/vulnSeverity';
 import '../components/SearchableSelect.css';
@@ -124,6 +125,8 @@ interface FilterFormState {
   severities: string[];
   /** Offer statuses from archived workflows too. Lives in the advanced panel, so it applies with it. */
   includeArchivedWorkflows: boolean;
+  /** Hide assessments their own workflow calls completed, leaving only work still in progress. */
+  incompleteOnly: boolean;
 }
 
 function defaultFilterForm(): FilterFormState {
@@ -138,6 +141,7 @@ function defaultFilterForm(): FilterFormState {
     campaignId: '',
     severities: [],
     includeArchivedWorkflows: false,
+    incompleteOnly: false,
   };
 }
 
@@ -151,6 +155,9 @@ function toApiFilters(form: FilterFormState): ManagerDashboardFilters {
     severities: form.severities.length > 0 ? form.severities : undefined,
     startDateFrom: form.startDate ? `${form.startDate}T00:00:00` : undefined,
     startDateTo: form.endDate ? `${form.endDate}T23:59:59` : undefined,
+    // Only ever sent as false: "show me the unfinished work". Left undefined when off, which is
+    // the server's "no filter", so the default view still shows finished and unfinished alike.
+    showCompleted: form.incompleteOnly ? false : undefined,
   };
 }
 
@@ -185,7 +192,7 @@ export default function ManagerDashboard() {
   // Apply. Starts from the applied (possibly restored) values.
   const advancedDraft = (f: FilterFormState) => ({
     startDate: f.startDate, endDate: f.endDate, teamId: f.teamId, campaignId: f.campaignId,
-    includeArchivedWorkflows: f.includeArchivedWorkflows,
+    includeArchivedWorkflows: f.includeArchivedWorkflows, incompleteOnly: f.incompleteOnly,
   });
   const [draft, setDraft] = useState(() => advancedDraft(applied));
   // Quick range: the panel's picked preset (drives the date fields); the applied one labels the chip.
@@ -316,6 +323,7 @@ export default function ManagerDashboard() {
     const cleared: FilterFormState = {
       startDate: '', endDate: '', assessmentTypeId: '', teamId: '', status: '',
       assessorId: '', campaignId: '', severities: [], includeArchivedWorkflows: false,
+      incompleteOnly: false,
     };
     setApplied(cleared);
     setDraft(advancedDraft(cleared));
@@ -334,6 +342,8 @@ export default function ManagerDashboard() {
   useEffect(() => { setDraft((d) => ({ ...d, campaignId: applied.campaignId })); }, [applied.campaignId]);
   useEffect(() => { setDraft((d) => ({ ...d, includeArchivedWorkflows: applied.includeArchivedWorkflows })); },
     [applied.includeArchivedWorkflows]);
+  useEffect(() => { setDraft((d) => ({ ...d, incompleteOnly: applied.incompleteOnly })); },
+    [applied.incompleteOnly]);
 
   const handleQuickRange = (key: string) => {
     setQuickRange(key);
@@ -432,6 +442,9 @@ export default function ManagerDashboard() {
   if (applied.campaignId) {
     filterChips.push({ key: 'campaign', label: `Campaign: ${campaignName(applied.campaignId)}`, onRemove: () => applyInline({ campaignId: '' }) });
   }
+  if (applied.incompleteOnly) {
+    filterChips.push({ key: 'incompleteOnly', label: 'Incomplete only', onRemove: () => applyInline({ incompleteOnly: false }) });
+  }
 
   const VulnerabilitySummaryCell = ({ summary: vulnSummary }: { summary?: Record<string, number> }) => {
     if (!vulnSummary) return <span className="text-muted">-</span>;
@@ -465,7 +478,23 @@ export default function ManagerDashboard() {
         />
       ),
     },
-    { header: 'App ID', sortKey: 'appId', render: (row) => row.appId || '-' },
+    {
+      header: 'App ID',
+      sortKey: 'appId',
+      // Same past-due badge as Your Assessments, from the same server-computed flag: the planned
+      // end date has passed and the assessment's own workflow does not call its status completed.
+      render: (row) => (
+        <div>
+          <div>{row.appId || '-'}</div>
+          {row.isPastDue && (
+            <Badge variant="danger" size="sm">
+              <AlertCircle size={12} style={{ marginRight: '0.25rem' }} />
+              Past Due
+            </Badge>
+          )}
+        </div>
+      ),
+    },
     {
       header: 'Name',
       sortKey: 'name',
@@ -489,6 +518,9 @@ export default function ManagerDashboard() {
     { header: 'Status', sortKey: 'status', render: (row) => row.status },
     {
       header: 'Findings',
+      // Ranks by severity tier, worst first — a critical outranks any number of lows. See the
+      // server's findings sort; a single total would let volume outweigh severity.
+      sortKey: 'findings',
       // Counts only mean something once the assessment is finished: while it is open they are a
       // snapshot of work in progress, and reading them as a result is misleading. `completed` is
       // the server's answer for the assessment's own workflow, not a status name comparison.
@@ -757,6 +789,12 @@ export default function ManagerDashboard() {
             <div className="filter-field">
               <FormLabel>Options</FormLabel>
               <div className="filter-field-checks">
+                <Checkbox
+                  id="incompleteOnly"
+                  checked={draft.incompleteOnly}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, incompleteOnly: e.target.checked }))}
+                  label="Show incomplete only"
+                />
                 <Checkbox
                   id="includeArchivedWorkflows"
                   checked={draft.includeArchivedWorkflows}
