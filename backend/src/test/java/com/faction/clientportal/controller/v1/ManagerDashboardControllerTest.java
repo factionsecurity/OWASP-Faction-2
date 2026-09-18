@@ -32,6 +32,8 @@ import java.util.List;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -184,8 +186,64 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.completedAssessments.week").value(1))
                 .andExpect(jsonPath("$.data.completedAssessments.allTime").value(1))
-                .andExpect(jsonPath("$.data.vulnerabilities.week").value(2))
-                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(3));
+                // Only the red assessment is completed, so only its CRITICAL counts. The blue
+                // assessment's two findings have an openedAt but their assessment is still "New".
+                .andExpect(jsonPath("$.data.vulnerabilities.week").value(1))
+                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(1));
+    }
+
+    /**
+     * The blue assessment is still "New", yet both its findings carry an openedAt — the shape an
+     * import or a hand-edited opened date leaves behind. Counting on openedAt alone would report
+     * them as delivered work; only the completed red assessment's finding may count.
+     */
+    @Test
+    void summary_CountsOnlyFindingsFromCompletedAssessments() throws Exception {
+        mockMvc.perform(get("/api/v1/manager-dashboard/summary")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.vulnerabilities.week").value(1))
+                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(1));
+    }
+
+    /**
+     * Reopening is the case an openedAt test cannot catch: the findings were opened when the
+     * assessment completed and keep that timestamp forever, so only the assessment's current
+     * status can tell us the work is back in progress.
+     */
+    @Test
+    void summary_ExcludesFindingsFromAnAssessmentThatWasReopened() throws Exception {
+        redCompleted.setStatus("New");
+        assessmentRepository.save(redCompleted);
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/summary")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.vulnerabilities.week").value(0))
+                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(0));
+    }
+
+    /** Each assessment is judged by its own workflow's completed status, not a shared name. */
+    @Test
+    void summary_JudgesCompletionByTheAssessmentsOwnWorkflow() throws Exception {
+        TestWorkflows.saveSecondWorkflow(workflowRepository);
+        // "Signed Off" completes the second workflow; "Completed" does not. The red assessment keeps
+        // the status that completes the DEFAULT workflow, so moving it here must stop it counting.
+        redCompleted.setWorkflowId(TestWorkflows.SECOND_ID);
+        assessmentRepository.save(redCompleted);
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/summary")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(0));
+
+        redCompleted.setStatus("Signed Off");
+        assessmentRepository.save(redCompleted);
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/summary")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(1));
     }
 
     @Test
@@ -238,6 +296,86 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                 .andExpect(jsonPath("$.data.length()").value(0));
     }
 
+    /**
+     * The dashboard's date boxes are one window over an assessment's activity, not a filter on its
+     * start date. Most assessments carry no start date at all, so matching only on that column hid
+     * finished work the summary cards were counting.
+     */
+    @Test
+    void assessments_DateWindow_MatchesAnUndatedAssessmentByItsCompletedDate() throws Exception {
+        assessmentRepository.save(Assessment.builder()
+                .name("Undated But Completed")
+                .status("Completed")
+                .completedDate(LocalDateTime.now().minusDays(1))
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/assessments")
+                        .param("startDateFrom", LocalDateTime.now().minusDays(3).toString())
+                        .param("startDateTo", LocalDateTime.now().toString())
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].assessment.name", hasItem("Undated But Completed")));
+    }
+
+    @Test
+    void assessments_DateWindow_MatchesAnUndatedAssessmentByItsPlannedEndDate() throws Exception {
+        assessmentRepository.save(Assessment.builder()
+                .name("Undated But Ending")
+                .status("New")
+                .plannedEndDate(LocalDateTime.now().minusDays(1))
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/assessments")
+                        .param("startDateFrom", LocalDateTime.now().minusDays(3).toString())
+                        .param("startDateTo", LocalDateTime.now().toString())
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].assessment.name", hasItem("Undated But Ending")));
+    }
+
+    /** An assessment carrying no dates at all falls in no window, so a date filter never hides it. */
+    @Test
+    void assessments_DateWindow_AlwaysIncludesAnAssessmentWithNoDatesAtAll() throws Exception {
+        assessmentRepository.save(Assessment.builder()
+                .name("No Dates At All")
+                .status("New")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/assessments")
+                        .param("startDateFrom", LocalDateTime.now().minusDays(3).toString())
+                        .param("startDateTo", LocalDateTime.now().toString())
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].assessment.name", hasItem("No Dates At All")));
+    }
+
+    /** A dated assessment whose every date sits outside the window still drops out. */
+    @Test
+    void assessments_DateWindow_ExcludesAnAssessmentWhoseDatesAllFallOutside() throws Exception {
+        assessmentRepository.save(Assessment.builder()
+                .name("Long Finished")
+                .status("Completed")
+                .startDate(LocalDateTime.now().minusDays(400))
+                .plannedEndDate(LocalDateTime.now().minusDays(380))
+                .completedDate(LocalDateTime.now().minusDays(370))
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(get("/api/v1/manager-dashboard/assessments")
+                        .param("startDateFrom", LocalDateTime.now().minusDays(3).toString())
+                        .param("startDateTo", LocalDateTime.now().toString())
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].assessment.name", not(hasItem("Long Finished"))));
+    }
+
     @Test
     void vulnerabilities_NoFilters_ReturnsAllOpenedAcrossAssessments() throws Exception {
         mockMvc.perform(get("/api/v1/manager-dashboard/vulnerabilities")
@@ -278,12 +416,15 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                         .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.severityBreakdown.CRITICAL").value(1))
-                .andExpect(jsonPath("$.data.severityBreakdown.LOW").value(1))
-                .andExpect(jsonPath("$.data.severityBreakdown.MEDIUM").value(1))
+                // The blue assessment's LOW and MEDIUM are findings on work still in progress, so
+                // they are absent from the severity breakdown entirely.
+                .andExpect(jsonPath("$.data.severityBreakdown.LOW").doesNotExist())
+                .andExpect(jsonPath("$.data.severityBreakdown.MEDIUM").doesNotExist())
+                // The assessment breakdowns still span every filtered assessment, open or not.
                 .andExpect(jsonPath("$.data.statusBreakdown.Completed").value(1))
                 .andExpect(jsonPath("$.data.statusBreakdown.New").value(1))
                 .andExpect(jsonPath("$.data.totalAssessments").value(2))
-                .andExpect(jsonPath("$.data.totalVulnerabilities").value(3))
+                .andExpect(jsonPath("$.data.totalVulnerabilities").value(1))
                 .andExpect(jsonPath("$.data.completedByAssessor[0].assessorName").value("Red Assessor"))
                 .andExpect(jsonPath("$.data.completedByAssessor[0].count").value(1));
     }

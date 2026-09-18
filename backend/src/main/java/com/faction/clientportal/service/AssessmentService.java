@@ -930,6 +930,49 @@ public class AssessmentService {
         Pageable pageable,
         Authentication authentication
     ) {
+        return searchAssessmentsAdvanced(search, applicationId, applicationIds, organizationId,
+                assessmentTypeId, assessmentTypeIds, assessorId, status, statuses, openSurveysOnly,
+                startDateFrom, startDateTo, endDateFrom, endDateTo, completedDateFrom, completedDateTo,
+                null, null, pastDue, showCompleted, onlyCompleted, assignedToMe, currentUserId,
+                teamId, campaignId, severities, pageable, authentication);
+    }
+
+    /**
+     * As above, plus the activity window: one date range matched against an assessment's start,
+     * planned end, or completed date (see {@link AssessmentSearchCriteria#activityFrom()}). The
+     * operational dashboard filters this way, because most assessments carry no start date and a
+     * start-date-only window hid the finished work its stats-cards were counting.
+     */
+    public Page<AssessmentDto> searchAssessmentsAdvanced(
+        String search,
+        String applicationId,
+        Collection<String> applicationIds,
+        String organizationId,
+        String assessmentTypeId,
+        Collection<String> assessmentTypeIds,
+        String assessorId,
+        String status,
+        Collection<String> statuses,
+        Boolean openSurveysOnly,
+        LocalDateTime startDateFrom,
+        LocalDateTime startDateTo,
+        LocalDateTime endDateFrom,
+        LocalDateTime endDateTo,
+        LocalDateTime completedDateFrom,
+        LocalDateTime completedDateTo,
+        LocalDateTime activityFrom,
+        LocalDateTime activityTo,
+        Boolean pastDue,
+        Boolean showCompleted,
+        Boolean onlyCompleted,
+        Boolean assignedToMe,
+        String currentUserId,
+        String teamId,
+        String campaignId,
+        List<VulnerabilitySeverity> severities,
+        Pageable pageable,
+        Authentication authentication
+    ) {
         // Force-scope the result set to what the caller may read. The tiers are resolved centrally
         // (AccessScopeService#resolveAssessmentScope) and applied here as mandatory query filters —
         // an org-scoped caller can never query another org, and a team- or assigned-scoped pentester
@@ -1008,6 +1051,8 @@ public class AssessmentService {
                 .endDateTo(endDateTo)
                 .completedDateFrom(completedDateFrom)
                 .completedDateTo(completedDateTo)
+                .activityFrom(activityFrom)
+                .activityTo(activityTo)
                 .pastDue(Boolean.TRUE.equals(pastDue))
                 .excludeCompleted(Boolean.FALSE.equals(showCompleted) && !Boolean.TRUE.equals(onlyCompleted))
                 .onlyCompleted(Boolean.TRUE.equals(onlyCompleted))

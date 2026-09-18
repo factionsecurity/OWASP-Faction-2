@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Native-SQL implementation of {@link AssessmentRepositoryCustom}. Spring Data wires this in
@@ -165,6 +166,24 @@ public class AssessmentRepositoryImpl implements AssessmentRepositoryCustom {
         if (c.endDateTo() != null) {
             clauses.add(Clause.of("AND a.planned_end_date <= :endTo",
                     q -> q.setParameter("endTo", c.endDateTo())));
+        }
+        // One window across all three dates. Each column is tested against both bounds on its own,
+        // so a row never matches by pairing one column's start with another's end. A row with none
+        // of the three dates is in no window at all and is always kept — a date filter is not what
+        // should hide an assessment nobody has dated yet.
+        if (c.activityFrom() != null || c.activityTo() != null) {
+            String inWindow = Stream.of("a.start_date", "a.planned_end_date", "a.completed_date")
+                    .map(col -> "(" + col + " IS NOT NULL"
+                            + (c.activityFrom() != null ? " AND " + col + " >= :activityFrom" : "")
+                            + (c.activityTo() != null ? " AND " + col + " <= :activityTo" : "") + ")")
+                    .collect(Collectors.joining(" OR "));
+            clauses.add(Clause.of(
+                    "AND (" + inWindow + " OR (a.start_date IS NULL AND a.planned_end_date IS NULL"
+                            + " AND a.completed_date IS NULL))",
+                    q -> {
+                        if (c.activityFrom() != null) q.setParameter("activityFrom", c.activityFrom());
+                        if (c.activityTo() != null) q.setParameter("activityTo", c.activityTo());
+                    }));
         }
         if (c.completedDateFrom() != null) {
             clauses.add(Clause.of("AND a.completed_date >= :completedFrom",
