@@ -314,24 +314,49 @@ public class AssessmentService {
             assessment.setName(request.getName());
         }
 
-        // Update assessment type. The report template is chosen per type, so a type change has to
-        // arrive with a template of the new type (or leave the existing template already matching);
-        // otherwise the assessment would keep field definitions that belong to the old type.
+        // Update assessment type. The report template is chosen per type, so a type change needs a
+        // template of the new type. A caller that names one belonging to another type is rejected —
+        // that is a mistake, not something to resolve away. A caller that names none at all (the
+        // Edit info dialog, and the API) has the new type's own template resolved for it, exactly as
+        // creation resolves one; otherwise changing type could only ever fail.
+        // Blank counts as "named none": the edit form clears its template picker when the type
+        // changes and still sends the empty field, which must resolve rather than 404.
+        final String requestedTemplateId =
+                request.getReportTemplateId() == null || request.getReportTemplateId().isBlank()
+                        ? null : request.getReportTemplateId();
+
+        String typeChangeTemplateId = null;
         if (request.getAssessmentTypeId() != null
                 && !request.getAssessmentTypeId().equals(assessment.getAssessmentTypeId())) {
             assessmentTypeRepository.findById(request.getAssessmentTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                     "Assessment type not found with id: " + request.getAssessmentTypeId()));
-            String templateId = request.getReportTemplateId() != null
-                    ? request.getReportTemplateId() : assessment.getReportTemplateId();
-            if (templateId != null) {
-                ReportTemplate template = reportTemplateRepository.findById(templateId)
+            if (requestedTemplateId != null) {
+                ReportTemplate template = reportTemplateRepository.findById(requestedTemplateId)
                     .orElseThrow(() -> new ResourceNotFoundException(
-                        "Report template not found with id: " + templateId));
+                        "Report template not found with id: " + requestedTemplateId));
                 if (!request.getAssessmentTypeId().equals(template.getAssessmentTypeId())) {
                     throw new IllegalArgumentException(
                         "Report template assessment type does not match. Expected: "
                             + request.getAssessmentTypeId() + ", Template has: " + template.getAssessmentTypeId());
+                }
+            } else {
+                ReportTemplate current = assessment.getReportTemplateId() == null ? null
+                        : reportTemplateRepository.findById(assessment.getReportTemplateId()).orElse(null);
+                // Only a template belonging to the old type needs replacing. An assessment carrying
+                // none, or one already of the new type, keeps what it has — as it always did.
+                if (current != null && !request.getAssessmentTypeId().equals(current.getAssessmentTypeId())) {
+                    try {
+                        typeChangeTemplateId = defaultReportTemplateService
+                                .resolveForAssessmentType(request.getAssessmentTypeId()).getId();
+                    } catch (IllegalStateException e) {
+                        // The new type has nothing to move to. That is fixed by uploading a template,
+                        // not by retrying, so it answers 400 with the reason instead of 500.
+                        throw new IllegalArgumentException(e.getMessage(), e);
+                    }
+                    // The values were snapshotted from the old type's template and mean nothing under
+                    // the new one, so the assessment starts from the new template's fields.
+                    assessment.setFieldValues(new HashMap<>());
                 }
             }
             assessment.setAssessmentTypeId(request.getAssessmentTypeId());
@@ -546,13 +571,15 @@ public class AssessmentService {
             assessment.setStakeholders(stakeholders);
         }
 
-        // Switch report template: re-snapshot metadata and force a field-definition re-sync
-        if (request.getReportTemplateId() != null
-                && !request.getReportTemplateId().equals(assessment.getReportTemplateId())) {
+        // Switch report template: re-snapshot metadata and force a field-definition re-sync. Either
+        // the caller named a template, or a type change above resolved the new type's own.
+        String switchTemplateId = requestedTemplateId != null ? requestedTemplateId : typeChangeTemplateId;
+        if (switchTemplateId != null && !switchTemplateId.equals(assessment.getReportTemplateId())) {
+            final String resolvedTemplateId = switchTemplateId;
             ReportTemplate newTemplate = reportTemplateRepository
-                    .findById(request.getReportTemplateId())
+                    .findById(resolvedTemplateId)
                     .orElseThrow(() -> new ResourceNotFoundException(
-                            "Report template not found: " + request.getReportTemplateId()));
+                            "Report template not found: " + resolvedTemplateId));
             assessment.setReportTemplateId(newTemplate.getId());
             assessment.setTemplateName(newTemplate.getName());
             assessment.setTemplateCss(newTemplate.getCss());
