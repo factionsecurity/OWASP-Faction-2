@@ -481,12 +481,15 @@ export const managerDashboardApi = {
   },
 
   searchAssessments: async (
-    filters: ManagerDashboardFilters, page = 0, size = 25, sort = 'startDate,desc'
+    filters: ManagerDashboardFilters, page = 0, size = 25, sort?: string
   ): Promise<PagedApiResponse<ManagerDashboardAssessment[]>> => {
     const params = managerDashboardParams(filters);
     params.append('page', page.toString());
     params.append('size', size.toString());
-    params.append('sort', sort);
+    // No sort means the endpoint's own default, newest first. Defaulting to a start-date sort
+    // here sank every assessment without a start date — most of them — below the few that have
+    // one, so work finished yesterday sat pages behind assessments years old.
+    if (sort) params.append('sort', sort);
     const response = await api.get<PagedApiResponse<ManagerDashboardAssessment[]>>(
       `/manager-dashboard/assessments?${params.toString()}`);
     return response.data;

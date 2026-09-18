@@ -268,7 +268,7 @@ export default function ManagerDashboard() {
       const response = await managerDashboardApi.searchAssessments(
         { ...appliedFilters, search: assessmentSearch || undefined },
         assessmentPagination.page, assessmentPagination.pageSize,
-        sortParam(assessmentSort) ?? 'startDate,desc');
+        sortParam(assessmentSort));
       if (response.data) {
         setAssessmentRows(response.data.map((row) => ({
           ...row.assessment,
