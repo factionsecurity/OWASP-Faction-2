@@ -145,6 +145,17 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                 .createdAt(LocalDateTime.now())
                 .build());
 
+        // Same assessment, opened long ago: exercises the finding-level openedAt filter on an
+        // assessment that is finished, so the row is not already excluded for being in progress.
+        vulnerabilityRepository.save(Vulnerability.builder()
+                .name("Ancient Finding")
+                .severity(VulnerabilitySeverity.INFORMATIONAL)
+                .status("Open")
+                .assessmentId(redCompleted.getId())
+                .openedAt(LocalDateTime.now().minusDays(40))
+                .createdAt(LocalDateTime.now())
+                .build());
+
         // Blue team's assessment: draft, no campaign, one LOW opened vulnerability.
         blueDraft = assessmentRepository.save(Assessment.builder()
                 .name("Blue Draft Assessment")
@@ -189,7 +200,7 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                 // Only the red assessment is completed, so only its CRITICAL counts. The blue
                 // assessment's two findings have an openedAt but their assessment is still "New".
                 .andExpect(jsonPath("$.data.vulnerabilities.week").value(1))
-                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(1));
+                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(2));
     }
 
     /**
@@ -203,7 +214,7 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                         .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.vulnerabilities.week").value(1))
-                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(1));
+                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(2));
     }
 
     /**
@@ -243,7 +254,7 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
         mockMvc.perform(get("/api/v1/manager-dashboard/summary")
                         .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(1));
+                .andExpect(jsonPath("$.data.vulnerabilities.allTime").value(2));
     }
 
     @Test
@@ -496,36 +507,50 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
 
     @Test
     void vulnerabilities_NoFilters_ReturnsAllOpenedAcrossAssessments() throws Exception {
+        // Both of the completed assessment's findings; Blue Draft's two are still in progress.
         mockMvc.perform(get("/api/v1/manager-dashboard/vulnerabilities")
                         .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(3));
+                .andExpect(jsonPath("$.data.length()").value(2));
+    }
+
+    /**
+     * The tab lists delivered findings, so it spans finished assessments only — the same rule as
+     * the severity breakdown beside it, which otherwise disagreed with the list it sits above.
+     * Blue Draft is still "New" yet its findings carry an openedAt, the shape an import or a
+     * reopened assessment leaves behind.
+     */
+    @Test
+    void vulnerabilities_ExcludeFindingsFromAnAssessmentStillInProgress() throws Exception {
+        mockMvc.perform(get("/api/v1/manager-dashboard/vulnerabilities")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].assessmentName", not(hasItem("Blue Draft Assessment"))));
     }
 
     @Test
     void vulnerabilities_SeverityFilter_ReturnsOnlyMatching() throws Exception {
         mockMvc.perform(get("/api/v1/manager-dashboard/vulnerabilities")
-                        .param("severities", "LOW")
+                        .param("severities", "CRITICAL")
                         .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].name").value("Low Finding"))
-                .andExpect(jsonPath("$.data[0].assessmentName").value("Blue Draft Assessment"));
+                .andExpect(jsonPath("$.data[0].name").value("Critical Finding"))
+                .andExpect(jsonPath("$.data[0].assessmentName").value("Red Completed Assessment"));
     }
 
     @Test
     void vulnerabilities_DateRange_ExcludesVulnsOpenedOutsideRange() throws Exception {
-        // Range from 3 days ago: the blue assessment (startDate 2 days ago) stays in
-        // the assessment set, but its "Old Finding" (opened 40 days ago) is excluded
-        // by the vulnerability-level openedAt filter. The red assessment (startDate
-        // 10 days ago) drops out at the assessment level, taking its CRITICAL along.
+        // Range from 4 days ago: the red assessment stays in the set on its completed date (3 days
+        // ago), but its "Ancient Finding" (opened 40 days ago) is dropped by the finding-level
+        // openedAt filter, leaving only the CRITICAL opened 3 days ago.
         mockMvc.perform(get("/api/v1/manager-dashboard/vulnerabilities")
-                        .param("startDateFrom", LocalDateTime.now().minusDays(3).toString())
+                        .param("startDateFrom", LocalDateTime.now().minusDays(4).toString())
                         .param("startDateTo", LocalDateTime.now().toString())
                         .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].name").value("Low Finding"));
+                .andExpect(jsonPath("$.data[0].name").value("Critical Finding"));
     }
 
     @Test
@@ -542,7 +567,8 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                 .andExpect(jsonPath("$.data.statusBreakdown.Completed").value(1))
                 .andExpect(jsonPath("$.data.statusBreakdown.New").value(1))
                 .andExpect(jsonPath("$.data.totalAssessments").value(2))
-                .andExpect(jsonPath("$.data.totalVulnerabilities").value(1))
+                .andExpect(jsonPath("$.data.severityBreakdown.INFORMATIONAL").value(1))
+                .andExpect(jsonPath("$.data.totalVulnerabilities").value(2))
                 .andExpect(jsonPath("$.data.completedByAssessor[0].assessorName").value("Red Assessor"))
                 .andExpect(jsonPath("$.data.completedByAssessor[0].count").value(1));
     }
@@ -575,7 +601,7 @@ class ManagerDashboardControllerTest extends TestContainersConfig {
                         .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Critical Finding")))
-                .andExpect(content().string(containsString("Low Finding")));
+                .andExpect(content().string(containsString("Ancient Finding")));
     }
 
     @Test

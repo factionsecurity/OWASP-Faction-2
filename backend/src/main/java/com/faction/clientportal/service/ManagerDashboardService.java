@@ -178,14 +178,11 @@ public class ManagerDashboardService {
                 fetchAssessments(filters, Pageable.unpaged(), authentication).getContent();
         WorkflowCatalog catalog = workflowCatalogService.load();
 
-        // The severity breakdown counts findings, so it spans the finished assessments only —
-        // the same rule as the summary cards and the table's dash. The assessment breakdowns
-        // below still span the whole filtered set: those count assessments, not findings.
-        List<AssessmentDto> completedAssessments = assessments.stream()
-                .filter(a -> AssessmentWorkflows.isCompleted(catalog.forId(a.getWorkflowId()), a.getStatus()))
-                .collect(Collectors.toList());
+        // collectVulnerabilities spans the finished assessments only, so the severity breakdown
+        // counts the same findings the tab lists. The assessment breakdowns below still span the
+        // whole filtered set: those count assessments, not findings.
         List<ManagerDashboardVulnerabilityDto> vulnerabilities =
-                collectVulnerabilities(completedAssessments, filters);
+                collectVulnerabilities(assessments, filters);
 
         Map<String, Long> severityBreakdown = vulnerabilities.stream()
                 .filter(v -> v.getSeverity() != null)
@@ -330,12 +327,25 @@ public class ManagerDashboardService {
         return value != null && value.toLowerCase().contains(lowerCaseNeedle);
     }
 
+    /**
+     * The findings of {@code assessments} that count as delivered work — so every caller (the
+     * vulnerabilities tab, the severity breakdown, the CSV) answers from the same set, and the list
+     * can never disagree with the totals shown above it.
+     *
+     * <p>Findings on an assessment still in progress are left out. A finding's opened date is
+     * stamped when its assessment first completes, so filtering on that alone agrees with this
+     * until an assessment is reopened — its findings keep the timestamp — or an opened date is set
+     * through the API.
+     */
     private List<ManagerDashboardVulnerabilityDto> collectVulnerabilities(
             List<AssessmentDto> assessments, ManagerDashboardFilters filters) {
-        if (assessments.isEmpty()) {
+        List<AssessmentDto> completed = assessments.stream()
+                .filter(a -> Boolean.TRUE.equals(a.getCompleted()))
+                .collect(Collectors.toList());
+        if (completed.isEmpty()) {
             return Collections.emptyList();
         }
-        Map<String, AssessmentDto> assessmentsById = assessments.stream()
+        Map<String, AssessmentDto> assessmentsById = completed.stream()
                 .collect(Collectors.toMap(AssessmentDto::getId, Function.identity()));
         Map<String, String> categoryNamesById = vulnerabilityCategoryRepository.findAllByDeletedAtIsNull().stream()
                 .collect(Collectors.toMap(VulnerabilityCategory::getId, VulnerabilityCategory::getName));
