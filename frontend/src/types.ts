@@ -899,6 +899,8 @@ export interface AssessmentPrefill {
   assessorEmails?: string[];
   /** A workflow status, matched ignoring spaces and case. */
   status?: string;
+  /** An assessment type, matched by name against the form's list, ignoring case. */
+  assessmentTypeName?: string;
   teamName?: string;
   /** Variable values keyed by the field's display name. */
   variables?: Record<string, string>;

@@ -40,6 +40,7 @@ import { usePageTitle } from '../context/PageTitleContext';
 import { PaidBadge } from '../components/PaidFeature';
 import { useEdition } from '../context/EditionContext';
 import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
 import { usePermissions } from '../utils/permissions';
 import './CreateAssessment.css';
 
@@ -248,9 +249,21 @@ export default function CreateAssessment() {
 
   // Statuses come from the workflow the assessment is on (edit), or the one it will be created under:
   // the selected type's workflow, or Default Workflow until a type is chosen (create).
+  //
+  // Every workflow, already loaded for the whole app. Create mode reads the selected type's from
+  // here, and a pre-fill resolves the workflow of the type it is about to select from here too —
+  // neither can wait for a fetch that only starts once the selection has already been made.
+  const { workflows } = useWorkflowsContext();
   const selectedType = assessmentTypes.find((t) => t.id === formData.assessmentTypeId);
   const typeWorkflowId = selectedType ? (selectedType.workflowId || DEFAULT_WORKFLOW_ID) : null;
-  const workflow = useWorkflow(mode === 'create' ? (typeWorkflowId ?? DEFAULT_WORKFLOW_ID) : assessmentWorkflowId);
+  // Edit mode fetches the assessment's own workflow. Create mode takes the selected type's from the
+  // set already loaded for the whole app, rather than fetching it: useWorkflow keeps the previous
+  // workflow in place until the next one arrives, and in that gap an effect would judge a just-set
+  // status against the outgoing type's statuses and reset it.
+  const fetchedWorkflow = useWorkflow(mode === 'create' ? null : assessmentWorkflowId);
+  const workflow = mode === 'create'
+    ? (workflows.find((w) => w.id === (typeWorkflowId ?? DEFAULT_WORKFLOW_ID)) ?? null)
+    : fetchedWorkflow;
   // Edit mode: the chosen type is on another workflow, so saving can also move the assessment there.
   const moveTargetId = mode === 'edit' && typeWorkflowId && assessmentWorkflowId && typeWorkflowId !== assessmentWorkflowId
     ? typeWorkflowId
@@ -510,12 +523,28 @@ export default function CreateAssessment() {
       notes.push(`There is no "${prefill.teamName}" team. Create it, then choose it under Contacts.`);
     }
 
+    const assessmentType = prefill.assessmentTypeName
+      ? assessmentTypes.find((t) => lower(t.name) === lower(prefill.assessmentTypeName!))
+      : undefined;
+    if (prefill.assessmentTypeName && !assessmentType) {
+      notes.push(`There is no "${prefill.assessmentTypeName}" assessment type. Create it, then choose it above.`);
+    }
+
     // "In Progress" and "inprogress" are the same status.
     const squash = (s: string) => s.replace(/\s/g, '').toLowerCase();
+    // Matched against the workflow the pre-filled type runs on. `workflow` describes the type that
+    // was selected when this render happened, and the type is only changed by the update below, so
+    // reading it here would judge the status against the outgoing type. Two types' workflows rarely
+    // share status names, so a perfectly legal status would be reported as invalid and dropped.
+    const targetWorkflow = assessmentType
+      ? workflows.find((w) => w.id === (assessmentType.workflowId || DEFAULT_WORKFLOW_ID)) ?? workflow
+      : workflow;
     const status = prefill.status
-      ? workflow?.statuses.find((s) => squash(s) === squash(prefill.status!))
+      ? targetWorkflow?.statuses.find((s) => squash(s) === squash(prefill.status!))
       : undefined;
-    if (prefill.status && !status) notes.push(`"${prefill.status}" isn't one of the workflow statuses.`);
+    if (prefill.status && !status) {
+      notes.push(`"${prefill.status}" isn't one of the ${targetWorkflow?.name ?? 'workflow'} statuses.`);
+    }
 
     const assessorIds: string[] = [];
     for (const email of prefill.assessorEmails || []) {
@@ -541,6 +570,7 @@ export default function CreateAssessment() {
           : prev.plannedEndDate,
       } : {}),
       ...(team ? { teamId: team.id } : {}),
+      ...(assessmentType ? { assessmentTypeId: assessmentType.id } : {}),
       ...(status ? { status } : {}),
       ...(assessorIds.length ? { assessorIds: Array.from(new Set([...prev.assessorIds, ...assessorIds])) } : {}),
     }));
