@@ -1814,6 +1814,17 @@ export const queueCountsApi = {
     api.get('/assessments/summary')
       .then(r => (r.data?.data?.active as number | undefined) ?? 0),
 
+  /**
+   * The same summary, keeping the per-type breakdown as well: one call serves the Your Assessments
+   * badge and every assessment type's badge, because the server derives both from one grouped
+   * query. Scoped to the caller like the overall count, so each badge matches the page it opens.
+   */
+  assessmentSummary: (): Promise<{ active: number; activeByType: Record<string, number> }> =>
+    api.get('/assessments/summary').then(r => ({
+      active: (r.data?.data?.active as number | undefined) ?? 0,
+      activeByType: (r.data?.data?.activeByType as Record<string, number> | undefined) ?? {},
+    })),
+
   peerReviewQueue: (): Promise<number> =>
     api.get('/peer-reviews/queue', { params: { page: 0, size: 1 } })
       .then(r => r.data?.pagination?.totalElements ?? 0),

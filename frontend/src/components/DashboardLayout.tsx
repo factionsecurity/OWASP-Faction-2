@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect, useRef } from 'react';
+import { ReactNode, useState, useEffect, useRef, useMemo } from 'react';
 import { usePageTitle } from '../context/PageTitleContext';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
@@ -41,13 +41,13 @@ import NotificationBell from './NotificationBell';
 import GliderIcon from './icons/GliderIcon';
 import { permissions } from '../utils/permissions';
 import UserAvatar from './UserAvatar';
-import { authApi, queueCountsApi, statusApi } from '../api';
+import { authApi, queueCountsApi, statusApi, assessmentTypesApi } from '../api';
 import { NotificationStreamProvider, useNotificationStream } from '../context/NotificationStreamContext';
 import { formatCompact } from '../utils/formatNumber';
 import NoAccess from './NoAccess';
 import { useBranding } from '../context/BrandingContext';
 import { useEdition } from '../context/EditionContext';
-import type { FeatureKey } from '../types';
+import type { AssessmentType, FeatureKey } from '../types';
 import './DashboardLayout.css';
 import { useTerminology } from '../context/TerminologyContext';
 
@@ -80,6 +80,13 @@ interface MenuItem {
    * queue counts and badge colours are looked up by, so a relabel never breaks those.
    */
   label?: string;
+  /**
+   * Where this item's badge count is looked up, when that differs from `name`. The assessment type
+   * entries all share `name: 'Assessments'` so permissions resolve, which would otherwise give
+   * every one of them the same number. On a group it also replaces the sum of its children, which
+   * would double-count a group whose children include an "all" entry.
+   */
+  countKey?: string;
 }
 
 const menuItems: MenuItem[] = [
@@ -185,11 +192,61 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
     menuLogoLargeHeight, menuLogoSmallHeight,
     hasCustomMenuLogoLarge, hasCustomMenuLogoSmall,
   } = useBranding();
-  const { hasFeature } = useEdition();
+  const { hasFeature, assessmentTypeMenu } = useEdition();
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem('sidebarOpen') !== 'false'
   );
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Remediation Group', 'Administration']);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(
+    ['Assessments Group', 'Remediation Group', 'Administration']);
+  // Only loaded when the sidebar is actually going to list them.
+  const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
+  useEffect(() => {
+    if (!assessmentTypeMenu) return;
+    // 1000 matches every other screen that wants the whole list; the endpoint is paginated and a
+    // smaller page would quietly drop types off the end of the menu.
+    assessmentTypesApi.getAll(0, 1000)
+      .then((res) => setAssessmentTypes(res.data ?? []))
+      .catch(() => setAssessmentTypes([]));
+  }, [assessmentTypeMenu]);
+
+  /**
+   * The sidebar as rendered. Normally the static list; with the assessment type menu on, the
+   * single Your Assessments entry becomes a group of All Assessments plus one entry per active
+   * type. Built here rather than at module scope because the types are loaded, not known.
+   *
+   * <p>Every sub-item keeps `name: 'Assessments'`, because permissions are looked up by `name`
+   * and its switch hides anything it does not recognise — sub-items named after their type would
+   * be invisible to everyone but a super admin, taking the whole group with them. `label` is what
+   * is shown, and `path` is what React keys by, so the repeated name is safe.
+   */
+  const effectiveMenuItems = useMemo<MenuItem[]>(() => {
+    const active = assessmentTypes.filter((type) => type.active);
+    // With nothing to list, a group holding only All Assessments reads as a broken menu.
+    if (!assessmentTypeMenu || active.length === 0) return menuItems;
+
+    const byName = [...active].sort((a, b) => a.name.localeCompare(b.name));
+    return menuItems.map((item) => item.name !== 'Assessments' ? item : {
+      // The group key differs from its sub-items' key, matching Remediation: the sub-item key is
+      // what permissions and counts read.
+      name: 'Assessments Group',
+      label: item.label ?? item.name,
+      icon: item.icon,
+      // Collapsed, the group shows the overall active count rather than the sum of its children,
+      // which would add the All entry to every type again.
+      countKey: 'Assessments',
+      subItems: [
+        { name: 'Assessments', label: 'All Assessments', path: '/assessments', icon: item.icon },
+        ...byName.map((type) => ({
+          name: 'Assessments',
+          label: type.name,
+          path: `/assessments/type/${type.id}`,
+          icon: item.icon,
+          countKey: `assessments:type:${type.id}`,
+        })),
+      ],
+    });
+  }, [assessmentTypeMenu, assessmentTypes]);
+
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   // Flyout for a submenu group when the sidebar is collapsed
   const [flyout, setFlyout] = useState<{ name: string; top: number; left: number } | null>(null);
@@ -322,8 +379,6 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
   useEffect(() => {
     const isAdmin = authorities.includes('super_admin');
     const fetchers: Array<[string, boolean, () => Promise<number>]> = [
-      ['Assessments', isAdmin || authorities.some((a: string) => a.match(/^assessments:read/)),
-        queueCountsApi.activeAssessments],
       ['Peer Review Queue', isAdmin || authorities.some((a: string) =>
         a === 'peerreview:read:all' || a === 'peerreview:edit:all'),
         queueCountsApi.peerReviewQueue],
@@ -342,7 +397,22 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
         a === 'vulnerabilities:read:all' || a === 'vulnerabilities:read:team'),
         () => queueCountsApi.remediationAlerts('RETEST')],
     ];
+    // Assessments is fetched on its own: one summary call carries the overall badge and, when the
+    // type menu is on, each type's badge — the server derives them from the same grouped query.
     let cancelled = false;
+    if (isAdmin || authorities.some((a: string) => a.match(/^assessments:read/))) {
+      queueCountsApi.assessmentSummary()
+        .then((summary) => {
+          if (cancelled) return;
+          setQueueCounts((prev) => ({
+            ...prev,
+            Assessments: summary.active,
+            ...Object.fromEntries(Object.entries(summary.activeByType)
+              .map(([typeId, count]) => [`assessments:type:${typeId}`, count])),
+          }));
+        })
+        .catch(() => { /* a badge is not worth surfacing an error for */ });
+    }
     fetchers.forEach(([name, allowed, fetchCount]) => {
       if (!allowed) return;
       fetchCount()
@@ -374,6 +444,9 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
    * identity — hasPermission and the external-user gate both key off it, so renaming the field
    * would silently unhook a menu item from its permission.
    */
+  /** An item's badge count: its own `countKey` when it has one, otherwise its name. */
+  const countOf = (item: MenuItem): number => queueCounts[item.countKey ?? item.name] ?? 0;
+
   const menuLabel = (name: string): string =>
     name === 'Organizations' ? organizationPlural : name;
 
@@ -510,7 +583,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
   };
 
   // Filter menu items based on permissions (including subitems)
-  const visibleMenuItems = menuItems
+  const visibleMenuItems = effectiveMenuItems
     .map((item) => {
       // If item has subitems, filter them
       if (item.subItems) {
@@ -603,7 +676,9 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                     {(() => {
                       // The sub-items carry the counts; when they're hidden, the group shows the total.
                       if (sidebarOpen && isExpanded) return null;
-                      const total = item.subItems.reduce((sum, s) => sum + (queueCounts[s.name] ?? 0), 0);
+                      const total = item.countKey !== undefined
+                        ? countOf(item)
+                        : item.subItems.reduce((sum, s) => sum + countOf(s), 0);
                       return total > 0 ? (
                         <span className="nav-badge" title={total.toLocaleString()}>{formatCompact(total)}</span>
                       ) : null;
@@ -629,12 +704,12 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                           >
                             <SubIcon className="nav-icon" size={18} />
                             <span className="nav-label">{subItem.label ?? menuLabel(subItem.name)}</span>
-                            {(queueCounts[subItem.name] ?? 0) > 0 && (
+                            {countOf(subItem) > 0 && (
                               <span
                                 className={`nav-badge ${QUEUE_BADGE_COLORS[subItem.name] ?? ''}`}
-                                title={queueCounts[subItem.name].toLocaleString()}
+                                title={countOf(subItem).toLocaleString()}
                               >
-                                {formatCompact(queueCounts[subItem.name])}
+                                {formatCompact(countOf(subItem))}
                               </span>
                             )}
                           </button>
@@ -684,7 +759,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
 
             // Mentions is fed by the live stream rather than the polled queue counts.
             const queueCount =
-              item.name === 'Mentions' ? mentionsUnread : queueCounts[item.name] ?? 0;
+              item.name === 'Mentions' ? mentionsUnread : countOf(item);
             return (
               <button
                 key={item.path}
@@ -732,8 +807,8 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                 {breadcrumbs.map((crumb, i) => {
                   // Lead the trail with the same icon shown for this section in the sidebar
                   const SectionIcon = i === 0 && crumb.to
-                    ? (menuItems.find(item => item.path === crumb.to)?.icon
-                        || menuItems.flatMap(item => item.subItems || []).find(sub => sub.path === crumb.to)?.icon)
+                    ? (effectiveMenuItems.find(item => item.path === crumb.to)?.icon
+                        || effectiveMenuItems.flatMap(item => item.subItems || []).find(sub => sub.path === crumb.to)?.icon)
                     : undefined;
                   return (
                     <span key={i} className="page-breadcrumb">
@@ -751,19 +826,19 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
                 })}
               </nav>
             ) : (() => {
-              const CurrentIcon = menuItems.find(item => item.path === location.pathname)?.icon
-                || menuItems.flatMap(item => item.subItems || []).find(subItem => subItem.path === location.pathname)?.icon
+              const CurrentIcon = effectiveMenuItems.find(item => item.path === location.pathname)?.icon
+                || effectiveMenuItems.flatMap(item => item.subItems || []).find(subItem => subItem.path === location.pathname)?.icon
                 || LayoutDashboard;
               return (
                 <h1 className="page-title">
                   <CurrentIcon size={18} className="page-breadcrumb-icon" />
                   {pageTitle ||
                    (() => {
-                     const top = menuItems.find(item => item.path === location.pathname);
+                     const top = effectiveMenuItems.find(item => item.path === location.pathname);
                      return top ? top.label ?? top.name : undefined;
                    })() ||
                    (() => {
-                     const sub = menuItems.flatMap(item => item.subItems || []).find(subItem => subItem.path === location.pathname);
+                     const sub = effectiveMenuItems.flatMap(item => item.subItems || []).find(subItem => subItem.path === location.pathname);
                      return sub ? sub.label ?? sub.name : undefined;
                    })() ||
                    'Dashboard'}

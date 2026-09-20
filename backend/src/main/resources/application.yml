@@ -84,6 +84,11 @@ sso:
   encryption-key: ${SSO_ENCRYPTION_KEY:}
 
 faction:
+  ui:
+    # Lists each active assessment type under Your Assessments in the sidebar, alongside an
+    # All Assessments entry that is the usual page. Off by default; changing it needs a restart.
+    assessment-type-menu: ${ASSESSMENT_TYPE_MENU:false}
+
   security:
     # Failed password attempts before the account is disabled. A disabled user cannot log in and
     # their API keys go inert; an admin re-enables them from the Users page, which also clears the

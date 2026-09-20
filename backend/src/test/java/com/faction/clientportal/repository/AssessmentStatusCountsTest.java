@@ -15,14 +15,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The nav badge's grouped counts split each status by workflow, so the service can judge "completed"
- * per workflow. Every scope variant returns rows of {@code [workflowId, status, count]} and skips
- * deleted assessments.
+ * per workflow, and by assessment type, so the sidebar can badge each type's entry. Every scope
+ * variant returns rows of {@code [workflowId, status, assessmentTypeId, count]} and skips deleted
+ * assessments.
+ *
+ * <p>All six variants are asserted because they are not one query: the assigned tier is native SQL
+ * while the rest are JPQL, so a change to the projection can reach five of them and miss the sixth.
  */
 @SpringBootTest
 @ActiveProfiles("test")
 class AssessmentStatusCountsTest extends TestContainersConfig {
 
-    private static final List<String> EXPECTED = List.of("default|Completed|1", "second-workflow|Completed|1");
+    private static final List<String> EXPECTED =
+            List.of("default|Completed|type-1|1", "second-workflow|Completed|type-1|1");
 
     @Autowired private AssessmentRepository assessmentRepository;
 
@@ -87,6 +92,8 @@ class AssessmentStatusCountsTest extends TestContainersConfig {
     }
 
     private static List<String> flatten(List<Object[]> rows) {
-        return rows.stream().map(r -> r[0] + "|" + r[1] + "|" + ((Number) r[2]).longValue()).toList();
+        return rows.stream()
+                .map(r -> r[0] + "|" + r[1] + "|" + r[2] + "|" + ((Number) r[3]).longValue())
+                .toList();
     }
 }

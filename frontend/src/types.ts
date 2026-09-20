@@ -2227,6 +2227,11 @@ export interface EditionStatus {
   limits: Partial<Record<QuotaKey, number>>;
   usage: Record<QuotaKey, number>;
   upgradeUrl: string;
+  /**
+   * Whether this install lists each assessment type under Your Assessments. An install
+   * preference rather than an edition capability, which is why it sits beside `features`.
+   */
+  assessmentTypeMenu?: boolean;
 }
 
 /** Body of a 402. `code` is what to branch on; `message` is for people. */
