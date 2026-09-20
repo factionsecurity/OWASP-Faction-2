@@ -34,6 +34,7 @@ import org.springframework.security.core.Authentication;
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 @Service
@@ -1133,17 +1134,31 @@ public class AssessmentService {
         };
 
         WorkflowCatalog catalog = workflowCatalogService.load();
-        long total = rows.stream().mapToLong(row -> ((Number) row[2]).longValue()).sum();
+        long total = rows.stream().mapToLong(row -> ((Number) row[3]).longValue()).sum();
         // Completed means the row's own workflow's completed status (an unknown workflow id uses Default
         // Workflow's); a null status is active. Note this deliberately excludes assessments still inside
         // their reopen window: they remain in the queue so they can be reopened, but they are finished
         // work, and the badge counts what still needs doing. The badge is therefore lower than the
         // unfiltered list length.
+        Predicate<Object[]> isActive =
+                row -> !AssessmentWorkflows.isCompleted(catalog.forId((String) row[0]), (String) row[1]);
         long active = rows.stream()
-                .filter(row -> !AssessmentWorkflows.isCompleted(catalog.forId((String) row[0]), (String) row[1]))
-                .mapToLong(row -> ((Number) row[2]).longValue())
+                .filter(isActive)
+                .mapToLong(row -> ((Number) row[3]).longValue())
                 .sum();
-        return AssessmentSummaryDto.builder().active(active).total(total).build();
+
+        // The same rows broken down by type, for the sidebar's per-type badges: one more grouping
+        // column rather than a query per type. Every type present in the rows gets an entry, so a
+        // type whose assessments are all finished reports zero instead of going missing.
+        Map<String, Long> activeByType = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            String typeId = (String) row[2];
+            if (typeId == null) continue; // an assessment with no type belongs to no menu entry
+            activeByType.merge(typeId, isActive.test(row) ? ((Number) row[3]).longValue() : 0L, Long::sum);
+        }
+
+        return AssessmentSummaryDto.builder()
+                .active(active).total(total).activeByType(activeByType).build();
     }
 
     private boolean hasAuthority(Authentication authentication, String authority) {

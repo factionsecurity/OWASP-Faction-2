@@ -21,7 +21,26 @@ class EditionStatusServiceTest {
     @Mock private QuotaUsageService quotaUsageService;
 
     private EditionStatusService serviceFor(EditionPolicy policy) {
-        return new EditionStatusService(policy, quotaUsageService, UPGRADE_URL);
+        return serviceFor(policy, false);
+    }
+
+    private EditionStatusService serviceFor(EditionPolicy policy, boolean assessmentTypeMenu) {
+        return new EditionStatusService(policy, quotaUsageService, UPGRADE_URL, assessmentTypeMenu);
+    }
+
+    /**
+     * An install preference rather than an edition capability, so it rides alongside {@code features}
+     * rather than inside it: every edition can turn the assessment type menu on, and no edition
+     * grants it.
+     */
+    @Test
+    void reportsTheAssessmentTypeMenuPreferenceSeparatelyFromEditionFeatures() {
+        assertThat(serviceFor(new CommunityEditionPolicy(), true).status().getAssessmentTypeMenu())
+                .isTrue();
+        assertThat(serviceFor(new UnrestrictedEditionPolicy(), false).status().getAssessmentTypeMenu())
+                .isFalse();
+        assertThat(serviceFor(new CommunityEditionPolicy(), true).status().getFeatures())
+                .doesNotContainKey("assessment_type_menu");
     }
 
     @Test
