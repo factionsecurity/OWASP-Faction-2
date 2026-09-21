@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Eye, Download, AlertCircle } from 'lucide-react';
 import { assessmentsApi, applicationsApi, assessmentTypesApi } from '../api';
 import type {
@@ -22,6 +22,11 @@ const TABLE_KEY = 'assessments';
 
 export default function Assessments() {
   const navigate = useNavigate();
+  // Present when the sidebar's assessment type menu routed here: this page is then that one type.
+  const { typeId } = useParams<{ typeId?: string }>();
+  // Each type keeps its own filters, sort and paging. App.tsx remounts the page when the type
+  // changes, which is what makes a per-type key safe to read once on mount.
+  const tableKey = typeId ? `${TABLE_KEY}:${typeId}` : TABLE_KEY;
   const { hasAnyPermission } = usePermissions();
   const { workflows } = useWorkflowsContext();
 
@@ -34,18 +39,18 @@ export default function Assessments() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
 
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
+  const [pagination, setPagination] = usePersistedState<PaginationInfo>(tableKey, 'pagination', {
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [sort, setSort] = usePersistedState<SortState | null>(tableKey, 'sort', null);
 
   // Applied filters — what actually drives the query. Inline filters (search, application, type,
   // status) write here directly (live-apply); advanced filters land here only on Apply.
-  const [filters, setFilters] = usePersistedState(TABLE_KEY, 'filters', {
+  const [filters, setFilters] = usePersistedState(tableKey, 'filters', {
     search: '',
     startDateFrom: '',
     startDateTo: '',
@@ -77,13 +82,27 @@ export default function Assessments() {
     () => applications.map((a) => ({ value: a.id, label: a.name })), [applications]);
   const typeOptions: SelectOption[] = useMemo(
     () => assessmentTypes.map((t) => ({ value: t.id, label: t.name })), [assessmentTypes]);
+  // On a type's own page the type is the page, not a filter: it drives the query, the export and
+  // the status narrowing, and the type selector is hidden as redundant.
+  const queriedTypeIds = useMemo(
+    () => (typeId ? [typeId] : filters.assessmentTypeIds),
+    [typeId, filters.assessmentTypeIds]);
   // Statuses follow the selected types: none selected offers every active workflow's statuses, as
   // before; types selected offer only the statuses of the workflows those types run on.
   const statusOptions: SelectOption[] = useMemo(() => {
     const offered = workflowsForSelectedTypes(
-      workflows, assessmentTypes, filters.assessmentTypeIds, workflows.filter((w) => !w.archived));
+      workflows, assessmentTypes, queriedTypeIds, workflows.filter((w) => !w.archived));
     return mergedStatusNames(offered).map((s) => ({ value: s, label: s }));
-  }, [workflows, assessmentTypes, filters.assessmentTypeIds]);
+  }, [workflows, assessmentTypes, queriedTypeIds]);
+
+  // A link to a type that has since been retired or deleted falls back to the full list. The
+  // alternative is a table that is permanently empty and never says why. Waits for the types to
+  // load, or it would redirect on every visit before the first response arrives.
+  useEffect(() => {
+    if (!typeId || assessmentTypes.length === 0) return;
+    const match = assessmentTypes.find((type) => type.id === typeId);
+    if (!match || !match.active) navigate('/assessments', { replace: true });
+  }, [typeId, assessmentTypes, navigate]);
 
   // ── Zone 2: inline filters apply immediately ───────────────────────────────
   const applyInline = (patch: Partial<typeof filters>) => {
@@ -176,7 +195,7 @@ export default function Assessments() {
         assignedToMe: filters.assignedToMe,
         statuses: filters.statuses,
         applicationId: filters.applicationId || undefined,
-        assessmentTypeIds: filters.assessmentTypeIds,
+        assessmentTypeIds: queriedTypeIds,
         sort: sortParam(sort),
       });
 
@@ -226,7 +245,7 @@ export default function Assessments() {
       // multi-select has exactly one, otherwise export unfiltered on that dimension.
       const blob = await assessmentsApi.exportToCsv({
         applicationId: filters.applicationId || undefined,
-        assessmentTypeId: filters.assessmentTypeIds.length === 1 ? filters.assessmentTypeIds[0] : undefined,
+        assessmentTypeId: queriedTypeIds.length === 1 ? queriedTypeIds[0] : undefined,
         status: filters.statuses.length === 1 ? filters.statuses[0] : undefined,
         name: filters.search || undefined,
       });
@@ -408,13 +427,15 @@ export default function Assessments() {
               options={appOptions}
               placeholder="All Applications"
             />
-            <MultiSelect
-              selected={filters.assessmentTypeIds}
-              onChange={(vals) => applyInline({ assessmentTypeIds: vals })}
-              options={typeOptions}
-              placeholder="All Types"
-              searchable={false}
-            />
+            {!typeId && (
+              <MultiSelect
+                selected={filters.assessmentTypeIds}
+                onChange={(vals) => applyInline({ assessmentTypeIds: vals })}
+                options={typeOptions}
+                placeholder="All Types"
+                searchable={false}
+              />
+            )}
             <MultiSelect
               selected={filters.statuses}
               onChange={(vals) => applyInline({ statuses: vals })}

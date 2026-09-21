@@ -81,3 +81,27 @@
   color: #ef4444;
   font-size: 0.85rem;
 }
+
+/* Shown under the type selector once a different type is picked: the custom fields whose
+   content that change discards. Tinted from the shared warning token so it reads the same
+   in both themes rather than carrying its own colours. */
+.aie-warning {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--warning-color) 40%, transparent);
+  border-left: 3px solid var(--warning-color);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warning-color) 10%, transparent);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.aie-warning ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.aie-warning li {
+  margin: 0.1rem 0;
+}

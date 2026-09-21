@@ -26,15 +26,18 @@ public class EditionStatusService {
     private final EditionPolicy editionPolicy;
     private final QuotaUsageService quotaUsageService;
     private final String upgradeUrl;
+    private final boolean assessmentTypeMenu;
 
     // Explicit constructor rather than @RequiredArgsConstructor: the upgrade URL is a
     // @Value parameter, and field injection would leave it null under plain unit tests.
     public EditionStatusService(EditionPolicy editionPolicy,
                                 QuotaUsageService quotaUsageService,
-                                @Value("${faction.upgrade-url:" + DEFAULT_UPGRADE_URL + "}") String upgradeUrl) {
+                                @Value("${faction.upgrade-url:" + DEFAULT_UPGRADE_URL + "}") String upgradeUrl,
+                                @Value("${faction.ui.assessment-type-menu:false}") boolean assessmentTypeMenu) {
         this.editionPolicy = editionPolicy;
         this.quotaUsageService = quotaUsageService;
         this.upgradeUrl = upgradeUrl;
+        this.assessmentTypeMenu = assessmentTypeMenu;
     }
 
     public EditionStatusDto status() {
@@ -60,6 +63,7 @@ public class EditionStatusService {
                 .limits(limits)
                 .usage(usage)
                 .upgradeUrl(upgradeUrl)
+                .assessmentTypeMenu(assessmentTypeMenu)
                 .build();
     }
 

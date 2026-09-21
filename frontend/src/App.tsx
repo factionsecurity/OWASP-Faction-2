@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { PageTitleProvider } from './context/PageTitleContext';
 import { authApi } from './api';
 import { getCurrentUser } from './utils/permissions';
@@ -52,6 +52,19 @@ import AiConfigPage from './pages/AiConfigPage';
 import ContentTemplates from './pages/ContentTemplates';
 import Logs from './pages/Logs';
 import ApplicationIdConfig from './pages/ApplicationIdConfig';
+
+/**
+ * Your Assessments, remounted per assessment type.
+ *
+ * The key is not cosmetic. The page keeps its filters, sort and paging in localStorage under a
+ * key derived from the type, and `usePersistedState` reads that store once on mount and writes
+ * back whenever the key changes — so without a remount, switching between two types would restore
+ * the wrong view and then save it over the other type's entry.
+ */
+function AssessmentsForType() {
+  const { typeId } = useParams<{ typeId?: string }>();
+  return <Assessments key={typeId ?? 'all'} />;
+}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -432,7 +445,25 @@ function App() {
             isAuthenticated ? (
               <DashboardLayout>
                 <ProtectedRoute requiredPermission="canViewAssessments">
-                  <Assessments />
+                  <AssessmentsForType />
+                </ProtectedRoute>
+              </DashboardLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* One assessment type's assessments — the same page, locked to that type. The route
+            resolves whether or not the sidebar offers it, so a bookmark still lands somewhere
+            sensible once the menu is switched off again. */}
+        <Route
+          path="/assessments/type/:typeId"
+          element={
+            isAuthenticated ? (
+              <DashboardLayout>
+                <ProtectedRoute requiredPermission="canViewAssessments">
+                  <AssessmentsForType />
                 </ProtectedRoute>
               </DashboardLayout>
             ) : (

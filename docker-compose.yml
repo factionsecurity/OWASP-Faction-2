@@ -94,6 +94,10 @@ services:
       VULNERABILITY_DIGEST_CRON: ${VULNERABILITY_DIGEST_CRON:-0 0 8 * * *}
       ASSESSMENT_SCHEDULER_CRON: ${ASSESSMENT_SCHEDULER_CRON:-0 0 1 * * ?}
 
+      # Lists each active assessment type under Your Assessments in the sidebar, with an
+      # All Assessments entry carrying the usual page. Off by default.
+      ASSESSMENT_TYPE_MENU: ${ASSESSMENT_TYPE_MENU:-false}
+
       # The shipped application.yml logs at DEBUG, which is a development
       # default: it prints a line per security filter decision.
       LOGGING_LEVEL_COM_FACTION_CLIENTPORTAL: ${LOG_LEVEL:-INFO}

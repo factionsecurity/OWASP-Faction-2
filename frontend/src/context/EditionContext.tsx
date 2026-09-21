@@ -21,6 +21,12 @@ interface EditionContextValue {
   /** Whether a quota is at or over its cap — the moment a create button locks. */
   atLimit: (quota: QuotaKey) => boolean;
   isCommunity: boolean;
+  /**
+   * Whether the sidebar lists each assessment type under Your Assessments. Defaults to false
+   * until the status loads — unlike `hasFeature`, which stays optimistic, an unproven layout
+   * must not flash on and then back off again.
+   */
+  assessmentTypeMenu: boolean;
   upgradeUrl: string;
   /** Re-reads usage after something is created or deleted. */
   refresh: () => Promise<void>;
@@ -33,6 +39,7 @@ const EditionContext = createContext<EditionContextValue>({
   usageOf: () => 0,
   atLimit: () => false,
   isCommunity: false,
+  assessmentTypeMenu: false,
   upgradeUrl: FALLBACK_UPGRADE_URL,
   refresh: async () => {},
 });
@@ -75,6 +82,7 @@ export function EditionProvider({ children }: { children: ReactNode }) {
         return limit !== null && usageOf(quota) >= limit;
       },
       isCommunity: status?.edition === 'COMMUNITY',
+      assessmentTypeMenu: status?.assessmentTypeMenu ?? false,
       upgradeUrl: status?.upgradeUrl ?? FALLBACK_UPGRADE_URL,
       refresh: load,
     };

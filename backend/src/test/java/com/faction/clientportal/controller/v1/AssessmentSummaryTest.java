@@ -87,6 +87,58 @@ class AssessmentSummaryTest extends TestContainersConfig {
         assertThat(s.getActive()).isEqualTo(2L); // Testing + Scheduling
     }
 
+    /**
+     * Per-type counts back the sidebar's assessment type menu, where each entry's badge must count
+     * exactly what that entry opens. They come from the same grouped rows as the overall figures —
+     * one more GROUP BY column, not another query — and mean the same thing: active, judged by each
+     * assessment's own workflow.
+     */
+    @Test
+    void summary_breaksTheActiveCountDownByAssessmentType() {
+        ofType("type-web", "Testing");
+        ofType("type-web", "Scheduling");
+        ofType("type-web", "Completed");   // finished: counted in total, not in the badge
+        ofType("type-mobile", "Testing");
+
+        var s = assessmentService.assessmentSummary(superAdmin());
+
+        assertThat(s.getActive()).isEqualTo(3L);
+        assertThat(s.getActiveByType())
+                .containsEntry("type-web", 2L)
+                .containsEntry("type-mobile", 1L);
+    }
+
+    /** A type whose assessments are all finished reports zero rather than going missing. */
+    @Test
+    void summary_reportsZeroForATypeWithNothingActive() {
+        ofType("type-web", "Completed");
+
+        assertThat(assessmentService.assessmentSummary(superAdmin()).getActiveByType())
+                .containsEntry("type-web", 0L);
+    }
+
+    /**
+     * The assigned tier reads through a native query rather than the JPQL the other scopes share,
+     * so it is the one that silently drifts when the grouped projection changes — and it is the
+     * tier an ordinary pentester falls into.
+     */
+    @Test
+    void summary_assignedScopedUser_countsAndBreaksDownOnlyTheirOwnAssessments() {
+        User pentester = user("assigned-user", ORG_A);
+        assignedTo(pentester.getId(), "type-web", "Testing");
+        assignedTo(pentester.getId(), "type-web", "Completed");
+        assignedTo("someone-else", "type-mobile", "Testing");
+
+        var s = assessmentService.assessmentSummary(
+                auth("assigned-user", Permission.ASSESSMENTS_READ_ASSIGNED.getPermission()));
+
+        assertThat(s.getTotal()).isEqualTo(2L);
+        assertThat(s.getActive()).isEqualTo(1L);
+        assertThat(s.getActiveByType())
+                .containsEntry("type-web", 1L)
+                .doesNotContainKey("type-mobile");
+    }
+
     @Test
     void summary_countsAnAssessmentAsActiveUntilItsOwnWorkflowsCompletedStatus() {
         // Start from a fresh Default Workflow (the catalog recreates it) so no other test's edits leak in.
@@ -209,6 +261,29 @@ class AssessmentSummaryTest extends TestContainersConfig {
                 .organizationId(orgId)
                 .status(status)
                 .deletedAt(deletedAt)
+                .createdAt(LocalDateTime.now())
+                .build());
+    }
+
+    private void ofType(String assessmentTypeId, String status) {
+        assessmentRepository.save(Assessment.builder()
+                .name("Typed " + assessmentTypeId + "-" + System.nanoTime())
+                .applicationId("app-1")
+                .assessmentTypeId(assessmentTypeId)
+                .organizationId(ORG_A)
+                .status(status)
+                .createdAt(LocalDateTime.now())
+                .build());
+    }
+
+    private void assignedTo(String assessorId, String assessmentTypeId, String status) {
+        assessmentRepository.save(Assessment.builder()
+                .name("Assigned " + assessorId + "-" + System.nanoTime())
+                .applicationId("app-1")
+                .assessmentTypeId(assessmentTypeId)
+                .organizationId(ORG_A)
+                .assessorIds(List.of(assessorId))
+                .status(status)
                 .createdAt(LocalDateTime.now())
                 .build());
     }

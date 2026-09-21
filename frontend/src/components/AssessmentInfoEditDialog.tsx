@@ -19,9 +19,27 @@ export interface AssessmentInfoEditDialogProps {
   application: Application | null;
   /** When true the dialog also edits the application's description and tech stack. */
   canEditApplication: boolean;
+  /**
+   * The assessment's custom field values as they stand on the page now, keyed by snapshot field id.
+   *
+   * <p>Passed in rather than read from {@code assessment}: field edits are saved straight to the
+   * API without re-reading the assessment, so its own copy still holds whatever was there when the
+   * page loaded. Reading that would tell someone their filled-in fields are empty.
+   */
+  fieldValues: Record<string, string>;
   /** Called after a successful save so the page can refresh both records. */
   onSaved: () => void | Promise<void>;
 }
+
+/**
+ * Whether a custom field holds anything a person would call content.
+ *
+ * <p>Rich text fields arrive as HTML, so an untouched one is not the empty string: the editor
+ * leaves behind an empty paragraph or a lone break. Tags and non-breaking spaces are stripped
+ * before deciding, or a field the user never filled in would be reported as losing data.
+ */
+const hasContent = (value?: string): boolean =>
+  (value ?? '').replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim() !== '';
 
 /** `datetime-local` wants `yyyy-MM-ddTHH:mm`; the API hands back ISO with a seconds/zone tail. */
 const toLocalInput = (iso?: string | null): string => (iso ? iso.slice(0, 16) : '');
@@ -37,7 +55,7 @@ const toIso = (local: string): string | undefined => (local ? `${local}:00` : un
  * never silently discards the assessment edits.
  */
 export default function AssessmentInfoEditDialog({
-  isOpen, onClose, assessment, application, canEditApplication, onSaved,
+  isOpen, onClose, assessment, application, canEditApplication, fieldValues, onSaved,
 }: AssessmentInfoEditDialogProps) {
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -57,6 +75,23 @@ export default function AssessmentInfoEditDialog({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** A different type is selected. Its custom fields are replaced whether or not they hold data. */
+  const typeChanged = !!assessmentTypeId && assessmentTypeId !== assessment.assessmentTypeId;
+
+  /**
+   * Which of those fields actually lose content, named for the warning below.
+   *
+   * <p>Changing the type re-snapshots the fields from the new type's template and starts their
+   * values empty — they were captured under the old type's template and mean nothing under the
+   * new one. Values are keyed by the snapshot field's id, as the assessment page reads them.
+   */
+  const fieldsLosingData = useMemo(() => {
+    if (!typeChanged) return [];
+    return (assessment.fieldDefinitions ?? [])
+      .filter((field) => hasContent(fieldValues[field.id]))
+      .map((field) => field.displayName || field.variableName);
+  }, [typeChanged, assessment.fieldDefinitions, fieldValues]);
 
   // Reset the form from the records every time the dialog opens, so a cancelled edit is discarded.
   useEffect(() => {
@@ -186,6 +221,27 @@ export default function AssessmentInfoEditDialog({
               {assessmentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
             <FormHint>The report template must belong to the selected type.</FormHint>
+            {typeChanged && (
+              <div className="aie-warning" role="alert">
+                <strong>Changing the assessment type replaces its custom fields.</strong>
+                {fieldsLosingData.length > 0 ? (
+                  <>
+                    <span>
+                      {' '}This assessment moves to the new type's fields, and what these currently
+                      hold is lost when you save:
+                    </span>
+                    <ul>
+                      {fieldsLosingData.map((name) => <li key={name}>{name}</li>)}
+                    </ul>
+                  </>
+                ) : (
+                  <span>
+                    {' '}This assessment moves to the new type's fields when you save. None of its
+                    fields hold anything today, so no data is lost.
+                  </span>
+                )}
+              </div>
+            )}
           </FormGroup>
           <FormGroup>
             <FormLabel>Campaign</FormLabel>
