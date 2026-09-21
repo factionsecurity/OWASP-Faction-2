@@ -2,18 +2,19 @@ package com.faction.clientportal.controller.v1;
 
 import com.faction.clientportal.config.TestContainersConfig;
 import com.faction.clientportal.model.Assessment;
-import com.faction.clientportal.model.AssessmentWorkflowConfig;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.LoginOption;
 import com.faction.clientportal.model.PeerReview;
 import com.faction.clientportal.model.PeerReviewStatus;
 import com.faction.clientportal.model.Team;
 import com.faction.clientportal.model.User;
 import com.faction.clientportal.repository.AssessmentRepository;
-import com.faction.clientportal.repository.AssessmentWorkflowConfigRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.PeerReviewRepository;
 import com.faction.clientportal.repository.TeamRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.service.JwtService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,7 +49,7 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
     @Autowired private AssessmentRepository assessmentRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private TeamRepository teamRepository;
-    @Autowired private AssessmentWorkflowConfigRepository configRepository;
+    @Autowired private AssessmentWorkflowRepository configRepository;
     @Autowired private JwtService jwtService;
 
     private static final String READ_TEAM = "peerreview:read:team";
@@ -87,6 +88,11 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
 
         alphaReview = saveReview(alphaAssessment.getId(), alphaAssessor.getId());
         betaReview = saveReview(betaAssessment.getId(), betaMember.getId());
+    }
+
+    @AfterEach
+    void tearDown() {
+        configRepository.deleteAll();
     }
 
     // ── Queue / read scoping ────────────────────────────────────────────────
@@ -155,6 +161,21 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void selfReview_followsTheAssessmentsOwnWorkflow() throws Exception {
+        // Default Workflow forbids self-review; the second workflow allows it.
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(configRepository);
+        alphaAssessment.setWorkflowId(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID);
+        assessmentRepository.save(alphaAssessment);
+
+        mockMvc.perform(post("/api/v1/peer-reviews/" + alphaReview.getId() + "/start")
+                        .header("Authorization", token(alphaAssessor, EDIT_TEAM)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/peer-reviews/" + betaReview.getId() + "/start")
+                        .header("Authorization", token(betaMember, EDIT_TEAM)))
+                .andExpect(status().isForbidden());
+    }
+
     // ── Submit (create) scoping ─────────────────────────────────────────────
 
     @Test
@@ -201,7 +222,7 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
     private Assessment saveAssessment(String name, List<String> assessorIds) {
         return assessmentRepository.save(Assessment.builder()
                 .name(name).applicationId("app-1").organizationId("org-1")
-                .assessmentTypeId("type-1").status("IN_PROGRESS")
+                .assessmentTypeId("type-1").status("Testing")
                 .assessorIds(assessorIds)
                 .createdAt(LocalDateTime.now())
                 .build());
@@ -217,8 +238,8 @@ class PeerReviewTeamScopeTest extends TestContainersConfig {
     }
 
     private void setAllowSelfPeerReview(boolean allow) {
-        AssessmentWorkflowConfig config = configRepository.findById("singleton")
-                .orElseGet(() -> AssessmentWorkflowConfig.builder().id("singleton").build());
+        AssessmentWorkflow config = configRepository.findById(AssessmentWorkflow.DEFAULT_ID)
+                .orElseGet(() -> AssessmentWorkflow.defaultWorkflowBuilder().build());
         config.setAllowSelfPeerReview(allow);
         configRepository.save(config);
     }

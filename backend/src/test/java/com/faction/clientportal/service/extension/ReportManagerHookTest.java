@@ -40,7 +40,7 @@ class ReportManagerHookTest {
     void setUp() {
         events = new ExtensionEventService(
                 registry, new ExtensionMapper(), extensionLogRepository,
-                null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null,
                 new SyncTaskExecutor());
     }
 

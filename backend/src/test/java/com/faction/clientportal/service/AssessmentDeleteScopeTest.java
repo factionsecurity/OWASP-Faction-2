@@ -115,7 +115,7 @@ class AssessmentDeleteScopeTest extends TestContainersConfig {
 
     private String assessment(String name, String teamId) {
         return assessmentRepository.save(Assessment.builder()
-                .name(name).assessmentTypeId("t").status("IN_PROGRESS").teamId(teamId)
+                .name(name).assessmentTypeId("t").status("Testing").teamId(teamId)
                 .createdAt(LocalDateTime.now()).build()).getId();
     }
 

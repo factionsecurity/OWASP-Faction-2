@@ -116,7 +116,7 @@ class ReportTemplateDeleteBranchTest extends TestContainersConfig {
     private Assessment assessmentUsing(String templateId) {
         return Assessment.builder()
                 .name("Uses the template").applicationId("app-1").organizationId("org-1")
-                .assessmentTypeId("type-1").status("IN_PROGRESS")
+                .assessmentTypeId("type-1").status("Testing")
                 .reportTemplateId(templateId)
                 .createdAt(LocalDateTime.now()).build();
     }

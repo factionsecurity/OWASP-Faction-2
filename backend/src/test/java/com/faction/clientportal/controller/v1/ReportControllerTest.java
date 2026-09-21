@@ -56,6 +56,7 @@ class ReportControllerTest extends TestContainersConfig {
     @Autowired private JwtService               jwtService;
     @Autowired private ReportDocumentRepository reportDocumentRepository;
     @Autowired private com.faction.clientportal.service.EncryptionService encryptionService;
+    @Autowired private com.faction.clientportal.repository.AssessmentWorkflowRepository workflowRepository;
 
     // Mock heavy dependencies so they don't try to connect to MinIO/docx4j/LibreOffice
     @MockBean private ReportGenerationTrigger reportGenerationTrigger;
@@ -102,9 +103,14 @@ class ReportControllerTest extends TestContainersConfig {
                     .assessmentTypeId("type-1")
                     .organizationId("org-1")
                     .templateFileId("templates/tmpl-1/template.docx")
-                    .status("IN_PROGRESS")
+                    .status("Testing")
                     .createdAt(LocalDateTime.now())
                     .build());
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDownWorkflows() {
+        workflowRepository.deleteAll();
     }
 
     // ── POST /{assessmentId}/generate ────────────────────────────────────────
@@ -148,6 +154,35 @@ class ReportControllerTest extends TestContainersConfig {
         verify(reportGenerationTrigger, never()).trigger(anyString(), anyString());
     }
 
+    @Test
+    void generateReport_returns409WhenCompletedInTheAssessmentsOwnWorkflow() throws Exception {
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(workflowRepository);
+        testAssessment.setWorkflowId(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Signed Off");
+        assessmentRepository.save(testAssessment);
+
+        // The report of a completed assessment is the issued deliverable — regenerating it would
+        // silently change what was already delivered.
+        mockMvc.perform(post("/api/v1/reports/{id}/generate", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isConflict());
+
+        verify(reportGenerationTrigger, never()).trigger(anyString(), anyString());
+    }
+
+    @Test
+    void generateReport_isNotBlockedByAnotherWorkflowsCompletedStatus() throws Exception {
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(workflowRepository);
+        testAssessment.setWorkflowId(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Completed");
+        assessmentRepository.save(testAssessment);
+
+        mockMvc.perform(post("/api/v1/reports/{id}/generate", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                        result.getResponse().getStatus()).isNotEqualTo(409));
+    }
+
     // ── POST /{assessmentId}/upload ──────────────────────────────────────────
 
     @Test
@@ -176,7 +211,7 @@ class ReportControllerTest extends TestContainersConfig {
 
     /** Move the fixture assessment into a completed state. */
     private void completeTestAssessment() {
-        testAssessment.setStatus("COMPLETED");
+        testAssessment.setStatus("Completed");
         testAssessment.setCompletedDate(LocalDateTime.now());
         assessmentRepository.save(testAssessment);
     }

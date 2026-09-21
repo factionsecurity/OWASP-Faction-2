@@ -203,6 +203,8 @@ export interface AssessmentType {
   name: string;
   description: string;
   active: boolean;
+  /** The workflow new assessments of this type are created under. */
+  workflowId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -211,12 +213,16 @@ export interface CreateAssessmentTypeRequest {
   name: string;
   description: string;
   active: boolean;
+  /** Omitted: Default Workflow. */
+  workflowId?: string;
 }
 
 export interface UpdateAssessmentTypeRequest {
   name: string;
   description: string;
   active: boolean;
+  /** Omitted: the type keeps its workflow. */
+  workflowId?: string;
 }
 
 export interface AssignedUser {
@@ -485,6 +491,8 @@ export interface UserDefinedField {
   minLength?: number;
   displayOrder?: number;
   fieldScope?: FieldScope;
+  /** Offered on the scheduling form. Off unless ticked in the Report Designer. */
+  showInScheduling?: boolean;
 }
 
 export interface ReportTemplate {
@@ -546,8 +554,6 @@ export interface UpdateReportTemplateRequest {
   active?: boolean;
 }
 
-export type AssessmentStatus = 'DRAFT' | 'IN_PROGRESS' | 'ON_HOLD' | 'PENDING_REVIEW' | 'COMPLETED' | 'APPROVED' | 'ARCHIVED';
-
 export interface VulnerabilitySla {
   severity: string;
   pastDueDays: number;
@@ -585,6 +591,105 @@ export interface AssessmentWorkflowConfig {
   /** Ordered remediation stages; the last one is terminal (closes the vulnerability). */
   remediationStages?: RemediationStage[];
   allowSelfPeerReview?: boolean;
+}
+
+/** One assessment workflow: its statuses, SLAs, vulnerability statuses and remediation stages. */
+export interface Workflow {
+  id: string;
+  name: string;
+  /** Default Workflow (id `default`): it can't be archived or deleted. */
+  defaultWorkflow: boolean;
+  /** Hidden from pickers; its assessments keep working. */
+  archived: boolean;
+  statuses: string[];
+  newAssessmentStatus: string;
+  inProgressStatus: string;
+  completedStatus: string;
+  statusColors: Record<string, string> | null;
+  vulnerabilitySlas: VulnerabilitySla[] | null;
+  /** This workflow's own vulnerability statuses; the built-in ones are listed separately. */
+  vulnerabilityStatuses: string[] | null;
+  builtInVulnerabilityStatuses: string[];
+  remediationStages: RemediationStage[];
+  allowSelfPeerReview: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** Vulnerability status renames still updating findings in the background. */
+  renamesInProgress: WorkflowRenameInProgress[];
+}
+
+export interface WorkflowRenameInProgress {
+  fromName: string;
+  toName: string;
+  /** Findings updated so far. */
+  processed: number;
+}
+
+/** How many assessment types and assessments use a workflow. */
+export interface WorkflowUsage {
+  workflowId: string;
+  assessmentTypeCount: number;
+  assessmentCount: number;
+}
+
+/** A status row in a workflow edit: its name when the editor loaded (null for a new row) and its name now. */
+export interface WorkflowNamedEntry {
+  originalName: string | null;
+  name: string;
+}
+
+export interface CreateWorkflowRequest {
+  /** The workflow whose settings the new one copies. */
+  sourceWorkflowId: string;
+  name: string;
+}
+
+export interface UpdateWorkflowRequest {
+  name: string;
+  statuses: WorkflowNamedEntry[];
+  newAssessmentStatus: string;
+  inProgressStatus: string;
+  completedStatus: string;
+  /** Keyed by the statuses' new names. */
+  statusColors: Record<string, string>;
+  vulnerabilitySlas: VulnerabilitySla[];
+  vulnerabilityStatuses: WorkflowNamedEntry[];
+  remediationStages: RemediationStage[];
+  allowSelfPeerReview: boolean;
+}
+
+/** One reason the server refused a workflow change (the `violations` of a 409). */
+export interface WorkflowViolation {
+  kind:
+    | 'ASSESSMENT_STATUS_IN_USE'
+    | 'VULNERABILITY_STATUS_IN_USE'
+    | 'REMEDIATION_STAGE_IN_USE'
+    | 'RENAME_IN_PROGRESS'
+    | 'NAME_TAKEN'
+    | 'DEFAULT_WORKFLOW'
+    | 'USED_BY_ASSESSMENT_TYPES'
+    | 'USED_BY_ASSESSMENTS'
+    | 'TARGET_ARCHIVED';
+  name: string;
+  /** How many things use it; 0 when the kind is not a count. */
+  count: number;
+}
+
+/** What moving an assessment to another workflow changes; `applied` is false for a dry run. */
+export interface WorkflowMovePreview {
+  assessmentId: string;
+  fromWorkflowId: string;
+  toWorkflowId: string;
+  fromStatus: string;
+  toStatus: string;
+  findingCount: number;
+  findingStatusChanges: { from: string; to: string; count: number }[];
+  /** Findings whose stored due or warning date changes under the target's SLAs. */
+  dueDateChanges: number;
+  remappedStageCompletions: number;
+  /** Completions whose stage has no same-named stage on the target: kept, but not shown. */
+  unmappedStageCompletions: number;
+  applied: boolean;
 }
 
 export type AssessmentPeerReviewStatus = 'IN_PROGRESS' | 'IN_PEER_REVIEW' | 'NEEDS_ACCEPTANCE' | 'COMPLETE';
@@ -708,6 +813,10 @@ export interface Assessment {
   applicationName?: string; // For display in tables
   assessmentTypeId: string;
   assessmentTypeName?: string; // For display in tables
+  /** The workflow this assessment runs on: its type's workflow when created, unless it has been moved. */
+  workflowId?: string;
+  /** Computed by the server from this assessment's own workflow — never compare status text to decide this. */
+  completed: boolean;
   organizationId: string;
   campaignId?: string;
   campaignName?: string; // For display in tables
@@ -774,6 +883,33 @@ export interface CreateAssessmentRequest {
   initialFieldValues?: Record<string, string>;
 }
 
+/**
+ * Values an outside source hands the scheduling form, named the way people name things rather
+ * than by id. The form resolves each one against its own lists and reports what it couldn't place.
+ */
+export interface AssessmentPrefill {
+  /** Selects the application with this Application Id if one exists, else starts a new one. */
+  appId?: string;
+  applicationName?: string;
+  assessmentName?: string;
+  /** yyyy-mm-dd */
+  startDate?: string;
+  /** A planned-end duration preset, in working days (e.g. '3'). */
+  duration?: string;
+  assessorEmails?: string[];
+  /** A workflow status, matched ignoring spaces and case. */
+  status?: string;
+  teamName?: string;
+  /** Variable values keyed by the field's display name. */
+  variables?: Record<string, string>;
+}
+
+/** The slot on the scheduling form an edition can fill with a way to pre-fill it. */
+export interface AssessmentPrefillActionProps {
+  /** Applies the values. The form itself tells the user about anything it couldn't place. */
+  onPrefill: (prefill: AssessmentPrefill) => Promise<void>;
+}
+
 /** A person who can be assigned to an assessment (the assessor picker's option shape). */
 export interface AssignableUser {
   id: string;
@@ -804,6 +940,8 @@ export interface UpdateAssessmentRequest {
   scope?: string;
   engagementUrls?: EngagementUrl[];
   stakeholders?: Stakeholder[];
+  /** With a type change, also move the assessment to the new type's workflow. Needs config:write. */
+  moveToTypeWorkflow?: boolean;
 }
 
 export interface ManagerDashboardPeriodCounts {
@@ -877,13 +1015,6 @@ export interface ManagerDashboardFilters {
 
 export interface AssessmentMetrics {
   totalCount: number;
-  draftCount: number;
-  inProgressCount: number;
-  onHoldCount: number;
-  pendingReviewCount: number;
-  completedCount: number;
-  approvedCount: number;
-  archivedCount: number;
   pastDueCount: number;
   statusCounts?: Record<string, number>;
 }
@@ -1082,6 +1213,8 @@ export interface VulnerabilityListItem {
   exceptionState?: string;
   exceptionApproval?: string;
   assessmentId: string;
+  /** The workflow the finding's assessment runs on; findings have no workflow of their own. */
+  workflowId?: string;
   applicationId?: string;
   organizationId?: string;
   assessmentName?: string;
@@ -1620,6 +1753,9 @@ export interface EmailNotificationEvent {
   customMessage?: string | null;
   perStage: boolean;
   stageId?: string | null;
+  /** Present on per-stage events: which workflow's stage this setting belongs to. */
+  workflowId?: string;
+  workflowName?: string;
 }
 
 export interface EmailNotificationConfig {
@@ -2072,7 +2208,8 @@ export type FeatureKey =
   | 'ai_observability'
   | 'external_owners'
   | 'custom_roles'
-  | 'report_sections';
+  | 'report_sections'
+  | 'custom_workflows';
 
 /** Quota keys from the backend `Quota` enum. Capabilities that ship, but capped. */
 export type QuotaKey = 'ai_providers' | 'ai_prompts' | 'extensions';

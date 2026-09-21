@@ -120,8 +120,8 @@ public class AssessmentController {
             @Parameter(name = "assessmentTypeId", description = "Filter by assessment type ID"),
             @Parameter(name = "assessmentTypeIds", description = "Filter by any of several assessment type IDs (repeatable or comma-separated)"),
             @Parameter(name = "assessorId", description = "Filter by assessor user ID"),
-            @Parameter(name = "status", description = "Filter by status", example = "IN_PROGRESS"),
-            @Parameter(name = "statuses", description = "Filter by any of several statuses (repeatable or comma-separated)", example = "IN_PROGRESS,ON_HOLD"),
+            @Parameter(name = "status", description = "Filter by status", example = "Testing"),
+            @Parameter(name = "statuses", description = "Filter by any of several statuses (repeatable or comma-separated)", example = "Testing,Reporting"),
             @Parameter(name = "openSurveys", description = "Only assessments with at least one unfinished survey", example = "true"),
             @Parameter(name = "startDateFrom", description = "Filter by start date from (ISO format)", example = "2024-01-01T00:00:00"),
             @Parameter(name = "startDateTo", description = "Filter by start date to (ISO format)", example = "2024-12-31T23:59:59"),
@@ -131,6 +131,7 @@ public class AssessmentController {
             @Parameter(name = "completedDateTo", description = "Filter by completion date to (ISO format)"),
             @Parameter(name = "pastDue", description = "Filter for past due assessments only", example = "true"),
             @Parameter(name = "showCompleted", description = "Include completed/approved/archived assessments", example = "false"),
+            @Parameter(name = "onlyCompleted", description = "Only assessments their workflow calls completed", example = "true"),
             @Parameter(name = "assignedToMe", description = "Show only assessments assigned to current user", example = "true"),
             @Parameter(name = "sort", description = "Sort field and direction", example = "createdAt,desc")
         },
@@ -165,6 +166,7 @@ public class AssessmentController {
         @Parameter(hidden = true) @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime completedDateTo,
         @Parameter(hidden = true) @RequestParam(required = false) Boolean pastDue,
         @Parameter(hidden = true) @RequestParam(required = false) Boolean showCompleted,
+        @Parameter(hidden = true) @RequestParam(required = false) Boolean onlyCompleted,
         @Parameter(hidden = true) @RequestParam(required = false) Boolean assignedToMe,
         @Parameter(hidden = true) @RequestParam(defaultValue = "createdAt,desc") String sort,
         Authentication authentication
@@ -199,6 +201,7 @@ public class AssessmentController {
             completedDateTo,
             pastDue,
             showCompleted,
+            onlyCompleted,
             assignedToMe,
             currentUserId,
             null,
@@ -384,7 +387,9 @@ public class AssessmentController {
         summary = "Get assessment metrics",
         description = "Get assessment statistics by status and past due count",
         parameters = {
-            @Parameter(name = "organizationId", description = "Filter metrics by organization ID (optional)")
+            @Parameter(name = "organizationId", description = "Filter metrics by organization ID (optional)"),
+            @Parameter(name = "assessmentTypeIds", description = "Count only assessments of any of these type IDs "
+                + "(repeatable or comma-separated); omit to count every type")
         },
         responses = {
             @ApiResponse(
@@ -398,9 +403,10 @@ public class AssessmentController {
     )
     public ResponseEntity<JsonApiResponse<AssessmentMetricsDto>> getMetrics(
         @Parameter(hidden = true) @RequestParam(required = false) String organizationId,
+        @Parameter(hidden = true) @RequestParam(required = false) List<String> assessmentTypeIds,
         Authentication authentication
     ) {
-        AssessmentMetricsDto metrics = assessmentService.getMetrics(organizationId, authentication);
+        AssessmentMetricsDto metrics = assessmentService.getMetrics(organizationId, assessmentTypeIds, authentication);
         return ResponseUtil.success("Metrics retrieved successfully", metrics);
     }
 
@@ -570,7 +576,7 @@ public class AssessmentController {
             @Parameter(name = "organizationId", description = "Filter by organization ID"),
             @Parameter(name = "assessmentTypeId", description = "Filter by assessment type ID"),
             @Parameter(name = "assessorId", description = "Filter by assessor user ID"),
-            @Parameter(name = "status", description = "Filter by status", example = "IN_PROGRESS"),
+            @Parameter(name = "status", description = "Filter by status", example = "Testing"),
             @Parameter(name = "name", description = "Search by name (case-insensitive)")
         },
         responses = {

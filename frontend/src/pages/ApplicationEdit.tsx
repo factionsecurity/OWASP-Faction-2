@@ -8,7 +8,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { marked } from 'marked';
-import { applicationsApi, organizationsApi, subOrganizationsApi, entityFieldsApi, regionConfigApi, assessmentsApi, vulnerabilitiesApi, workflowConfigApi, assessmentSurveysApi } from '../api';
+import { applicationsApi, organizationsApi, subOrganizationsApi, entityFieldsApi, regionConfigApi, assessmentsApi, vulnerabilitiesApi, assessmentSurveysApi } from '../api';
 import type {
   UpdateApplicationRequest,
   ApplicationStatus,
@@ -53,21 +53,11 @@ import {
 } from '../components';
 import { usePageTitle } from '../context/PageTitleContext';
 import { vulnStatusBadgeVariant } from '../utils/vulnStatus';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { colorFor, statusLabel } from '../utils/workflowLookup';
 import './Applications.css';
 import './ApplicationEdit.css';
 import { useTerminology } from '../context/TerminologyContext';
-
-// Same palette as the main Vulnerabilities tab
-// Same fallback mapping as the main Assessments tab
-const ASSESSMENT_STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  DRAFT: 'secondary',
-  IN_PROGRESS: 'info',
-  ON_HOLD: 'warning',
-  PENDING_REVIEW: 'info',
-  COMPLETED: 'success',
-  APPROVED: 'success',
-  ARCHIVED: 'secondary',
-};
 
 const VULN_PAGE_SIZE = 10;
 
@@ -223,6 +213,7 @@ export default function ApplicationEdit() {
   const { organizationArticle, organizationLower, organizationSingular, subOrganizationSingular, subOrganizationsLower } = useTerminology();
   const { id } = useParams<{ id: string }>();
   const { setBreadcrumbs } = usePageTitle();
+  const { workflows } = useWorkflowsContext();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -274,7 +265,6 @@ export default function ApplicationEdit() {
   const [assessmentSearch, setAssessmentSearch] = useState('');
   const [assessmentPage, setAssessmentPage] = useState(0);
   const [assessmentSort, setAssessmentSort] = useState<SortState | null>(null);
-  const [assessmentStatusColors, setAssessmentStatusColors] = useState<Record<string, string>>({});
   const [assessmentSurveyMap, setAssessmentSurveyMap] = useState<Record<string, AssessmentSurvey[]>>({});
   const [surveyAssessment, setSurveyAssessment] = useState<Assessment | null>(null);
   const [previewAssessment, setPreviewAssessment] = useState<Assessment | null>(null);
@@ -419,9 +409,6 @@ export default function ApplicationEdit() {
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    workflowConfigApi.getConfig().then((res) => {
-      if (!cancelled && res.success && res.data?.statusColors) setAssessmentStatusColors(res.data.statusColors);
-    }).catch(() => {});
     (async () => {
       setVulnsLoading(true);
       try {
@@ -748,13 +735,13 @@ export default function ApplicationEdit() {
       header: 'Status',
       sortKey: 'status',
       render: (a) => {
-        const custom = assessmentStatusColors[a.status];
+        const custom = colorFor(workflows, a.workflowId, a.status);
         return (
           <Badge
-            variant={custom ? undefined : (ASSESSMENT_STATUS_COLORS[a.status] || 'secondary')}
+            variant={custom ? undefined : 'secondary'}
             customColor={custom}
           >
-            {a.status}
+            {statusLabel(workflows, a.workflowId, a.status)}
           </Badge>
         );
       },

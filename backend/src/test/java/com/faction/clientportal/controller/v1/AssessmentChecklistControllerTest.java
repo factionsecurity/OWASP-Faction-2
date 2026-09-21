@@ -77,7 +77,7 @@ class AssessmentChecklistControllerTest extends TestContainersConfig {
         // be used to find out which assessment ids are real.
         assessmentId = assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
                 .name("Checklist host").applicationId("app-1").organizationId("org-1")
-                .assessmentTypeId("type-1").status("IN_PROGRESS")
+                .assessmentTypeId("type-1").status("Testing")
                 .createdAt(LocalDateTime.now()).build()).getId();
 
         savedTemplate = checklistTemplateRepository.save(ChecklistTemplate.builder()

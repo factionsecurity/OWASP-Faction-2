@@ -1,5 +1,6 @@
 package com.faction.clientportal.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -12,6 +13,7 @@ import java.util.concurrent.ThreadPoolExecutor;
  * Enables Spring's {@code @Async} support and configures a dedicated thread
  * pool for background report generation tasks.
  */
+@Slf4j
 @Configuration
 @EnableAsync
 public class AsyncConfig {
@@ -84,6 +86,46 @@ public class AsyncConfig {
         executor.setMaxPoolSize(4);
         executor.setQueueCapacity(500);
         executor.setThreadNamePrefix("extension-");
+        executor.initialize();
+        return executor;
+    }
+
+    /**
+     * Executor for recalculating open findings' stored SLA due dates after an SLA edit
+     * ({@link com.faction.clientportal.service.SlaRecalculationService}).
+     *
+     * <p>One thread, so two edits in quick succession recalculate in order and a run over every open
+     * finding never competes with another for the database. Each run reads the SLAs when it starts,
+     * so when the queue is full a new request can be discarded: a run already queued will start
+     * after the latest save and pick it up.
+     */
+    @Bean("slaRecalculationExecutor")
+    public ThreadPoolTaskExecutor slaRecalculationExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(10);
+        executor.setThreadNamePrefix("sla-recalc-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.initialize();
+        return executor;
+    }
+
+    /**
+     * Background work on workflows (vulnerability status renames), one task at a time in the order the
+     * edits were saved. Tasks are durable rows and resume at startup, so nothing is lost; a full queue
+     * leaves the task {@code RUNNING} rather than running it out of order on another thread —
+     * {@code CallerRunsPolicy} would do exactly that and break the oldest-first resume order.
+     */
+    @Bean("workflowTaskExecutor")
+    public ThreadPoolTaskExecutor workflowTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(1000);
+        executor.setThreadNamePrefix("workflow-task-");
+        executor.setRejectedExecutionHandler((task, pool) -> log.warn(
+                "Workflow task queue is full; the rename stays pending and resumes at the next startup"));
         executor.initialize();
         return executor;
     }

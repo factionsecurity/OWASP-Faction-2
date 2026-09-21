@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Edit2, Trash2, Plus, Calendar, List, Download, Eye } from 'lucide-react';
-import { assessmentsApi, applicationsApi, assessmentTypesApi, workflowConfigApi, vulnerabilitiesApi } from '../api';
+import { assessmentsApi, applicationsApi, assessmentTypesApi, vulnerabilitiesApi } from '../api';
 import type {
   Assessment,
   AssessmentMetrics,
@@ -16,22 +16,14 @@ import AssessmentCalendar from '../components/AssessmentCalendar';
 import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { usePermissions } from '../utils/permissions';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { colorFor, isAmbiguous, mergedStatusNames, statusLabel, workflowsForSelectedTypes } from '../utils/workflowLookup';
 import './Engagements.css';
 
 /** A calendar Date as the zone-less ISO datetime the API uses for these date-only fields. */
 const toApiDate = (dt: Date): string => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T00:00:00`;
-};
-
-const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  DRAFT: 'secondary',
-  IN_PROGRESS: 'info',
-  ON_HOLD: 'warning',
-  PENDING_REVIEW: 'info',
-  COMPLETED: 'success',
-  APPROVED: 'success',
-  ARCHIVED: 'secondary',
 };
 
 // localStorage key for the list view's saved search, filters, sort and paging.
@@ -42,6 +34,7 @@ export default function Engagements() {
   // The View action opens the assessment detail page, which sits behind its own permission —
   // scheduling access alone does not imply it.
   const { permissions } = usePermissions();
+  const { workflows } = useWorkflowsContext();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -54,8 +47,10 @@ export default function Engagements() {
   // Reference data
   const [applications, setApplications] = useState<Application[]>([]);
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
-  const [statusColors, setStatusColors] = useState<Record<string, string>>({});
-  const [wfStatuses, setWfStatuses] = useState<string[]>([]);
+
+  // Archived workflows still colour their own past assessments elsewhere, but they don't
+  // contribute new stat pills or filter options.
+  const activeWorkflows = useMemo(() => workflows.filter((w) => !w.archived), [workflows]);
 
   const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
@@ -92,6 +87,29 @@ export default function Engagements() {
     setFilters((prev) => ({ ...prev, ...patch }));
     setPagination((prev) => ({ ...prev, page: 0 }));
   };
+
+  // The workflows the stat pills describe: those the selected types run on, or every active workflow
+  // when no type is selected. Names, counts, dot colours and collisions are all judged within this
+  // set, so a pill counting only PCI assessments never wears another workflow's colour.
+  const pillWorkflows = useMemo(
+    () => workflowsForSelectedTypes(workflows, assessmentTypes, filters.assessmentTypeIds, activeWorkflows),
+    [workflows, assessmentTypes, filters.assessmentTypeIds, activeWorkflows]);
+
+  // One pill per distinct status name across those workflows — the pills are this page's status
+  // filter. A name defined in several of them collapses to one pill, and the server's statusCounts
+  // combine assessments by name the same way.
+  const mergedNames = useMemo(() => mergedStatusNames(pillWorkflows), [pillWorkflows]);
+
+  // Deselect a status pill the selected types no longer offer, so the calendar and list are never
+  // filtered by a pill that has disappeared. Waits for types and workflows: a persisted selection is
+  // restored before either loads, and clearing it in that window would wipe a saved filter on reload.
+  useEffect(() => {
+    if (assessmentTypes.length === 0 || workflows.length === 0) return;
+    const offered = new Set(mergedNames);
+    if (filters.statuses.every((s) => offered.has(s))) return;
+    applyInline({ statuses: filters.statuses.filter((s) => offered.has(s)) });
+  }, [mergedNames, filters.statuses, assessmentTypes.length, workflows.length]);
+
   const applyAdvanced = () => applyInline({ ...draft });
   const clearAllFilters = () => {
     setDraft(DATE_DEFAULTS);
@@ -144,8 +162,15 @@ export default function Engagements() {
 
   useEffect(() => {
     loadReferenceData();
-    loadMetrics();
   }, []);
+
+  // Counts are scoped to the toolbar's type filter, so reload them whenever the selection changes.
+  // This also covers the first load, which is why the mount effect above no longer fetches them.
+  // Keyed on the joined ids rather than the array, so only a real change in selection refetches.
+  const selectedTypesKey = filters.assessmentTypeIds.join(',');
+  useEffect(() => {
+    loadMetrics();
+  }, [selectedTypesKey]);
 
   // Persist view preference
   useEffect(() => {
@@ -264,18 +289,12 @@ export default function Engagements() {
     } catch (err) {
       console.error('Failed to load reference data:', err);
     }
-
-    workflowConfigApi.getConfig().then(res => {
-      if (res.success && res.data) {
-        if (res.data.statusColors) setStatusColors(res.data.statusColors);
-        if (res.data.statuses) setWfStatuses(res.data.statuses);
-      }
-    }).catch(() => {});
   };
 
   const loadMetrics = async () => {
     try {
-      const response = await assessmentsApi.getMetrics();
+      // Counts follow the toolbar's type filter, so each pill matches the calendar and list below it.
+      const response = await assessmentsApi.getMetrics(undefined, filters.assessmentTypeIds);
       if (response.success && response.data) {
         setMetrics(response.data);
       }
@@ -447,10 +466,10 @@ export default function Engagements() {
       sortKey: 'status',
       accessor: 'status',
       render: (assessment) => {
-        const custom = statusColors[assessment.status];
+        const custom = colorFor(workflows, assessment.workflowId, assessment.status);
         return (
-          <Badge variant={custom ? undefined : STATUS_COLORS[assessment.status]} customColor={custom}>
-            {assessment.status.replace('_', ' ')}
+          <Badge variant={custom ? undefined : 'secondary'} customColor={custom}>
+            {statusLabel(workflows, assessment.workflowId, assessment.status)}
           </Badge>
         );
       },
@@ -542,6 +561,17 @@ export default function Engagements() {
   return (
     <Page className="engagements-page">
       <div className="eng-toolbar">
+        {/* Sits beside the pills it narrows and applies in both views — the list's own filter bar
+            is list-only, so a type filter there could never reach the calendar or the counts. */}
+        <div className="eng-type-filter">
+          <MultiSelect
+            selected={filters.assessmentTypeIds}
+            onChange={(vals) => applyInline({ assessmentTypeIds: vals })}
+            options={typeOptions}
+            placeholder="All Types"
+            searchable={false}
+          />
+        </div>
         <div className="eng-stats-bar">
           <button
             className={`eng-stat${filters.statuses.length === 0 && !filters.pastDue ? ' active' : ''}`}
@@ -557,8 +587,16 @@ export default function Engagements() {
             <span className="eng-stat-dot" style={{ background: '#ef4444' }} />
             Past Due <strong>{metrics?.pastDueCount ?? 0}</strong>
           </button>
-          {wfStatuses.map(status => {
-            const color = statusColors[status] || '#94a3b8';
+          {mergedNames.map(status => {
+            // A pill aggregates this name's count across every workflow the pills describe
+            // (pillWorkflows) that defines it. When those workflows disagree on colour
+            // (isAmbiguous), painting the dot from just one of them would assert an ownership
+            // the pill doesn't have — and silently, unlike the legend/labels, which make such
+            // collisions visible. So an ambiguous name gets the same neutral dot as Total/Past
+            // Due instead of a pick.
+            const color = isAmbiguous(pillWorkflows, status)
+              ? '#94a3b8'
+              : pillWorkflows.find((w) => w.statusColors?.[status])?.statusColors?.[status] ?? '#94a3b8';
             const count = metrics?.statusCounts?.[status] ?? 0;
             return (
               <button
@@ -593,11 +631,14 @@ export default function Engagements() {
       {view === 'calendar' ? (
         <AssessmentCalendar
           assessments={assessments.filter(a => {
+            // The calendar fetch takes only a date range, so the toolbar's type filter applies here
+            // alongside status and past-due, keeping the calendar in step with the pills above it.
+            if (filters.assessmentTypeIds.length > 0 && !filters.assessmentTypeIds.includes(a.assessmentTypeId)) return false;
             if (filters.pastDue && !a.isPastDue) return false;
             if (filters.statuses.length > 0) return filters.statuses.includes(a.status);
             return true;
           })}
-          statusColors={statusColors}
+          workflows={workflows}
           loading={loading}
           onEventClick={handleEventClick}
           onEventDrop={handleEventDrop}
@@ -658,13 +699,6 @@ export default function Engagements() {
                   onChange={(v) => applyInline({ applicationId: v })}
                   options={appOptions}
                   placeholder="All Applications"
-                />
-                <MultiSelect
-                  selected={filters.assessmentTypeIds}
-                  onChange={(vals) => applyInline({ assessmentTypeIds: vals })}
-                  options={typeOptions}
-                  placeholder="All Types"
-                  searchable={false}
                 />
                 <Button variant="secondary" icon={Download} onClick={handleExportCsv} disabled={exporting}>
                   {exporting ? 'Exporting…' : 'Export CSV'}

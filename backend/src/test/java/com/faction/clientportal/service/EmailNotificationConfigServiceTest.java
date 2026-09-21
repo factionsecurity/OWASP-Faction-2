@@ -2,26 +2,32 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.EmailNotificationConfigDto;
 import com.faction.clientportal.dto.UpdateEmailNotificationConfigRequest;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.RemediationStage;
+import com.faction.clientportal.model.AssessmentWorkflow;
+import com.faction.clientportal.model.RemediationStage;
 import com.faction.clientportal.model.EmailNotificationAudience;
 import com.faction.clientportal.model.EmailNotificationConfig;
+import com.faction.clientportal.model.EmailNotificationConfig.EventSettings;
 import com.faction.clientportal.model.EmailNotificationEvent;
 import com.faction.clientportal.repository.EmailNotificationConfigRepository;
 import com.faction.clientportal.service.email.EmailService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,7 +35,7 @@ import static org.mockito.Mockito.when;
 class EmailNotificationConfigServiceTest {
 
     @Mock private EmailNotificationConfigRepository repository;
-    @Mock private AssessmentWorkflowConfigService workflowConfigService;
+    @Mock private WorkflowCatalogService workflowCatalogService;
     @Mock private EmailService emailService;
 
     @InjectMocks private EmailNotificationConfigService service;
@@ -42,9 +48,12 @@ class EmailNotificationConfigServiceTest {
         when(repository.findById(EmailNotificationConfig.SINGLETON_ID)).thenReturn(Optional.of(stored));
         when(repository.save(any(EmailNotificationConfig.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
-        when(workflowConfigService.remediationStages()).thenReturn(List.of(
-                new RemediationStage("development", "Development"),
-                new RemediationStage("production", "Production")));
+        AssessmentWorkflow defaultWorkflow = AssessmentWorkflow.defaultWorkflowBuilder()
+                .remediationStages(List.of(
+                        new RemediationStage("development", "Development"),
+                        new RemediationStage("production", "Production")))
+                .build();
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(defaultWorkflow)));
         when(emailService.isConfigured()).thenReturn(true);
     }
 
@@ -217,5 +226,73 @@ class EmailNotificationConfigServiceTest {
         assertThat(service.isEnabled(EmailNotificationEvent.ASSESSMENT_CREATED)).isTrue();
         // Master switch on, but this event has nobody selected.
         assertThat(service.isEnabled(EmailNotificationEvent.ASSESSMENT_CHANGED)).isFalse();
+    }
+
+    @Test
+    void copyingStageSettingsGivesEachNewStageItsSourceStagesSettings() {
+        Map<String, EmailNotificationConfig.EventSettings> events = new HashMap<>();
+        events.put("VULNERABILITY_CLOSED:development", EmailNotificationConfig.EventSettings.builder()
+                .notifyAssessors(true).customMessage("Fixed in dev").build());
+        stored.setEvents(events);
+
+        service.copyStageSettings(Map.of("development", "copy-dev", "production", "copy-prod"));
+
+        ArgumentCaptor<EmailNotificationConfig> saved = ArgumentCaptor.forClass(EmailNotificationConfig.class);
+        verify(repository).save(saved.capture());
+        EmailNotificationConfig.EventSettings copied = saved.getValue().settingsFor("VULNERABILITY_CLOSED:copy-dev");
+        assertThat(copied.isNotifyAssessors()).isTrue();
+        assertThat(copied.getCustomMessage()).isEqualTo("Fixed in dev");
+        assertThat(saved.getValue().getEvents())
+                .containsKey("VULNERABILITY_CLOSED:development")
+                .doesNotContainKey("VULNERABILITY_CLOSED:copy-prod");
+    }
+
+    @Test
+    void removingStageSettingsDropsOnlyThoseStagesKeys() {
+        Map<String, EmailNotificationConfig.EventSettings> events = new HashMap<>();
+        events.put("VULNERABILITY_CLOSED:gone", EmailNotificationConfig.EventSettings.builder().notifyAssessors(true).build());
+        events.put("VULNERABILITY_CLOSED:kept", EmailNotificationConfig.EventSettings.builder().notifyAssessors(true).build());
+        stored.setEvents(events);
+
+        service.removeStageSettings(List.of("gone"));
+
+        ArgumentCaptor<EmailNotificationConfig> saved = ArgumentCaptor.forClass(EmailNotificationConfig.class);
+        verify(repository).save(saved.capture());
+        assertThat(saved.getValue().getEvents())
+                .containsKey("VULNERABILITY_CLOSED:kept")
+                .doesNotContainKey("VULNERABILITY_CLOSED:gone");
+    }
+
+    @Test
+    void perStageSettingsAreOfferedForEveryWorkflowsStagesAndSayWhichWorkflowTheyBelongTo() {
+        AssessmentWorkflow defaultWorkflow = AssessmentWorkflow.defaultWorkflowBuilder()
+                .remediationStages(List.of(new RemediationStage("d-stg", "Staging"),
+                        new RemediationStage("d-prod", "Production")))
+                .build();
+        AssessmentWorkflow pci = AssessmentWorkflow.builder()
+                .id("pci").name("PCI").defaultWorkflow(false).archived(false)
+                .remediationStages(List.of(new RemediationStage("p-stg", "Staging"),
+                        new RemediationStage("p-live", "Live")))
+                .build();
+        when(workflowCatalogService.load()).thenReturn(WorkflowCatalog.of(List.of(defaultWorkflow, pci)));
+
+        List<EmailNotificationConfigDto.EventDto> perStage = service.getConfig().getEvents().stream()
+                .filter(EmailNotificationConfigDto.EventDto::isPerStage)
+                .toList();
+
+        // Every stage of every workflow, each tagged with the workflow it belongs to — including the
+        // two both workflows happen to call "Staging", which are different stages with different keys.
+        assertThat(perStage).extracting(EmailNotificationConfigDto.EventDto::getStageId)
+                .containsExactlyInAnyOrder("d-stg", "d-prod", "p-stg", "p-live");
+        assertThat(perStage).filteredOn(e -> "p-stg".equals(e.getStageId()))
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.getWorkflowId()).isEqualTo("pci");
+                    assertThat(e.getWorkflowName()).isEqualTo("PCI");
+                    assertThat(e.getKey()).isEqualTo(EmailNotificationEvent.VULNERABILITY_CLOSED.key("p-stg"));
+                });
+        assertThat(perStage).filteredOn(e -> "d-stg".equals(e.getStageId()))
+                .singleElement()
+                .satisfies(e -> assertThat(e.getWorkflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID));
     }
 }

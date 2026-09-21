@@ -13,6 +13,7 @@ import com.faction.clientportal.model.Team;
 import com.faction.clientportal.model.User;
 import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.AssessmentRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.OrganizationRepository;
 import com.faction.clientportal.repository.ReportTemplateRepository;
 import com.faction.clientportal.repository.AssessmentTypeRepository;
@@ -62,6 +63,7 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
     @Autowired private TeamRepository teamRepository;
     @Autowired private ReportTemplateRepository reportTemplateRepository;
     @Autowired private AssessmentTypeRepository assessmentTypeRepository;
+    @Autowired private AssessmentWorkflowRepository workflowRepository;
 
     private static final Pageable PAGE = PageRequest.of(0, 50);
 
@@ -88,6 +90,7 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
         organizationRepository.deleteAll();
         userRepository.deleteAll();
         teamRepository.deleteAll();
+        workflowRepository.deleteAll();
 
         orgId = organizationRepository.save(
                 Organization.builder().name("Acme").description("d").build()).getId();
@@ -135,7 +138,7 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
     void assignedScope_coversAssessmentsListedViaTheLegacySingleAssessorField() {
         Assessment legacy = assessmentRepository.save(Assessment.builder()
                 .name("Legacy").applicationId(appId).organizationId(orgId).assessmentTypeId(webTypeId)
-                .status("IN_PROGRESS").teamId(alphaTeamId)
+                .status("Testing").teamId(alphaTeamId)
                 .assessorId(alice.getId()).assessorIds(new ArrayList<>())
                 .createdAt(LocalDateTime.now()).build());
 
@@ -279,10 +282,10 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
         completeAssessment(aliceOnly, LocalDateTime.now().minusDays(5));
 
         UpdateAssessmentRequest request = new UpdateAssessmentRequest();
-        request.setStatus("IN_PROGRESS");
+        request.setStatus("Testing");
         var dto = assessmentService.updateAssessment(aliceOnly, request, alice.getId());
 
-        assertThat(dto.getStatus()).isEqualTo("IN_PROGRESS");
+        assertThat(dto.getStatus()).isEqualTo("Testing");
         // Cleared, so finalizing again starts a fresh window rather than reusing the old stamp.
         assertThat(assessmentRepository.findById(aliceOnly).orElseThrow().getCompletedDate()).isNull();
     }
@@ -292,12 +295,12 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
         completeAssessment(aliceOnly, LocalDateTime.now().minusDays(31));
 
         UpdateAssessmentRequest request = new UpdateAssessmentRequest();
-        request.setStatus("IN_PROGRESS");
+        request.setStatus("Testing");
 
         assertThatThrownBy(() -> assessmentService.updateAssessment(aliceOnly, request, alice.getId()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("can no longer be reopened");
-        assertThat(assessmentRepository.findById(aliceOnly).orElseThrow().getStatus()).isEqualTo("COMPLETED");
+        assertThat(assessmentRepository.findById(aliceOnly).orElseThrow().getStatus()).isEqualTo("Completed");
     }
 
     @Test
@@ -305,12 +308,12 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
         // Predates the completedDate stamp — treated as outside the window rather than
         // reopenable forever.
         Assessment a = assessmentRepository.findById(aliceOnly).orElseThrow();
-        a.setStatus("COMPLETED");
+        a.setStatus("Completed");
         a.setCompletedDate(null);
         assessmentRepository.save(a);
 
         UpdateAssessmentRequest request = new UpdateAssessmentRequest();
-        request.setStatus("IN_PROGRESS");
+        request.setStatus("Testing");
 
         assertThatThrownBy(() -> assessmentService.updateAssessment(aliceOnly, request, alice.getId()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -353,7 +356,7 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
     /** Put an assessment into the completed state, stamped as finishing at {@code when}. */
     private void completeAssessment(String assessmentId, LocalDateTime when) {
         Assessment a = assessmentRepository.findById(assessmentId).orElseThrow();
-        a.setStatus("COMPLETED");
+        a.setStatus("Completed");
         a.setCompletedDate(when);
         assessmentRepository.save(a);
     }
@@ -435,7 +438,12 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
     @Test
     void reassigningTheTypeIsRejectedWhenTheReportTemplateBelongsToAnotherType() {
         // The template carries the field definitions, so letting the two drift apart would leave
-        // the assessment with fields that belong to the old type.
+        // the assessment with fields that belong to the old type. A caller naming no template now
+        // has the new type's own resolved for it instead of being rejected outright — but the Mobile
+        // type here has no template and no installable default, so there is nothing to move to and
+        // the update is still refused, now saying which template is missing rather than which two
+        // ids disagree. A caller that names a wrong-type template explicitly is still rejected on
+        // sight (AssessmentControllerTest#testUpdateAssessment_TypeChangeWithMismatchedTemplate...).
         var template = reportTemplateRepository.save(com.faction.clientportal.model.ReportTemplate.builder()
                 .name("Type-1 Template").assessmentTypeId(webTypeId).css("").version(1).active(true)
                 .userDefinedFields(new ArrayList<>()).sections(new ArrayList<>())
@@ -449,7 +457,7 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
 
         assertThatThrownBy(() -> assessmentService.updateAssessment(aliceOnly, request, "system"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Report template assessment type does not match");
+                .hasMessageContaining("No report template is available");
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -470,7 +478,7 @@ class AssessmentAccessScopeTest extends TestContainersConfig {
                 .applicationId(appId)
                 .organizationId(orgId)
                 .assessmentTypeId(webTypeId)
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .teamId(teamId)
                 .assessorIds(new ArrayList<>(List.of(assessorId)))
                 .createdAt(LocalDateTime.now())

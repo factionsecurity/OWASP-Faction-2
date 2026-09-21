@@ -2,7 +2,8 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { Assessment } from '../types';
+import { Assessment, Workflow } from '../types';
+import { colorFor, statusLabel } from '../utils/workflowLookup';
 
 interface AssessmentCalendarProps {
   assessments: Assessment[];
@@ -11,22 +12,29 @@ interface AssessmentCalendarProps {
   onEventResize?: (assessmentId: string, newStart: Date, newEnd: Date, revert: () => void) => void;
   loading?: boolean;
   currentAssessmentId?: string; // ID of the assessment being edited (to highlight it)
+  // Flat name->color override, independent of any workflow (e.g. the synthetic RETEST_*
+  // statuses ScheduleRetestPage draws, which are not real workflow statuses at all).
   statusColors?: Record<string, string>;
+  // The workflow list, for per-row colours keyed off each assessment's own workflowId. Omit
+  // it (as CreateAssessment and ScheduleRetestPage do) to keep the old flat-map-only behaviour.
+  workflows?: Workflow[];
   initialDate?: string; // ISO date string to navigate to on mount
 }
 
-const DEFAULT_STATUS_COLORS: Record<string, string> = {
-  DRAFT: '#6c757d',
-  IN_PROGRESS: '#0d6efd',
-  ON_HOLD: '#ffc107',
-  PENDING_REVIEW: '#0dcaf0',
-  COMPLETED: '#198754',
-  APPROVED: '#20c997',
-  ARCHIVED: '#212529',
-};
-
-const getStatusColor = (status: string, customColors?: Record<string, string>): string => {
-  return customColors?.[status] || DEFAULT_STATUS_COLORS[status] || '#6c757d';
+/**
+ * A row's colour: the owning workflow's colour for its status when `workflows` is supplied,
+ * falling back to the flat `statusColors` override, falling back to a neutral grey. Keeping
+ * the flat-map fallback lets ScheduleRetestPage's synthetic RETEST_* statuses (which belong
+ * to no workflow) and CreateAssessment's unconfigured calendar keep their existing look.
+ */
+const getStatusColor = (
+  workflows: Workflow[] | undefined,
+  statusColors: Record<string, string> | undefined,
+  workflowId: string | null | undefined,
+  status: string
+): string => {
+  const workflowColor = workflows && workflows.length > 0 ? colorFor(workflows, workflowId, status) : undefined;
+  return workflowColor ?? statusColors?.[status] ?? '#6c757d';
 };
 
 /** The calendar date part of an API value, dropping the always-midnight time. */
@@ -54,13 +62,14 @@ export default function AssessmentCalendar({
   loading = false,
   currentAssessmentId,
   statusColors,
+  workflows,
   initialDate,
 }: AssessmentCalendarProps) {
   const events = assessments
     .filter((a) => a.startDate && a.plannedEndDate)
     .map((assessment) => {
       const isCurrentAssessment = currentAssessmentId && assessment.id === currentAssessmentId;
-      const baseColor = getStatusColor(assessment.status, statusColors);
+      const baseColor = getStatusColor(workflows, statusColors, assessment.workflowId, assessment.status);
       const isEditable = currentAssessmentId ? isCurrentAssessment : true;
 
       return {
@@ -224,19 +233,28 @@ export default function AssessmentCalendar({
             Current (Editing)
           </span>
         )}
-        {Array.from(new Set(assessments.map((a) => a.status))).map((status) => {
-          const color = getStatusColor(status, statusColors);
-          const isDark = color === '#212529' || color === '#ffc107';
-          return (
-            <span
-              key={status}
-              className="badge"
-              style={{ backgroundColor: color, color: isDark ? '#000' : '#fff' }}
-            >
-              {status}
-            </span>
-          );
-        })}
+        {(() => {
+          // Keyed on the (status, colour) pair, not the name alone — two workflows' same-named
+          // statuses only collapse into one legend entry when they also agree on colour.
+          const entries = new Map<string, { status: string; workflowId?: string; color: string }>();
+          for (const a of assessments) {
+            const color = getStatusColor(workflows, statusColors, a.workflowId, a.status);
+            const key = `${a.status}::${color}`;
+            if (!entries.has(key)) entries.set(key, { status: a.status, workflowId: a.workflowId, color });
+          }
+          return Array.from(entries.values()).map((entry) => {
+            const isDark = entry.color === '#212529' || entry.color === '#ffc107';
+            return (
+              <span
+                key={`${entry.status}::${entry.color}`}
+                className="badge"
+                style={{ backgroundColor: entry.color, color: isDark ? '#000' : '#fff' }}
+              >
+                {statusLabel(workflows ?? [], entry.workflowId, entry.status)}
+              </span>
+            );
+          });
+        })()}
         <span className="badge" style={{ backgroundColor: '#6c757d', border: '2px solid #dc3545' }}>
           Past Due (Red Border)
         </span>

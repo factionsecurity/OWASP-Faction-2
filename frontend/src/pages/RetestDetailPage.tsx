@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { retestApi, vulnerabilitiesApi, reportsApi, applicationsApi, workflowConfigApi } from '../api';
+import { retestApi, vulnerabilitiesApi, reportsApi, applicationsApi, assessmentsApi } from '../api';
+import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
 import type { Application, Assessment, Retest, RetestClosure, RemediationStage, Vulnerability } from '../types';
 import ReportPreviewDrawer from '../components/ReportPreviewDrawer';
 import { Copy, Check } from 'lucide-react';
@@ -101,12 +102,17 @@ export default function RetestDetailPage() {
   const [closure, setClosure] = useState<RetestClosure>('');
   // A pass that closes at a stage is confirmed first — see the closure ConfirmDialog below.
   const [confirmClosureOpen, setConfirmClosureOpen] = useState(false);
-  const [remediationStages, setRemediationStages] = useState<RemediationStage[]>([]);
+  // The stages come from the workflow of the finding's assessment. Anyone who can't read that
+  // assessment gets Default Workflow's stages.
+  const [workflowId, setWorkflowId] = useState<string | null>(null);
   useEffect(() => {
-    workflowConfigApi.getConfig()
-      .then(res => setRemediationStages(res.data?.remediationStages ?? []))
-      .catch(() => setRemediationStages([]));
-  }, []);
+    if (!retest?.assessmentId) return;
+    assessmentsApi.getById(retest.assessmentId)
+      .then(res => setWorkflowId(res.data?.workflowId || DEFAULT_WORKFLOW_ID))
+      .catch(() => setWorkflowId(DEFAULT_WORKFLOW_ID));
+  }, [retest?.assessmentId]);
+  const workflow = useWorkflow(workflowId);
+  const remediationStages: RemediationStage[] = workflow?.remediationStages ?? [];
   const [ratingDrafts, setRatingDrafts] = useState<RatingValues>({ severity: '', likelihood: '', impact: '' });
   const [originalRatings, setOriginalRatings] = useState<RatingValues>({ severity: '', likelihood: '', impact: '' });
   const [saving, setSaving] = useState(false);

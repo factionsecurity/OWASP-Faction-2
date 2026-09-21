@@ -227,10 +227,23 @@ export default function EmailNotificationsPage() {
               <tbody>
                 {group.events.map(event => {
                   const editing = editingMessage.has(event.key);
+                  // Accessible-label text only — the visible cell keeps its styled <span>
+                  // qualifier below. Same separator as the visible rendering, so the
+                  // spoken text matches what is on screen.
+                  const eventLabel = event.perStage && event.workflowName
+                    ? `${event.label} · ${event.workflowName}`
+                    : event.label;
                   return [
                     <tr key={event.key}>
                       <td>
-                        <div className="email-notifications-label">{event.label}</div>
+                        <div className="email-notifications-label">
+                          {event.label}
+                          {event.perStage && event.workflowName && (
+                            <span className="email-notifications-workflow-qualifier">
+                              {' '}&middot; {event.workflowName}
+                            </span>
+                          )}
+                        </div>
                         <div className="email-notifications-description">{event.description}</div>
                       </td>
 
@@ -243,7 +256,7 @@ export default function EmailNotificationsPage() {
                                 checked={event[audience.field]}
                                 disabled={saving.has(`${event.key}:${audience.field}`)}
                                 onChange={e => toggleAudience(event, audience.field, e.target.checked)}
-                                aria-label={`${event.label} — ${audience.label}`}
+                                aria-label={`${eventLabel} — ${audience.label}`}
                               />
                               <span className="notif-toggle-track" />
                             </label>
@@ -262,7 +275,7 @@ export default function EmailNotificationsPage() {
                             event.customMessage ? ' email-notifications-message-btn--set' : ''}`}
                           onClick={() => toggleMessageEditor(event)}
                           title={event.customMessage || 'Add wording of your own'}
-                          aria-label={`${event.label} — custom message`}
+                          aria-label={`${eventLabel} — custom message`}
                         >
                           {editing ? <X size={14} /> : <MessageSquareText size={14} />}
                         </button>

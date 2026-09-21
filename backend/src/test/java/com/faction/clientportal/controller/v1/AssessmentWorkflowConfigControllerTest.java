@@ -1,14 +1,17 @@
 package com.faction.clientportal.controller.v1;
 
 import com.faction.clientportal.config.TestContainersConfig;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.LoginOption;
 import com.faction.clientportal.model.Role;
 import com.faction.clientportal.model.User;
-import com.faction.clientportal.repository.AssessmentWorkflowConfigRepository;
+import com.faction.clientportal.repository.AssessmentRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.RoleRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.service.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,7 +41,8 @@ class AssessmentWorkflowConfigControllerTest extends TestContainersConfig {
     @Autowired private ObjectMapper objectMapper;
     @Autowired private UserRepository userRepository;
     @Autowired private RoleRepository roleRepository;
-    @Autowired private AssessmentWorkflowConfigRepository configRepository;
+    @Autowired private AssessmentWorkflowRepository configRepository;
+    @Autowired private AssessmentRepository assessmentRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtService jwtService;
 
@@ -46,6 +50,7 @@ class AssessmentWorkflowConfigControllerTest extends TestContainersConfig {
 
     @BeforeEach
     void setUp() {
+        assessmentRepository.deleteAll();
         configRepository.deleteAll();
         userRepository.deleteAll();
         roleRepository.deleteAll();
@@ -69,6 +74,12 @@ class AssessmentWorkflowConfigControllerTest extends TestContainersConfig {
         jwtToken = jwtService.generateToken(
                 testUser.getUsername(),
                 List.of(new SimpleGrantedAuthority("super_admin")));
+    }
+
+    @AfterEach
+    void resetWorkflows() {
+        assessmentRepository.deleteAll();
+        configRepository.deleteAll();
     }
 
     @Test
@@ -251,5 +262,109 @@ class AssessmentWorkflowConfigControllerTest extends TestContainersConfig {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.remediationStages", hasSize(3)))
                 .andExpect(jsonPath("$.data.remediationStages[2].id").value("production"));
+    }
+
+    @Test
+    void getConfig_isDefaultWorkflow() throws Exception {
+        mockMvc.perform(get("/api/v1/config/assessment-workflow")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value("default"))
+                .andExpect(jsonPath("$.data.name").value("Default Workflow"))
+                .andExpect(jsonPath("$.data.defaultWorkflow").value(true))
+                .andExpect(jsonPath("$.data.archived").value(false));
+    }
+
+    @Test
+    void updateConfig_editsDefaultWorkflowsSettingsOnly() throws Exception {
+        configRepository.save(AssessmentWorkflow.builder()
+                .id("other").name("Other Workflow").completedStatus("Signed Off").build());
+        Map<String, Object> payload = Map.of(
+                "id", "other",
+                "name", "Renamed",
+                "defaultWorkflow", false,
+                "archived", true,
+                "statuses", List.of("New", "Done"),
+                "newAssessmentStatus", "New",
+                "inProgressStatus", "New",
+                "completedStatus", "Done"
+        );
+
+        mockMvc.perform(put("/api/v1/config/assessment-workflow")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value("default"))
+                .andExpect(jsonPath("$.data.name").value("Default Workflow"))
+                .andExpect(jsonPath("$.data.defaultWorkflow").value(true))
+                .andExpect(jsonPath("$.data.archived").value(false))
+                .andExpect(jsonPath("$.data.completedStatus").value("Done"));
+
+        AssessmentWorkflow other = configRepository.findById("other").orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(other.getName()).isEqualTo("Other Workflow");
+        org.assertj.core.api.Assertions.assertThat(other.getCompletedStatus()).isEqualTo("Signed Off");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void puttingBackExactlyWhatWasGotWithEditsRoundTrips() throws Exception {
+        String getBody = mockMvc.perform(get("/api/v1/config/assessment-workflow")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        Map<String, Object> envelope = objectMapper.readValue(getBody, Map.class);
+        Map<String, Object> data = (Map<String, Object>) envelope.get("data");
+        assertThatKeysArePresent(data, "id", "name", "defaultWorkflow", "archived", "createdAt", "updatedAt");
+
+        data.put("completedStatus", "Done");
+        data.put("statusColors", Map.of("Done", "#00ff00"));
+
+        mockMvc.perform(put("/api/v1/config/assessment-workflow")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(data)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.completedStatus").value("Done"))
+                .andExpect(jsonPath("$.data.statusColors.Done").value("#00ff00"))
+                .andExpect(jsonPath("$.data.name").value("Default Workflow"))
+                .andExpect(jsonPath("$.data.id").value("default"));
+
+        mockMvc.perform(get("/api/v1/config/assessment-workflow")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.completedStatus").value("Done"))
+                .andExpect(jsonPath("$.data.statusColors.Done").value("#00ff00"))
+                .andExpect(jsonPath("$.data.name").value("Default Workflow"))
+                .andExpect(jsonPath("$.data.id").value("default"));
+    }
+
+    @Test
+    void updateConfig_refusesToRemoveAStatusAnAssessmentIsIn() throws Exception {
+        assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
+                .name("In Testing").assessmentTypeId("type-1").organizationId("org-1")
+                .workflowId("default").status("Testing").createdAt(LocalDateTime.now()).build());
+        Map<String, Object> payload = Map.of(
+                "statuses", List.of("New", "Done"),
+                "newAssessmentStatus", "New",
+                "inProgressStatus", "New",
+                "completedStatus", "Done");
+
+        mockMvc.perform(put("/api/v1/config/assessment-workflow")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.violations[0].kind").value("ASSESSMENT_STATUS_IN_USE"))
+                .andExpect(jsonPath("$.violations[0].name").value("Testing"))
+                .andExpect(jsonPath("$.violations[0].count").value(1))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Testing")));
+    }
+
+    private void assertThatKeysArePresent(Map<String, Object> data, String... keys) {
+        for (String key : keys) {
+            org.assertj.core.api.Assertions.assertThat(data).as(key).containsKey(key);
+        }
     }
 }

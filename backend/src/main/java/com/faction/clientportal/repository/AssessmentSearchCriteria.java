@@ -35,6 +35,8 @@ import java.util.Collection;
  * scope (see {@code AccessScopeService.resolveAssessmentScope}) — distinct from the optional
  * {@code assignedToMe} / {@code assessorId} <em>filters</em>, which the user can clear. An empty
  * {@code scopeTeamIds} means "belongs to no team" and matches nothing.
+ *
+ * @param completed required when {@code pastDue}, {@code excludeCompleted} or {@code onlyCompleted} is set
  */
 @Builder
 public record AssessmentSearchCriteria(
@@ -58,8 +60,18 @@ public record AssessmentSearchCriteria(
         LocalDateTime endDateTo,
         LocalDateTime completedDateFrom,
         LocalDateTime completedDateTo,
+        /**
+         * One window over an assessment's activity: it matches when its start, planned end, or
+         * completed date falls inside. Unlike the per-column filters above, an assessment carrying
+         * none of those three dates always matches — it belongs to no window, so a date filter must
+         * not be what hides it. Either bound may be null for an open-ended window.
+         */
+        LocalDateTime activityFrom,
+        LocalDateTime activityTo,
         boolean pastDue,
         boolean excludeCompleted,
+        /** Only assessments their own workflow calls completed; the narrow twin of {@code excludeCompleted}. */
+        boolean onlyCompleted,
         boolean assignedToMe,
         String currentUserId,
         Collection<String> teamMemberIds,
@@ -67,6 +79,6 @@ public record AssessmentSearchCriteria(
         Collection<String> scopeTeamIds,
         String campaignId,
         Collection<Integer> severityOrdinals,
-        Collection<String> completedStatuses,
+        CompletedStatusFilter completed,
         LocalDateTime now
 ) {}

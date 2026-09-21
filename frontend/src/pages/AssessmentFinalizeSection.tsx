@@ -12,6 +12,7 @@ import {
   ChevronRight,
   FileJson,
   Pencil,
+  ArrowRightLeft,
 } from 'lucide-react';
 import type { Assessment, AssessmentChecklist, PeerReview } from '../types';
 import { assessmentsApi, peerReviewsApi, assessmentChecklistsApi, vulnerabilitiesApi } from '../api';
@@ -22,6 +23,7 @@ import ReportDocumentsPanel from '../components/ReportDocumentsPanel';
 import PeerReviewDiff from './PeerReviewDiff';
 import { peerReviewerLabel } from '../utils/peerReview';
 import { usePermissions } from '../utils/permissions';
+import MoveWorkflowDialog from '../components/MoveWorkflowDialog';
 import './AssessmentFinalizeSection.css';
 
 interface Props {
@@ -29,8 +31,10 @@ interface Props {
   assessment: Assessment;
   isFinalized: boolean;
   completedStatus?: string;
-  /** Status a reopened assessment returns to; falls back to IN_PROGRESS. */
+  /** Status a reopened assessment returns to; reopening is unavailable until it is known. */
   inProgressStatus?: string;
+  /** Name of the assessment's workflow, shown on the Workflow card. */
+  workflowName?: string;
   onAssessmentUpdated: (updated: Assessment) => void;
 }
 
@@ -150,6 +154,7 @@ export default function AssessmentFinalizeSection({
   isFinalized,
   completedStatus,
   inProgressStatus,
+  workflowName,
   onAssessmentUpdated,
 }: Props) {
   const [submittingPeerReview, setSubmittingPeerReview] = useState(false);
@@ -166,7 +171,8 @@ export default function AssessmentFinalizeSection({
   const [blockingChecklists, setBlockingChecklists] = useState<AssessmentChecklist[]>([]);
   // Correcting the completion date: super-admin only, mirrored by the server. The date drives
   // the reopen window and the completed-work counts, so it is a deliberate edit behind a modal.
-  const { isSuperAdmin } = usePermissions();
+  const { isSuperAdmin, permissions } = usePermissions();
+  const [showMoveWorkflow, setShowMoveWorkflow] = useState(false);
   const [editingCompletedDate, setEditingCompletedDate] = useState(false);
   const [completedDateInput, setCompletedDateInput] = useState('');
   const [savingCompletedDate, setSavingCompletedDate] = useState(false);
@@ -199,9 +205,8 @@ export default function AssessmentFinalizeSection({
 
   const isPendingReview = assessment.peerReviewStatus === 'IN_PEER_REVIEW'
     || assessment.peerReviewStatus === 'NEEDS_ACCEPTANCE';
-  const resolvedCompletedStatus = completedStatus ?? 'COMPLETED';
-  const isCompleted = assessment.status === resolvedCompletedStatus
-    || ['COMPLETED', 'APPROVED', 'ARCHIVED'].includes(assessment.status);
+  // Statuses are workflow-configured; until the config loads nothing counts as completed.
+  const isCompleted = !!completedStatus && assessment.status === completedStatus;
 
   const handleSubmitPeerReview = async () => {
     setSubmittingPeerReview(true);
@@ -225,7 +230,7 @@ export default function AssessmentFinalizeSection({
   };
 
   const daysLeftToReopen = isCompleted ? reopenDaysLeft(assessment.completedDate) : 0;
-  const canReopen = isCompleted && daysLeftToReopen > 0;
+  const canReopen = isCompleted && daysLeftToReopen > 0 && !!inProgressStatus;
   const canEditCompletedDate = isSuperAdmin && isCompleted;
 
   const openCompletedDateEditor = () => {
@@ -257,10 +262,11 @@ export default function AssessmentFinalizeSection({
   };
 
   const handleReopen = async () => {
+    if (!inProgressStatus) return;
     setReopening(true);
     setActionError('');
     try {
-      const res = await assessmentsApi.updateStatus(assessmentId, inProgressStatus ?? 'IN_PROGRESS');
+      const res = await assessmentsApi.updateStatus(assessmentId, inProgressStatus);
       if (res.success && res.data) {
         onAssessmentUpdated(res.data);
       } else {
@@ -296,10 +302,11 @@ export default function AssessmentFinalizeSection({
   };
 
   const handleFinalize = async () => {
+    if (!completedStatus) return;
     setSubmittingFinalize(true);
     setActionError('');
     try {
-      const res = await assessmentsApi.updateStatus(assessmentId, resolvedCompletedStatus);
+      const res = await assessmentsApi.updateStatus(assessmentId, completedStatus);
       if (res.success && res.data) {
         onAssessmentUpdated(res.data);
       } else {
@@ -463,6 +470,32 @@ export default function AssessmentFinalizeSection({
         </div>
       </div>
 
+      {/* Workflow — which one the assessment is on; admins can move it. */}
+      <div className="finalize-actions-card">
+        <h4 className="finalize-actions-title">Workflow</h4>
+        <div className="finalize-action-row">
+          <div className="finalize-action-info">
+            <span className="finalize-action-name">{workflowName ?? '…'}</span>
+            <span className="finalize-action-desc">
+              Statuses, SLAs and remediation stages come from this workflow.
+            </span>
+          </div>
+          {permissions.canManageAssessmentWorkflow && (
+            <Button variant="secondary" size="sm" onClick={() => setShowMoveWorkflow(true)}>
+              <ArrowRightLeft size={14} />
+              Move to workflow…
+            </Button>
+          )}
+        </div>
+      </div>
+      {showMoveWorkflow && (
+        <MoveWorkflowDialog
+          assessment={assessment}
+          onClose={() => setShowMoveWorkflow(false)}
+          onMoved={onAssessmentUpdated}
+        />
+      )}
+
       {/* Status Actions */}
       {/* Shown while the assessment is open (peer review / finalize) and once it's completed,
           which is when the reopen action lives here. */}
@@ -508,7 +541,7 @@ export default function AssessmentFinalizeSection({
               variant="primary"
               size="sm"
               onClick={() => setShowFinalizeConfirm(true)}
-              disabled={submittingFinalize || isCompleted || blockingChecklists.length > 0}
+              disabled={submittingFinalize || isCompleted || !completedStatus || blockingChecklists.length > 0}
             >
               <CheckCircle2 size={14} />
               {submittingFinalize ? 'Finalizing…' : 'Finalize'}
@@ -523,7 +556,7 @@ export default function AssessmentFinalizeSection({
               <div className="finalize-action-info">
                 <span className="finalize-action-name">Reopen Assessment</span>
                 <span className="finalize-action-desc">
-                  {canReopen
+                  {daysLeftToReopen > 0
                     ? `Returns the assessment to editing. Available for ${daysLeftToReopen} more `
                       + `${daysLeftToReopen === 1 ? 'day' : 'days'}.`
                     : `This assessment was completed more than ${REOPEN_WINDOW_DAYS} days ago `
@@ -642,7 +675,7 @@ export default function AssessmentFinalizeSection({
         onConfirm={handleReopen}
         title="Reopen Assessment"
         message={`Reopen this assessment for editing? It will return to `
-          + `${inProgressStatus ?? 'IN_PROGRESS'} and its completion date will be cleared, `
+          + `${inProgressStatus} and its completion date will be cleared, `
           + 'so finalizing it again starts a new 30-day window.'}
         confirmText="Reopen"
         variant="warning"

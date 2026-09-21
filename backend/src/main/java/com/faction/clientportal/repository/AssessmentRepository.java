@@ -4,7 +4,9 @@ import com.faction.clientportal.model.Assessment;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -143,56 +145,56 @@ public interface AssessmentRepository extends JpaRepository<Assessment, String>,
     long countByDeletedAtIsNull();
 
     /**
-     * All non-deleted assessment counts grouped by status. Powers the Assessments
-     * summary/nav badge with a single grouped query instead of materializing every
-     * row. Each element is {@code [status, count]}.
+     * All non-deleted assessment counts grouped by workflow and status. Powers the Assessments
+     * summary/nav badge with a single grouped query instead of materializing every row. Each element
+     * is {@code [workflowId, status, count]}; the caller judges "completed" per workflow.
      */
     @Query("""
-            SELECT a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
-            GROUP BY a.status
+            GROUP BY a.workflowId, a.status
             """)
-    List<Object[]> countByStatusGroupedAll();
+    List<Object[]> countByWorkflowAndStatusGroupedAll();
 
     /**
-     * Membership-scoped variant: grouped status counts for the caller's organizations OR the
-     * applications their sub-organizations grant — the same predicate the list applies. Both
-     * collections must be non-empty; the service short-circuits the empty cases.
+     * Membership-scoped variant: grouped counts for the caller's organizations OR the applications
+     * their sub-organizations grant — the same predicate the list applies. Both collections must be
+     * non-empty; the service short-circuits the empty cases.
      */
     @Query("""
-            SELECT a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
               AND (a.organizationId IN :orgIds OR a.applicationId IN :applicationIds)
-            GROUP BY a.status
+            GROUP BY a.workflowId, a.status
             """)
-    List<Object[]> countByStatusGroupedMembership(Collection<String> orgIds, Collection<String> applicationIds);
+    List<Object[]> countByWorkflowAndStatusGroupedMembership(Collection<String> orgIds, Collection<String> applicationIds);
 
-    /** Grouped status counts restricted to the given organizations. */
+    /** Grouped counts restricted to the given organizations. */
     @Query("""
-            SELECT a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
               AND a.organizationId IN :orgIds
-            GROUP BY a.status
+            GROUP BY a.workflowId, a.status
             """)
-    List<Object[]> countByStatusGroupedOrgs(Collection<String> orgIds);
+    List<Object[]> countByWorkflowAndStatusGroupedOrgs(Collection<String> orgIds);
 
-    /** Owned-scope variant: grouped status counts restricted to the given application ids. */
+    /** Owned-scope variant: grouped counts restricted to the given application ids. */
     @Query("""
-            SELECT a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
               AND a.applicationId IN :applicationIds
-            GROUP BY a.status
+            GROUP BY a.workflowId, a.status
             """)
-    List<Object[]> countByStatusGroupedOwned(Collection<String> applicationIds);
+    List<Object[]> countByWorkflowAndStatusGroupedOwned(Collection<String> applicationIds);
 
     /** Same aggregate, restricted to the caller's teams (the {@code assessments:read:team} tier). */
     @Query("""
-            SELECT a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
               AND a.teamId IN :teamIds
-            GROUP BY a.status
+            GROUP BY a.workflowId, a.status
             """)
-    List<Object[]> countByStatusGroupedTeam(Collection<String> teamIds);
+    List<Object[]> countByWorkflowAndStatusGroupedTeam(Collection<String> teamIds);
 
     /**
      * Same aggregate, restricted to assessments the caller is an assessor on (the
@@ -200,13 +202,13 @@ public interface AssessmentRepository extends JpaRepository<Assessment, String>,
      * as well as the {@code assessorIds} list, mirroring the list query.
      */
     @Query(value = """
-            SELECT a.status, count(*) FROM assessments a
+            SELECT a.workflow_id, a.status, count(*) FROM assessments a
             WHERE a.deleted_at IS NULL
               AND (a.assessor_id = :assessorId
                    OR a.assessor_ids @> CAST(CONCAT('["', :assessorId, '"]') AS jsonb))
-            GROUP BY a.status
+            GROUP BY a.workflow_id, a.status
             """, nativeQuery = true)
-    List<Object[]> countByStatusGroupedAssigned(String assessorId);
+    List<Object[]> countByWorkflowAndStatusGroupedAssigned(String assessorId);
 
     /**
      * Find all completed assessments (completedDate set) that have not yet had a successor
@@ -215,4 +217,28 @@ public interface AssessmentRepository extends JpaRepository<Assessment, String>,
      */
     @Query("SELECT a FROM Assessment a WHERE a.completedDate IS NOT NULL AND a.autoScheduledSuccessorId IS NULL AND a.deletedAt IS NULL")
     List<Assessment> findCompletedWithNoSuccessor();
+
+    /** Each assessment's workflow id, as {@code [id, workflowId]} rows, for many assessments in one query. */
+    @Query("select a.id, a.workflowId from Assessment a where a.id in :ids")
+    List<Object[]> findWorkflowIdsByIds(@Param("ids") Collection<String> ids);
+
+    /** Non-deleted assessments of one workflow in one status: the "status in use" guard. */
+    long countByWorkflowIdAndStatusAndDeletedAtIsNull(String workflowId, String status);
+
+    /** Non-deleted assessments on one workflow: the delete guard. */
+    long countByWorkflowIdAndDeletedAtIsNull(String workflowId);
+
+    /** Non-deleted assessment counts per workflow, as {@code [workflowId, count]} rows, for the admin usage view. */
+    @Query("select a.workflowId, count(a) from Assessment a where a.deletedAt is null group by a.workflowId")
+    List<Object[]> countGroupedByWorkflowId();
+
+    /**
+     * Renames an assessment status on one workflow, deleted assessments included so a restored one
+     * still has a status its workflow lists. Runs inside the caller's transaction.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Assessment a set a.status = :to where a.workflowId = :workflowId and a.status = :from")
+    int renameStatusInWorkflow(@Param("workflowId") String workflowId,
+                               @Param("from") String from,
+                               @Param("to") String to);
 }

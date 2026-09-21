@@ -14,6 +14,7 @@ import com.faction.clientportal.model.User;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilityCategory;
 import com.faction.clientportal.repository.AssessmentRepository;
+import com.faction.clientportal.repository.CompletedStatusFilter;
 import com.faction.clientportal.repository.TeamRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.repository.VulnerabilityCategoryRepository;
@@ -55,7 +56,7 @@ public class ManagerDashboardService {
     private final VulnerabilityCategoryRepository vulnerabilityCategoryRepository;
     private final UserRepository userRepository;
     private final TeamRepository teamRepository;
-    private final AssessmentWorkflowConfigService workflowConfigService;
+    private final WorkflowCatalogService workflowCatalogService;
 
     /**
      * Global stats-card counts (rolling periods), unaffected by the filter form.
@@ -65,6 +66,10 @@ public class ManagerDashboardService {
         LocalDateTime weekAgo = now.minusDays(7);
         LocalDateTime monthAgo = now.minusMonths(1);
         LocalDateTime yearAgo = now.minusYears(1);
+        // Findings count as delivered work only once their assessment is finished, by that
+        // assessment's own workflow — the same rule the assessments table applies when it shows
+        // a dash instead of counts for an assessment still in progress.
+        CompletedStatusFilter completed = workflowCatalogService.load().completedStatusFilter();
 
         return ManagerDashboardSummaryDto.builder()
                 .completedAssessments(ManagerDashboardSummaryDto.PeriodCounts.builder()
@@ -74,10 +79,10 @@ public class ManagerDashboardService {
                         .allTime(assessmentRepository.countByCompletedDateBetweenAndDeletedAtIsNull(EPOCH, now))
                         .build())
                 .vulnerabilities(ManagerDashboardSummaryDto.PeriodCounts.builder()
-                        .week(vulnerabilityRepository.countByOpenedAtBetweenAndDeletedAtIsNull(weekAgo, now))
-                        .month(vulnerabilityRepository.countByOpenedAtBetweenAndDeletedAtIsNull(monthAgo, now))
-                        .year(vulnerabilityRepository.countByOpenedAtBetweenAndDeletedAtIsNull(yearAgo, now))
-                        .allTime(vulnerabilityRepository.countByOpenedAtBetweenAndDeletedAtIsNull(EPOCH, now))
+                        .week(vulnerabilityRepository.countOpenedBetweenOnCompletedAssessments(weekAgo, now, completed))
+                        .month(vulnerabilityRepository.countOpenedBetweenOnCompletedAssessments(monthAgo, now, completed))
+                        .year(vulnerabilityRepository.countOpenedBetweenOnCompletedAssessments(yearAgo, now, completed))
+                        .allTime(vulnerabilityRepository.countOpenedBetweenOnCompletedAssessments(EPOCH, now, completed))
                         .build())
                 .build();
     }
@@ -171,6 +176,11 @@ public class ManagerDashboardService {
     public ManagerDashboardStatsDto getStats(ManagerDashboardFilters filters, Authentication authentication) {
         List<AssessmentDto> assessments =
                 fetchAssessments(filters, Pageable.unpaged(), authentication).getContent();
+        WorkflowCatalog catalog = workflowCatalogService.load();
+
+        // collectVulnerabilities spans the finished assessments only, so the severity breakdown
+        // counts the same findings the tab lists. The assessment breakdowns below still span the
+        // whole filtered set: those count assessments, not findings.
         List<ManagerDashboardVulnerabilityDto> vulnerabilities =
                 collectVulnerabilities(assessments, filters);
 
@@ -185,7 +195,7 @@ public class ManagerDashboardService {
                         LinkedHashMap::new, Collectors.counting()));
 
         Map<String, Long> completedCounts = assessments.stream()
-                .filter(a -> workflowConfigService.isCompletedStatus(a.getStatus()))
+                .filter(a -> AssessmentWorkflows.isCompleted(catalog.forId(a.getWorkflowId()), a.getStatus()))
                 .filter(a -> a.getAssessorIds() != null)
                 .flatMap(a -> a.getAssessorIds().stream())
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
@@ -265,11 +275,16 @@ public class ManagerDashboardService {
 
     private Page<AssessmentDto> fetchAssessments(
             ManagerDashboardFilters f, Pageable pageable, Authentication authentication) {
+        // The dashboard's two date boxes are one window over an assessment's activity, not a filter
+        // on its start date: they match a start, planned end, or completed date. Filtering on the
+        // start date alone hid every undated assessment — the great majority — including finished
+        // work the stats cards above the table were counting.
         return assessmentService.searchAssessmentsAdvanced(
                 f.getSearch(), f.getApplicationId(), null, null, f.getAssessmentTypeId(), null,
                 f.getAssessorId(), f.getStatus(), null, null,
-                f.getStartDateFrom(), f.getStartDateTo(), f.getEndDateFrom(), f.getEndDateTo(), null, null,
-                null, f.getShowCompleted(), null, null,
+                null, null, f.getEndDateFrom(), f.getEndDateTo(), null, null,
+                f.getStartDateFrom(), f.getStartDateTo(),
+                null, f.getShowCompleted(), null, null, null,
                 f.getTeamId(), f.getCampaignId(), f.getSeverities(),
                 pageable, authentication);
     }
@@ -312,12 +327,25 @@ public class ManagerDashboardService {
         return value != null && value.toLowerCase().contains(lowerCaseNeedle);
     }
 
+    /**
+     * The findings of {@code assessments} that count as delivered work — so every caller (the
+     * vulnerabilities tab, the severity breakdown, the CSV) answers from the same set, and the list
+     * can never disagree with the totals shown above it.
+     *
+     * <p>Findings on an assessment still in progress are left out. A finding's opened date is
+     * stamped when its assessment first completes, so filtering on that alone agrees with this
+     * until an assessment is reopened — its findings keep the timestamp — or an opened date is set
+     * through the API.
+     */
     private List<ManagerDashboardVulnerabilityDto> collectVulnerabilities(
             List<AssessmentDto> assessments, ManagerDashboardFilters filters) {
-        if (assessments.isEmpty()) {
+        List<AssessmentDto> completed = assessments.stream()
+                .filter(a -> Boolean.TRUE.equals(a.getCompleted()))
+                .collect(Collectors.toList());
+        if (completed.isEmpty()) {
             return Collections.emptyList();
         }
-        Map<String, AssessmentDto> assessmentsById = assessments.stream()
+        Map<String, AssessmentDto> assessmentsById = completed.stream()
                 .collect(Collectors.toMap(AssessmentDto::getId, Function.identity()));
         Map<String, String> categoryNamesById = vulnerabilityCategoryRepository.findAllByDeletedAtIsNull().stream()
                 .collect(Collectors.toMap(VulnerabilityCategory::getId, VulnerabilityCategory::getName));

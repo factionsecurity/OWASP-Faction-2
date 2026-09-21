@@ -27,8 +27,9 @@ import {
   RotateCcw,
   Unlock,
 } from 'lucide-react';
-import { assessmentsApi, applicationsApi, organizationsApi, inlineImagesApi, peerReviewsApi, reportsApi, workflowConfigApi, uploadFileContent } from '../api';
-import type { Assessment, Application, Organization, UserDefinedField, FieldLockInfo, AssessmentFile, DefaultVulnerability, PeerReview, AssessmentWorkflowConfig } from '../types';
+import { assessmentsApi, applicationsApi, organizationsApi, inlineImagesApi, peerReviewsApi, reportsApi, uploadFileContent } from '../api';
+import type { Assessment, Application, Organization, UserDefinedField, FieldLockInfo, AssessmentFile, DefaultVulnerability, PeerReview } from '../types';
+import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
 import DefaultVulnerabilitySearchDialog from '../components/DefaultVulnerabilitySearchDialog';
 import AssessmentVulnerabilitySection from './AssessmentVulnerabilitySection';
 import AssessmentFinalizeSection from './AssessmentFinalizeSection';
@@ -73,21 +74,6 @@ const SIDEBAR_LOCK_LABELS: Record<SidebarLock, string> = {
   open: 'Locked open — click to lock closed',
   closed: 'Locked closed — click to unlock',
 };
-
-const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  DRAFT: 'secondary',
-  IN_PROGRESS: 'info',
-  ON_HOLD: 'warning',
-  PENDING_REVIEW: 'info',
-  COMPLETED: 'success',
-  APPROVED: 'success',
-  ARCHIVED: 'secondary',
-};
-
-function getStatusColor(status: string, completedStatus?: string): 'success' | 'warning' | 'info' | 'danger' | 'secondary' {
-  if (completedStatus && status === completedStatus) return 'success';
-  return STATUS_COLORS[status] ?? 'info';
-}
 
 /**
  * Section ids a notification link may point at. Validated rather than trusted, because
@@ -191,7 +177,9 @@ export default function AssessmentDetail() {
   const hasUnassigned = reportSections.length > 0 && (assessment?.vulnerabilitySummary?.unsectioned ?? 0) > 0;
   const [application, setApplication] = useState<Application | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [workflowConfig, setWorkflowConfig] = useState<AssessmentWorkflowConfig | null>(null);
+  // The assessment's own workflow: its statuses, colours and completed / in-progress roles. Re-read
+  // when a move changes the assessment's workflowId.
+  const workflow = useWorkflow(assessment ? (assessment.workflowId || DEFAULT_WORKFLOW_ID) : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -398,12 +386,6 @@ export default function AssessmentDetail() {
         originRef.current ?? { label: 'Your Assessments', to: '/assessments' },
         { label: `${appName} — ${a.name}` },
       ]);
-
-      // Fire-and-forget — must NOT be awaited; the vuln section's calls are
-      // sequential (one at a time) so the combined peak never exceeds 6 connections.
-      workflowConfigApi.getConfig()
-        .then(r => { if (r.success && r.data) setWorkflowConfig(r.data); })
-        .catch(() => {});
 
       if (a.activePeerReviewId) {
         peerReviewsApi.getById(a.activePeerReviewId)
@@ -743,10 +725,11 @@ export default function AssessmentDetail() {
     );
   }
 
-  const isFinalized = workflowConfig
-    ? assessment.status === workflowConfig.completedStatus
-        || ['COMPLETED', 'APPROVED', 'ARCHIVED'].includes(assessment.status)
-    : ['COMPLETED', 'APPROVED', 'ARCHIVED'].includes(assessment.status);
+  // Statuses come from the assessment's workflow; until it loads nothing counts as finalized.
+  const isFinalized = !!workflow?.completedStatus
+    && assessment.status === workflow.completedStatus;
+  // Reopening sends the workflow's in-progress status, so it isn't offered until that is known.
+  const reopenStatus = workflow?.inProgressStatus;
 
   // Whole days left in the reopen window; 0 once it has lapsed or the assessment isn't completed.
   // Mirrors AssessmentService.REOPEN_WINDOW_DAYS, which enforces it — the server rejects a late
@@ -759,9 +742,10 @@ export default function AssessmentDetail() {
   })();
 
   const handleReopen = async () => {
+    if (!reopenStatus) return;
     setReopening(true);
     try {
-      const res = await assessmentsApi.updateStatus(assessment.id, workflowConfig?.inProgressStatus ?? 'IN_PROGRESS');
+      const res = await assessmentsApi.updateStatus(assessment.id, reopenStatus);
       if (res.success && res.data) {
         setAssessment(res.data);
         showToastMessage('Assessment reopened');
@@ -963,7 +947,7 @@ export default function AssessmentDetail() {
                   ? ` It can be reopened for ${reopenDaysLeft} more ${reopenDaysLeft === 1 ? 'day' : 'days'}.`
                   : ` It was completed more than ${REOPEN_WINDOW_DAYS} days ago and can no longer be reopened.`}
               </span>
-              {reopenDaysLeft > 0 && permissions.canEditAssessments && (
+              {reopenDaysLeft > 0 && permissions.canEditAssessments && !!reopenStatus && (
                 <Button size="sm" variant="secondary" onClick={() => setShowReopenConfirm(true)} disabled={reopening}>
                   <RotateCcw size={14} />
                   {reopening ? 'Reopening…' : 'Reopen'}
@@ -1017,8 +1001,10 @@ export default function AssessmentDetail() {
                     <span className="inline-flex-row">
                       {assessment.name}
                       <Badge
-                        variant={workflowConfig?.statusColors?.[assessment.status] ? undefined : getStatusColor(assessment.status, workflowConfig?.completedStatus)}
-                        customColor={workflowConfig?.statusColors?.[assessment.status]}
+                        variant={workflow?.statusColors?.[assessment.status]
+                          ? undefined
+                          : (workflow?.completedStatus && assessment.status === workflow.completedStatus ? 'success' : 'info')}
+                        customColor={workflow?.statusColors?.[assessment.status]}
                       >
                         {assessment.status.replace(/_/g, ' ')}
                       </Badge>
@@ -1534,8 +1520,9 @@ export default function AssessmentDetail() {
               assessmentId={id!}
               assessment={assessment}
               isFinalized={isFinalized}
-              completedStatus={workflowConfig?.completedStatus}
-              inProgressStatus={workflowConfig?.inProgressStatus}
+              completedStatus={workflow?.completedStatus}
+              inProgressStatus={workflow?.inProgressStatus}
+              workflowName={workflow?.name}
               onAssessmentUpdated={(updated) => setAssessment(updated)}
             />
           )}

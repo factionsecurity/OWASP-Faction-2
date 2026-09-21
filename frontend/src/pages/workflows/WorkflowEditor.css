@@ -1,0 +1,108 @@
+/* Editor for one workflow. The list, SLA, stage and vulnerability status classes come from AssessmentConfig.css. */
+
+/* Each part of a workflow is its own card on the tab's panel, so a long form reads as separate
+   settings rather than one run of fields. The section's own label is its title. */
+.workflow-section {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--primary-bg);
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+/* Sections that are themselves form groups keep the card's spacing, whatever the stylesheet order. */
+.form-group.workflow-section {
+  margin-bottom: 1rem;
+}
+
+.workflow-section-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 0.35rem 0;
+}
+
+/* The three automatic statuses are one card, side by side until the panel gets narrow. */
+.workflow-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+}
+
+.workflow-roles .form-group {
+  margin-bottom: 0;
+}
+
+.workflow-editor .wf-drag-handle {
+  display: flex;
+  align-items: center;
+  cursor: grab;
+}
+
+.wf-status-name-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0 0.2rem;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  min-width: 3ch;
+}
+
+.wf-status-name-input:hover { border-color: var(--border-color); }
+.wf-status-name-input:focus { border-color: var(--primary-color); outline: none; }
+
+.wf-renamed-from {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.workflow-editor .vs-item .rs-name-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.vs-badge--renaming {
+  background: color-mix(in srgb, var(--primary-color) 15%, transparent);
+  color: var(--primary-color);
+  white-space: nowrap;
+}
+
+.workflow-editor .vs-remove:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.workflow-errors {
+  border: 1px solid color-mix(in srgb, var(--danger-color, #ef4444) 40%, transparent);
+  background: color-mix(in srgb, var(--danger-color, #ef4444) 8%, transparent);
+  color: var(--danger-color, #ef4444);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  margin-bottom: 0.75rem;
+}
+
+.workflow-errors ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.workflow-editor-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 0 0.25rem;
+  border-top: 1px solid var(--border-color);
+  background: var(--secondary-bg);
+}
+
+.workflow-editor-state {
+  margin-right: auto;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}

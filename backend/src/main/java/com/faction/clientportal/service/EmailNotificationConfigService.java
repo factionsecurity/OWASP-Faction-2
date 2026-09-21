@@ -2,7 +2,8 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.EmailNotificationConfigDto;
 import com.faction.clientportal.dto.UpdateEmailNotificationConfigRequest;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.RemediationStage;
+import com.faction.clientportal.model.AssessmentWorkflow;
+import com.faction.clientportal.model.RemediationStage;
 import com.faction.clientportal.model.EmailNotificationConfig;
 import com.faction.clientportal.model.EmailNotificationConfig.EventSettings;
 import com.faction.clientportal.model.EmailNotificationEvent;
@@ -13,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +31,7 @@ import java.util.Map;
 public class EmailNotificationConfigService {
 
     private final EmailNotificationConfigRepository repository;
-    private final AssessmentWorkflowConfigService workflowConfigService;
+    private final WorkflowCatalogService workflowCatalogService;
     private final EmailService emailService;
 
     public EmailNotificationConfig getOrCreate() {
@@ -120,6 +122,53 @@ public class EmailNotificationConfigService {
         return toDto(repository.save(config));
     }
 
+    /**
+     * Gives each new remediation stage the per-stage email settings of the stage it was copied from. A
+     * source stage with no settings of its own is skipped (it reads as all-off either way).
+     */
+    public void copyStageSettings(Map<String, String> newStageIdByOldStageId) {
+        EmailNotificationConfig config = getOrCreate();
+        Map<String, EventSettings> events = config.getEvents();
+        boolean changed = false;
+        for (EmailNotificationEvent event : EmailNotificationEvent.values()) {
+            if (!event.isPerStage()) continue;
+            for (Map.Entry<String, String> stage : newStageIdByOldStageId.entrySet()) {
+                EventSettings source = events.get(event.key(stage.getKey()));
+                if (source == null) continue;
+                events.put(event.key(stage.getValue()), EventSettings.builder()
+                        .notifyAssessors(source.isNotifyAssessors())
+                        .notifyStakeholders(source.isNotifyStakeholders())
+                        .notifyAppOwner(source.isNotifyAppOwner())
+                        .includeMentionedUsers(source.isIncludeMentionedUsers())
+                        .notifyOrgUsers(source.isNotifyOrgUsers())
+                        .customMessage(source.getCustomMessage())
+                        .build());
+                changed = true;
+            }
+        }
+        if (changed) {
+            config.setEvents(events);
+            repository.save(config);
+        }
+    }
+
+    /** Drops the per-stage email settings of stages that no longer exist (their workflow was deleted). */
+    public void removeStageSettings(Collection<String> stageIds) {
+        EmailNotificationConfig config = getOrCreate();
+        Map<String, EventSettings> events = config.getEvents();
+        boolean changed = false;
+        for (EmailNotificationEvent event : EmailNotificationEvent.values()) {
+            if (!event.isPerStage()) continue;
+            for (String stageId : stageIds) {
+                changed |= events.remove(event.key(stageId)) != null;
+            }
+        }
+        if (changed) {
+            config.setEvents(events);
+            repository.save(config);
+        }
+    }
+
     // ── Rendering ─────────────────────────────────────────────────────────────
 
     private EmailNotificationConfigDto toDto(EmailNotificationConfig config) {
@@ -127,12 +176,18 @@ public class EmailNotificationConfigService {
 
         for (EmailNotificationEvent event : EmailNotificationEvent.values()) {
             if (event.isPerStage()) {
-                for (RemediationStage stage : workflowConfigService.remediationStages()) {
-                    events.add(eventDto(config, event, stage.getId(),
-                            event.label() + " in " + stage.getName()));
+                // Every workflow's stages, archived ones included: their assessments still close
+                // findings, so their settings must stay reachable. Stage ids are unique per workflow,
+                // so two workflows that both call a stage "Staging" keep separate settings.
+                for (AssessmentWorkflow workflow : workflowCatalogService.load().workflows(true)) {
+                    for (RemediationStage stage : AssessmentWorkflows.stages(workflow)) {
+                        events.add(eventDto(config, event, stage.getId(),
+                                event.label() + " in " + stage.getName(),
+                                workflow.getId(), workflow.getName()));
+                    }
                 }
             } else {
-                events.add(eventDto(config, event, null, event.label()));
+                events.add(eventDto(config, event, null, event.label(), null, null));
             }
         }
 
@@ -148,7 +203,9 @@ public class EmailNotificationConfigService {
     private EmailNotificationConfigDto.EventDto eventDto(EmailNotificationConfig config,
                                                         EmailNotificationEvent event,
                                                         String stageId,
-                                                        String label) {
+                                                        String label,
+                                                        String workflowId,
+                                                        String workflowName) {
         String key = event.key(stageId);
         EventSettings settings = config.settingsFor(key);
         return EmailNotificationConfigDto.EventDto.builder()
@@ -165,6 +222,8 @@ public class EmailNotificationConfigService {
                 .customMessage(settings.getCustomMessage())
                 .perStage(event.isPerStage())
                 .stageId(stageId)
+                .workflowId(workflowId)
+                .workflowName(workflowName)
                 .build();
     }
 }

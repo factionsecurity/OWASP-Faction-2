@@ -76,7 +76,7 @@ class RetestTeamScopeTest extends TestContainersConfig {
                 .password("x").loginOption(LoginOption.NATIVE).teamIds(List.of())
                 .isInternal(true).failedLoginAttempts(0).createdAt(LocalDateTime.now()).build());
         var mine = assessmentRepository.save(Assessment.builder()
-                .name("Mine").assessmentTypeId("t").status("IN_PROGRESS")
+                .name("Mine").assessmentTypeId("t").status("Testing")
                 .assessorIds(List.of(me.getId())).createdAt(LocalDateTime.now()).build()).getId();
         retestOn(mine, "myFinding");
         retestOn(assessment("Theirs", null), "theirFinding");
@@ -121,7 +121,7 @@ class RetestTeamScopeTest extends TestContainersConfig {
 
     private String assessment(String name, String teamId) {
         return assessmentRepository.save(Assessment.builder()
-                .name(name).assessmentTypeId("t").status("IN_PROGRESS").teamId(teamId)
+                .name(name).assessmentTypeId("t").status("Testing").teamId(teamId)
                 .createdAt(LocalDateTime.now()).build()).getId();
     }
 

@@ -90,7 +90,7 @@ class ExternalUserWriteRestrictionTest extends TestContainersConfig {
 
         assessment = assessmentRepository.save(Assessment.builder()
                 .name("Assessment").applicationId("app-1").organizationId("org-1")
-                .assessmentTypeId("type-1").status("IN_PROGRESS")
+                .assessmentTypeId("type-1").status("Testing")
                 .createdAt(LocalDateTime.now()).build());
 
         vuln = vulnerabilityRepository.save(Vulnerability.builder()

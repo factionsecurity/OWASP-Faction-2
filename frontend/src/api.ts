@@ -3,6 +3,11 @@ import axios from 'axios';
 import type { MentionableUser, AssessorAvailability, RetestCompletionLog, RetestActivitySummary, LoginRequest, LoginResponse, User, Role, ResourcePermissions, ApiResponse, PagedApiResponse, CreateUserRequest, UpdateUserRequest, Team, CreateTeamRequest, UpdateTeamRequest, CreateRoleRequest, UpdateRoleRequest, ApiKey, CreateApiKeyRequest, CreateApiKeyResponse, AssessmentType, CreateAssessmentTypeRequest, UpdateAssessmentTypeRequest, Organization, CreateOrganizationRequest, UpdateOrganizationRequest, Application, ApplicationStatus, ApplicationComment, ApplicationImportResult, CreateApplicationRequest, UpdateApplicationRequest, ApplicationConnection, CreateApplicationConnectionRequest, UpdateApplicationConnectionRequest, ReportTemplate, ReportTemplateSummary, CreateReportTemplateRequest, UpdateReportTemplateRequest, Assessment, CreateAssessmentRequest, UpdateAssessmentRequest, AssessmentMetrics, VulnerabilityCategory, CreateVulnerabilityCategoryRequest, UpdateVulnerabilityCategoryRequest, DefaultVulnerability, CreateDefaultVulnerabilityRequest, UpdateDefaultVulnerabilityRequest, DefaultVulnerabilityImportResult, UserDefinedField, Vulnerability, VulnerabilityListItem, VulnerabilityComment, CreateVulnerabilityRequest, UpdateVulnerabilityRequest, UpdateVulnerabilityExceptionRequest, AssessmentFile, EntityFieldConfig, FieldScope, PeerReview, UpdatePeerReviewRequest, AcceptPeerReviewRequest, AssessmentWorkflowConfig, ChecklistTemplate, CreateChecklistTemplateRequest, UpdateChecklistTemplateRequest, AssessmentChecklist, AddAssessmentChecklistRequest, UpdateAssessmentChecklistRequest, AssignedUser, AssignUserRequest, UserApplicationAssignment, SsoConfig, SsoStatus, AzureDirectoryUser, NotebookNode, NotebookSearchResult, CreateNotebookNodeRequest, UpdateNotebookNodeRequest, MoveNotebookNodeRequest, NotebookAttachment, Retest, CreateRetestRequest, UpdateRetestRequest, CompleteRetestRequest, EmailConfig, UpdateEmailConfigRequest, TestEmailRequest, TestEmailResponse, InboundEmailConfig, UpdateInboundEmailConfigRequest, Branding, BrandingAssetSlot, UpdateBrandingSizesRequest, EmailNotificationConfig, UpdateEmailNotificationConfigRequest, NotificationPreference, UpdateNotificationPreferencesRequest, AiProviderConfig, SaveAiProviderConfigRequest, TestAiProviderRequest, TestAiProviderResponse, AiPromptTemplate, SaveAiPromptTemplateRequest, AiPromptSummary, AiPromptScope, ExecuteAiPromptRequest, AskAiRequest, AiGenerationResponse, SuggestAiTitleRequest, WebSearchConfig, UpdateWebSearchConfigRequest, AiAnonymizationConfig, UpdateAiAnonymizationConfigRequest, AiLogConfig, UpdateAiLogConfigRequest, AiRequestLog, AiTokenUsageDay, Notification, NotificationTargetType, SurveyTemplate, CreateSurveyTemplateRequest, UpdateSurveyTemplateRequest, AssessmentSurvey, AddAssessmentSurveyRequest, UpdateAssessmentSurveyRequest, ApplicationIdConfig, ReportDocuments, Campaign, CreateCampaignRequest, UpdateCampaignRequest, ManagerDashboardSummary, ManagerDashboardStats, ManagerDashboardAssessment, ManagerDashboardVulnerability, ManagerDashboardVulnerabilityDetail, ManagerDashboardFilters, VulnerabilityTrendSummary, RemediationQueueRow, RemediationQueueSummary, AssignableUser, SubOrganization, SubOrganizationRequest, VulnerabilityStageCompletion, Extension, ExtensionLog, UpdateExtensionRequest, ExternalApplication, EditionStatus, UpgradeRequired, ContentTemplate, ContentTemplateScope, SaveContentTemplateRequest,
   PasswordPolicy,
   TerminologyConfig,
+  Workflow,
+  WorkflowUsage,
+  CreateWorkflowRequest,
+  UpdateWorkflowRequest,
+  WorkflowMovePreview,
 } from './types';
 
 const api = axios.create({
@@ -476,12 +481,15 @@ export const managerDashboardApi = {
   },
 
   searchAssessments: async (
-    filters: ManagerDashboardFilters, page = 0, size = 25, sort = 'startDate,desc'
+    filters: ManagerDashboardFilters, page = 0, size = 25, sort?: string
   ): Promise<PagedApiResponse<ManagerDashboardAssessment[]>> => {
     const params = managerDashboardParams(filters);
     params.append('page', page.toString());
     params.append('size', size.toString());
-    params.append('sort', sort);
+    // No sort means the endpoint's own default, newest first. Defaulting to a start-date sort
+    // here sank every assessment without a start date — most of them — below the few that have
+    // one, so work finished yesterday sat pages behind assessments years old.
+    if (sort) params.append('sort', sort);
     const response = await api.get<PagedApiResponse<ManagerDashboardAssessment[]>>(
       `/manager-dashboard/assessments?${params.toString()}`);
     return response.data;
@@ -909,6 +917,18 @@ export const assessmentsApi = {
     return response.data;
   },
 
+  /**
+   * Moves the assessment and its findings to another workflow. With `dryRun` nothing is written and the
+   * result previews what would change. Needs config:write.
+   */
+  moveWorkflow: async (id: string, workflowId: string, dryRun: boolean): Promise<ApiResponse<WorkflowMovePreview>> => {
+    const response = await api.post<ApiResponse<WorkflowMovePreview>>(
+      `/assessments/${id}/move-workflow`,
+      { workflowId, dryRun }
+    );
+    return response.data;
+  },
+
   delete: async (id: string): Promise<ApiResponse<void>> => {
     const response = await api.delete<ApiResponse<void>>(`/assessments/${id}`);
     return response.data;
@@ -922,9 +942,11 @@ export const assessmentsApi = {
     return response.data;
   },
 
-  getMetrics: async (organizationId?: string): Promise<ApiResponse<AssessmentMetrics>> => {
+  getMetrics: async (organizationId?: string, assessmentTypeIds?: string[]): Promise<ApiResponse<AssessmentMetrics>> => {
     const params: Record<string, string> = {};
     if (organizationId) params.organizationId = organizationId;
+    // Comma-joined, as the list endpoint takes a multi-select. Omitted when empty: no types counts every type.
+    if (assessmentTypeIds && assessmentTypeIds.length > 0) params.assessmentTypeIds = assessmentTypeIds.join(',');
     const response = await api.get<ApiResponse<AssessmentMetrics>>('/assessments/metrics', { params });
     return response.data;
   },
@@ -986,6 +1008,7 @@ export const assessmentsApi = {
     completedDateTo?: string;
     pastDue?: boolean;
     showCompleted?: boolean;
+    onlyCompleted?: boolean;
     assignedToMe?: boolean;
     status?: string;
     /** Multi-select status filter; ORed with each other, ANDed with the rest. */
@@ -1015,6 +1038,7 @@ export const assessmentsApi = {
     if (filters.completedDateTo) params.completedDateTo = filters.completedDateTo;
     if (filters.pastDue !== undefined) params.pastDue = filters.pastDue;
     if (filters.showCompleted !== undefined) params.showCompleted = filters.showCompleted;
+    if (filters.onlyCompleted !== undefined) params.onlyCompleted = filters.onlyCompleted;
     if (filters.assignedToMe !== undefined) params.assignedToMe = filters.assignedToMe;
     if (filters.status) params.status = filters.status;
     // Comma-joined so Spring binds it to List<String> statuses.
@@ -1518,6 +1542,49 @@ export const workflowConfigApi = {
 
   updateConfig: async (config: AssessmentWorkflowConfig): Promise<ApiResponse<AssessmentWorkflowConfig>> => {
     const response = await api.put<ApiResponse<AssessmentWorkflowConfig>>('/config/assessment-workflow', config);
+    return response.data;
+  },
+};
+
+/** Assessment workflows. Reads need a signed-in user; usage and every write need config:write. */
+export const workflowsApi = {
+  list: async (includeArchived = false): Promise<ApiResponse<Workflow[]>> => {
+    const response = await api.get<ApiResponse<Workflow[]>>('/workflows', { params: { includeArchived } });
+    return response.data;
+  },
+
+  usage: async (): Promise<ApiResponse<WorkflowUsage[]>> => {
+    const response = await api.get<ApiResponse<WorkflowUsage[]>>('/workflows/usage');
+    return response.data;
+  },
+
+  get: async (id: string): Promise<ApiResponse<Workflow>> => {
+    const response = await api.get<ApiResponse<Workflow>>(`/workflows/${encodeURIComponent(id)}`);
+    return response.data;
+  },
+
+  create: async (request: CreateWorkflowRequest): Promise<ApiResponse<Workflow>> => {
+    const response = await api.post<ApiResponse<Workflow>>('/workflows', request);
+    return response.data;
+  },
+
+  update: async (id: string, request: UpdateWorkflowRequest): Promise<ApiResponse<Workflow>> => {
+    const response = await api.put<ApiResponse<Workflow>>(`/workflows/${encodeURIComponent(id)}`, request);
+    return response.data;
+  },
+
+  archive: async (id: string): Promise<ApiResponse<Workflow>> => {
+    const response = await api.post<ApiResponse<Workflow>>(`/workflows/${encodeURIComponent(id)}/archive`);
+    return response.data;
+  },
+
+  unarchive: async (id: string): Promise<ApiResponse<Workflow>> => {
+    const response = await api.post<ApiResponse<Workflow>>(`/workflows/${encodeURIComponent(id)}/unarchive`);
+    return response.data;
+  },
+
+  delete: async (id: string): Promise<ApiResponse<void>> => {
+    const response = await api.delete<ApiResponse<void>>(`/workflows/${encodeURIComponent(id)}`);
     return response.data;
   },
 };

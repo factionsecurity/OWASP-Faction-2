@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, Download, AlertCircle } from 'lucide-react';
-import { assessmentsApi, applicationsApi, assessmentTypesApi, workflowConfigApi } from '../api';
+import { assessmentsApi, applicationsApi, assessmentTypesApi } from '../api';
 import type {
   Assessment,
   Application,
@@ -13,17 +13,9 @@ import { Button, Badge, FormLabel, Input, Checkbox } from '../components';
 import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { colorFor, statusLabel, mergedStatusNames, workflowsForSelectedTypes } from '../utils/workflowLookup';
 import './Assessments.css';
-
-const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'secondary'> = {
-  DRAFT: 'secondary',
-  IN_PROGRESS: 'info',
-  ON_HOLD: 'warning',
-  PENDING_REVIEW: 'info',
-  COMPLETED: 'success',
-  APPROVED: 'success',
-  ARCHIVED: 'secondary',
-};
 
 // localStorage key for this table's saved search, filters, sort and paging.
 const TABLE_KEY = 'assessments';
@@ -31,6 +23,7 @@ const TABLE_KEY = 'assessments';
 export default function Assessments() {
   const navigate = useNavigate();
   const { hasAnyPermission } = usePermissions();
+  const { workflows } = useWorkflowsContext();
 
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,8 +33,6 @@ export default function Assessments() {
   // Reference data
   const [applications, setApplications] = useState<Application[]>([]);
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
-  const [statusColors, setStatusColors] = useState<Record<string, string>>({});
-  const [wfStatuses, setWfStatuses] = useState<string[]>([]);
 
   const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
     page: 0,
@@ -86,14 +77,31 @@ export default function Assessments() {
     () => applications.map((a) => ({ value: a.id, label: a.name })), [applications]);
   const typeOptions: SelectOption[] = useMemo(
     () => assessmentTypes.map((t) => ({ value: t.id, label: t.name })), [assessmentTypes]);
-  const statusOptions: SelectOption[] = useMemo(
-    () => wfStatuses.map((s) => ({ value: s, label: s })), [wfStatuses]);
+  // Statuses follow the selected types: none selected offers every active workflow's statuses, as
+  // before; types selected offer only the statuses of the workflows those types run on.
+  const statusOptions: SelectOption[] = useMemo(() => {
+    const offered = workflowsForSelectedTypes(
+      workflows, assessmentTypes, filters.assessmentTypeIds, workflows.filter((w) => !w.archived));
+    return mergedStatusNames(offered).map((s) => ({ value: s, label: s }));
+  }, [workflows, assessmentTypes, filters.assessmentTypeIds]);
 
   // ── Zone 2: inline filters apply immediately ───────────────────────────────
   const applyInline = (patch: Partial<typeof filters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
     setPagination((prev) => ({ ...prev, page: 0 }));
   };
+
+  // Drop selected statuses the list no longer offers. MultiSelect labels a lone selection it can't
+  // find among its options as the placeholder ("All Statuses") while still filtering by it, so a
+  // stale selection would empty the table behind a label claiming no status filter at all.
+  // Waits for types and workflows: a persisted selection is restored before either loads, and
+  // pruning in that window would wipe a saved status filter on every reload.
+  useEffect(() => {
+    if (assessmentTypes.length === 0 || workflows.length === 0) return;
+    const offered = new Set(statusOptions.map((o) => o.value));
+    if (filters.statuses.every((s) => offered.has(s))) return;
+    applyInline({ statuses: filters.statuses.filter((s) => offered.has(s)) });
+  }, [statusOptions, filters.statuses, assessmentTypes.length, workflows.length]);
 
   // ── Zone 3: advanced panel stages in `draft`, commits on Apply ─────────────
   const applyAdvanced = () => {
@@ -205,13 +213,6 @@ export default function Assessments() {
     } catch (err) {
       console.error('Failed to load reference data:', err);
     }
-
-    workflowConfigApi.getConfig().then(res => {
-      if (res.success && res.data) {
-        if (res.data.statusColors) setStatusColors(res.data.statusColors);
-        if (res.data.statuses) setWfStatuses(res.data.statuses);
-      }
-    }).catch(() => {});
   };
 
   const handleViewClick = (assessment: Assessment) => {
@@ -330,10 +331,10 @@ export default function Assessments() {
       sortKey: 'status',
       accessor: 'status',
       render: (assessment) => {
-        const custom = statusColors[assessment.status];
+        const custom = colorFor(workflows, assessment.workflowId, assessment.status);
         return (
-          <Badge variant={custom ? undefined : STATUS_COLORS[assessment.status]} customColor={custom}>
-            {assessment.status.replace('_', ' ')}
+          <Badge variant={custom ? undefined : 'secondary'} customColor={custom}>
+            {statusLabel(workflows, assessment.workflowId, assessment.status)}
           </Badge>
         );
       },

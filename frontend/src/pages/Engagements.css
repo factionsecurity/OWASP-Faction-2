@@ -12,6 +12,12 @@
   gap: 1rem;
 }
 
+/* The type filter leads the toolbar, ahead of the pills it narrows. */
+.eng-type-filter {
+  flex-shrink: 0;
+  padding-top: 0.125rem;
+}
+
 .eng-toolbar-actions {
   display: flex;
   gap: 0.75rem;

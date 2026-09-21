@@ -1,0 +1,93 @@
+.workflows-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.workflow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.workflow-list-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.workflow-list-item:hover {
+  background: var(--tertiary-bg);
+}
+
+.workflow-list-item.active {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+}
+
+.workflow-list-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.workflow-list-usage {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.workflow-list-group {
+  margin-top: 0.75rem;
+  padding: 0 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.workflow-list-empty {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.workflow-detail {
+  min-width: 0;
+}
+
+.workflow-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.workflow-detail-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.workflow-detail-header .section-actions {
+  margin-left: auto;
+}
+
+@media (max-width: 900px) {
+  .workflows-layout {
+    grid-template-columns: 1fr;
+  }
+}

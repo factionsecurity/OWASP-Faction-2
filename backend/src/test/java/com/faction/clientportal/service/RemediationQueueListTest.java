@@ -3,8 +3,8 @@ package com.faction.clientportal.service;
 import com.faction.clientportal.config.TestContainersConfig;
 import com.faction.clientportal.dto.RemediationRowDto;
 import com.faction.clientportal.model.Application;
-import com.faction.clientportal.model.AssessmentWorkflowConfig;
-import com.faction.clientportal.model.AssessmentWorkflowConfig.VulnerabilitySla;
+import com.faction.clientportal.model.AssessmentWorkflow;
+import com.faction.clientportal.model.VulnerabilitySla;
 import com.faction.clientportal.model.AssignedUser;
 import com.faction.clientportal.model.LoginOption;
 import com.faction.clientportal.model.Organization;
@@ -15,12 +15,13 @@ import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilitySeverity;
 import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.AssessmentRepository;
-import com.faction.clientportal.repository.AssessmentWorkflowConfigRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.OrganizationRepository;
 import com.faction.clientportal.repository.RetestRepository;
 import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.repository.VulnerabilityRepository;
 import com.faction.clientportal.security.RequiresPermissionAuthorizationManager;
+import com.faction.clientportal.testsupport.TestWorkflows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,7 +63,8 @@ class RemediationQueueListTest extends TestContainersConfig {
     @Autowired private ApplicationRepository applicationRepository;
     @Autowired private OrganizationRepository organizationRepository;
     @Autowired private UserRepository userRepository;
-    @Autowired private AssessmentWorkflowConfigRepository workflowConfigRepository;
+    @Autowired private AssessmentWorkflowRepository workflowConfigRepository;
+    @Autowired private SlaService slaService;
 
     private static final Pageable PAGE = PageRequest.of(0, 50);
 
@@ -196,6 +198,31 @@ class RemediationQueueListTest extends TestContainersConfig {
                 PageRequest.of(0, 1), superAdmin());
         assertThat(page.getTotalElements()).isEqualTo(2);
         assertThat(page.getContent()).hasSize(1);
+    }
+
+    @Test
+    void everyRowSaysWhichWorkflowItsAssessmentIsOn() {
+        String secondAssessment = assessment(orgId, appId, "PCI Review");
+        assessmentRepository.findById(secondAssessment).ifPresent(a -> {
+            a.setWorkflowId(TestWorkflows.SECOND_ID);
+            assessmentRepository.save(a);
+        });
+        vuln("On default", VulnerabilitySeverity.CRITICAL, 30);
+        vulnBuilder("On second", VulnerabilitySeverity.CRITICAL, 30).assessment(secondAssessment).save();
+
+        var rows = list();
+
+        assertThat(row(rows, "On default").getWorkflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID);
+        assertThat(row(rows, "On second").getWorkflowId()).isEqualTo(TestWorkflows.SECOND_ID);
+    }
+
+    @Test
+    void retestRowsSayItToo() {
+        retest("Retest target", "SCHEDULED", -2, 5);
+
+        var rows = withCompletedRetests();
+
+        assertThat(row(rows, "Retest target").getWorkflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID);
     }
 
     // ── Interleaving + ordering (the crux) ───────────────────────────────────────
@@ -618,6 +645,7 @@ class RemediationQueueListTest extends TestContainersConfig {
         var noStatus = Vulnerability.builder().name("NoStatus").severity(VulnerabilitySeverity.HIGH)
                 .assessmentId(assessmentId).order(0).openedAt(LocalDateTime.now().minusDays(40))
                 .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
+        slaService.refresh(noStatus);
         vulnerabilityRepository.save(noStatus);
         vulnBuilder("OpenVuln", VulnerabilitySeverity.HIGH, 40).status("Open").save();
 
@@ -739,7 +767,7 @@ class RemediationQueueListTest extends TestContainersConfig {
         var me = teamUser("tester", orgId);
         var mine = assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
                 .name("Mine").applicationId(appId).assessmentTypeId("t").organizationId(orgId)
-                .status("IN_PROGRESS").assessorIds(List.of(me.getId()))
+                .status("Testing").assessorIds(List.of(me.getId()))
                 .createdAt(LocalDateTime.now()).build()).getId();
         vulnBuilder("mine", VulnerabilitySeverity.HIGH, 40).assessment(mine).save();
         vuln("theirs", VulnerabilitySeverity.HIGH, 40); // default assessment, no assessors
@@ -755,6 +783,25 @@ class RemediationQueueListTest extends TestContainersConfig {
         vuln("v", VulnerabilitySeverity.HIGH, 40);
         var result = list(null, auth("ghost", Permission.VULNERABILITIES_READ_ORG.getPermission()));
         assertThat(result).isEmpty();
+    }
+
+    // ── Stored dates, not the config at read time ────────────────────────────────
+
+    @Test
+    void listsFromTheStoredDates_notTheConfigAtReadTime() {
+        // Stored under setUp's SLAs; both not yet due, so the live past-due job leaves them alone.
+        vuln("StoredWarning", VulnerabilitySeverity.CRITICAL, 5); // due +2d, warning −1d → queued
+        vuln("StoredFresh", VulnerabilitySeverity.HIGH, 10);      // due +20d, warning +5d → not queued
+
+        // No recalculation: computed from this config the queue would be exactly "StoredFresh".
+        configureSlas(
+                new VulnerabilitySla("CRITICAL", 30, 15),
+                new VulnerabilitySla("HIGH", 12, 5));
+
+        var rows = list();
+        assertThat(names(rows)).containsExactly("StoredWarning");
+        assertThat(row(rows, "StoredWarning").isWarning()).isTrue();
+        assertThat(row(rows, "StoredWarning").isUrgent()).isFalse();
     }
 
     // ── Pagination ──────────────────────────────────────────────────────────────
@@ -869,8 +916,7 @@ class RemediationQueueListTest extends TestContainersConfig {
     }
 
     private void configureSlas(VulnerabilitySla... slas) {
-        workflowConfigRepository.save(AssessmentWorkflowConfig.builder()
-                .id("singleton")
+        workflowConfigRepository.save(AssessmentWorkflow.defaultWorkflowBuilder()
                 .vulnerabilitySlas(List.of(slas))
                 .build());
     }
@@ -895,7 +941,7 @@ class RemediationQueueListTest extends TestContainersConfig {
     private String teamAssessment(String orgId, String appId, String name, String teamId) {
         return assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
                 .name(name).applicationId(appId).assessmentTypeId("t").organizationId(orgId)
-                .status("IN_PROGRESS").teamId(teamId).createdAt(LocalDateTime.now()).build()).getId();
+                .status("Testing").teamId(teamId).createdAt(LocalDateTime.now()).build()).getId();
     }
 
     private User teamUser(String username, String orgId, String... teamIds) {
@@ -909,7 +955,7 @@ class RemediationQueueListTest extends TestContainersConfig {
     private String deletedAssessment(String orgId, String appId) {
         return assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
                 .name("Gone").applicationId(appId).assessmentTypeId("t").organizationId(orgId)
-                .status("IN_PROGRESS").deletedAt(LocalDateTime.now()).createdAt(LocalDateTime.now()).build()).getId();
+                .status("Testing").deletedAt(LocalDateTime.now()).createdAt(LocalDateTime.now()).build()).getId();
     }
 
     /** Seed a queue vuln on the default assessment, opened {@code openedDaysAgo} days ago. */
@@ -938,7 +984,12 @@ class RemediationQueueListTest extends TestContainersConfig {
         VulnBuilder openedAtNull() { b.openedAt(null); return this; }
         VulnBuilder softDeleted() { b.deletedAt(LocalDateTime.now()); return this; }
         VulnBuilder assessment(String id) { b.assessmentId(id); return this; }
-        String save() { return vulnerabilityRepository.save(b.build()).getId(); }
+        String save() {
+            Vulnerability v = b.build();
+            // Stored dates from the config in force now, as every real write sets them.
+            slaService.refresh(v);
+            return vulnerabilityRepository.save(v).getId();
+        }
     }
 
     /** Seed an open retest (with a fresh underlying vuln named {@code name}) on the default assessment. */

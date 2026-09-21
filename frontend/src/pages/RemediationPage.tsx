@@ -4,7 +4,7 @@ import { CalendarRange, Download, Eye, Pencil, Trash2, XCircle, AlertTriangle } 
 import GliderIcon from '../components/icons/GliderIcon';
 import {
   vulnerabilitiesApi, retestApi, assessmentsApi, applicationsApi, organizationsApi,
-  workflowConfigApi, remediationApi,
+  remediationApi,
 } from '../api';
 import type { Assessment, Vulnerability, RemediationQueueRow, RemediationQueueSummary } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
@@ -16,6 +16,8 @@ import { Button } from '../components/Button';
 import VulnerabilityDetailDrawer from '../components/VulnerabilityDetailDrawer';
 import { DEFAULT_VULN_STATUSES, vulnStatusBadgeVariant } from '../utils/vulnStatus';
 import { usePermissions } from '../utils/permissions';
+import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { mergedVulnerabilityStatuses } from '../utils/workflowLookup';
 import RichTextEditor from '../components/RichTextEditor';
 import Page from '../components/Page';
 import './RemediationPage.css';
@@ -151,8 +153,18 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   // Vulnerability detail drawer (full vuln + assessment fetched on demand)
   const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
   const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null);
-  // Seeded with the built-ins so the status filter is populated before the config request lands.
-  const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(DEFAULT_VULN_STATUSES);
+  const { workflows } = useWorkflowsContext();
+  // Off by default: an archived workflow's statuses still stay filterable on request, but
+  // shouldn't clutter the everyday dropdown. Coloring a row still always uses the full
+  // `workflows` list — an archived workflow's rows still need their colors resolved.
+  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = usePersistedState(tableKey, 'includeArchivedWorkflows', false);
+  // Built-ins plus every workflow's configured statuses, merged — the built-ins are still
+  // built in, they just aren't part of `mergedVulnerabilityStatuses`.
+  const configuredStatuses = [
+    ...DEFAULT_VULN_STATUSES,
+    ...mergedVulnerabilityStatuses(includeArchivedWorkflows ? workflows : workflows.filter(w => !w.archived))
+      .filter(s => !DEFAULT_VULN_STATUSES.includes(s)),
+  ];
 
   // Cancel retest dialog
   const [cancelRetestRow, setCancelRetestRow] = useState<RemediationQueueRow | null>(null);
@@ -238,13 +250,9 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   useEffect(() => { setDraftAssessmentIds(filterAssessmentIds); }, [filterAssessmentIds]);
   useEffect(() => { setDraftShowCompletedRetests(showCompletedRetests); }, [showCompletedRetests]);
 
-  // One-time: vulnerability status labels for the detail drawer, plus the organization options.
+  // One-time: the organization options. Statuses come from WorkflowsContext instead of a
+  // one-time fetch.
   useEffect(() => {
-    workflowConfigApi.getConfig().then(res => {
-      const custom = res.success && res.data ? (res.data.vulnerabilityStatuses || []) : [];
-      setConfiguredStatuses([...DEFAULT_VULN_STATUSES, ...custom.filter(s => !DEFAULT_VULN_STATUSES.includes(s))]);
-    }).catch(() => setConfiguredStatuses(DEFAULT_VULN_STATUSES));
-
     organizationsApi.getAll(0, 1000)
       .then(r => setOrgOptions((r.data || []).map(o => ({ value: o.id, label: o.name }))))
       .catch(() => setOrgOptions([]));
@@ -690,6 +698,14 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
         searchable={false}
         placeholder="All Statuses"
       />
+      <label className="rq-include-archived-workflows">
+        <input
+          type="checkbox"
+          checked={includeArchivedWorkflows}
+          onChange={(e) => setIncludeArchivedWorkflows(e.target.checked)}
+        />
+        Include archived workflows
+      </label>
       <Button
         variant="secondary"
         icon={Download}
@@ -800,7 +816,6 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
           // The exception workflow is this page's job — accepting a risk is what you do
           // with a finding you cannot close before its SLA runs out.
           showException
-          configuredStatuses={configuredStatuses}
           onVulnUpdate={handleVulnUpdate}
           onScheduleRetest={() => {
             if (selectedVuln) {

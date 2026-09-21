@@ -89,7 +89,7 @@ class ApplicationOpenIssueCountTest extends TestContainersConfig {
                 .applicationId(applicationId)
                 .assessmentTypeId("type-1")
                 .organizationId("org-1")
-                .status("IN_PROGRESS")
+                .status("Testing")
                 .createdAt(LocalDateTime.now())
                 .build()).getId();
     }

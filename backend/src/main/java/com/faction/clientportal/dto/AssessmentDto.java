@@ -29,6 +29,8 @@ public class AssessmentDto {
     private String appId; // Human-readable application id, for frontend display
     private String applicationName; // Display name for frontend
     private String assessmentTypeId;
+    /** The assessment's workflow; judge its status against this workflow's statuses. */
+    private String workflowId;
     private String assessmentTypeName; // Display name for frontend
     private String organizationId;
     private String campaignId;
@@ -82,6 +84,12 @@ public class AssessmentDto {
     private List<StakeholderDto> stakeholders = new ArrayList<>();
     private Boolean isPastDue; // Computed field
 
+    /**
+     * Whether the assessment's status is its own workflow's completed status. Computed, because
+     * completion is per workflow: no caller can decide it by comparing status text.
+     */
+    private Boolean completed;
+
     // Attachments (metadata only — no file content)
     @Builder.Default
     private List<AssessmentFileDto> attachments = new ArrayList<>();
@@ -130,6 +138,7 @@ public class AssessmentDto {
             .name(entity.getName())
             .applicationId(entity.getApplicationId())
             .assessmentTypeId(entity.getAssessmentTypeId())
+            .workflowId(entity.getWorkflowId())
             .organizationId(entity.getOrganizationId())
             .campaignId(entity.getCampaignId())
             .teamId(entity.getTeamId())
@@ -176,6 +185,7 @@ public class AssessmentDto {
                     .collect(Collectors.toList())
                 : new ArrayList<>())
             .isPastDue(false) // computed by AssessmentService using workflow config
+            .completed(false) // computed by AssessmentService using the assessment's workflow
             .generatedReportFileId(entity.getGeneratedReportFileId())
             .reportGeneratedAt(entity.getReportGeneratedAt())
             .createdBy(entity.getCreatedBy())

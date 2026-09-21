@@ -15,6 +15,7 @@ import com.faction.clientportal.repository.UserRepository;
 import com.faction.clientportal.repository.VulnerabilityRepository;
 import com.faction.clientportal.service.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,6 +50,7 @@ class RetestControllerTest extends TestContainersConfig {
     @Autowired private RoleRepository roleRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtService jwtService;
+    @Autowired private com.faction.clientportal.repository.AssessmentWorkflowRepository workflowConfigRepository;
 
     private String jwtToken;
     private String userId;
@@ -93,7 +95,7 @@ class RetestControllerTest extends TestContainersConfig {
                 .applicationId("app-retest-1")
                 .assessmentTypeId("type-1")
                 .organizationId("org-1")
-                .status("COMPLETED")
+                .status("Completed")
                 .createdAt(LocalDateTime.now())
                 .build());
 
@@ -109,6 +111,18 @@ class RetestControllerTest extends TestContainersConfig {
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build());
+    }
+
+    @AfterEach
+    void tearDown() {
+        workflowConfigRepository.deleteAll();
+    }
+
+    private void putTheAssessmentOnTheSecondWorkflow() {
+        com.faction.clientportal.testsupport.TestWorkflows.saveSecondWorkflow(workflowConfigRepository);
+        testAssessment.setWorkflowId(com.faction.clientportal.testsupport.TestWorkflows.SECOND_ID);
+        testAssessment.setStatus("Signed Off");
+        assessmentRepository.save(testAssessment);
     }
 
     private Map<String, Object> buildCreateRequest() {
@@ -710,7 +724,7 @@ class RetestControllerTest extends TestContainersConfig {
     void savingARetestAppliesRevisedRatingsEvenThoughTheAssessmentIsFinalized() throws Exception {
         // The whole point: retests run on completed assessments, and the vulnerability API refuses
         // to modify one. Going through the retest is what makes re-rating possible at all.
-        testAssessment.setStatus("COMPLETED");
+        testAssessment.setStatus("Completed");
         testAssessment.setCompletedDate(LocalDateTime.now());
         assessmentRepository.save(testAssessment);
 
@@ -1000,6 +1014,48 @@ class RetestControllerTest extends TestContainersConfig {
     }
 
     @Test
+    void passClosingInProduction_onTheSecondWorkflow_closesItWithThatWorkflowsLastStage() throws Exception {
+        putTheAssessmentOnTheSecondWorkflow();
+
+        Vulnerability v = passWithClosure("PRODUCTION");
+
+        assertThat(v.getStatus()).isEqualTo("Closed");
+        assertThat(v.getClosedAt()).isNotNull();
+        assertThat(stageCompletionRepository.findByVulnerabilityId(testVuln.getId())).isEmpty();
+        assertThat(v.getComments()).anyMatch(c -> c.getContent().contains("**Live** completed"));
+    }
+
+    @Test
+    void passClosingInTheSecondWorkflowsFirstStage_recordsItAndLeavesTheFindingOpen() throws Exception {
+        putTheAssessmentOnTheSecondWorkflow();
+
+        Vulnerability v = passWithClosure("second-qa");
+
+        assertThat(stageCompletedAt("second-qa")).isNotNull();
+        assertThat(v.getClosedAt()).isNull();
+        assertThat(v.getStatus()).isEqualTo("Passed Retest");
+        assertThat(v.getComments()).anyMatch(c -> c.getContent().contains("**QA** completed"));
+    }
+
+    @Test
+    void passWithADefaultStageOnTheSecondWorkflow_returns400() throws Exception {
+        putTheAssessmentOnTheSecondWorkflow();
+        String createBody = mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String retestId = objectMapper.readTree(createBody).at("/data/id").asText();
+
+        mockMvc.perform(post("/api/v1/retests/{id}/complete", retestId)
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("result", "PASS", "closure", "staging"))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void passWithAnUnknownClosure_returns400() throws Exception {
         String createBody = mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
                         .header("Authorization", "Bearer " + jwtToken)
@@ -1179,5 +1235,36 @@ class RetestControllerTest extends TestContainersConfig {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(2));
+    }
+
+    @Test
+    void reRatingOnARetestRecalculatesTheStoredDueDate() throws Exception {
+        // Defaults: HIGH 60/30, MEDIUM 365/300. Opened in 2099 so the past-due job never touches it.
+        workflowConfigRepository.deleteAll();
+        testVuln.setOpenedAt(LocalDateTime.of(2099, 1, 1, 9, 0));
+        vulnerabilityRepository.save(testVuln);
+
+        String createBody = mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String retestId = objectMapper.readTree(createBody).at("/data/id").asText();
+
+        // Scheduling moved the finding to "In Retest" through updateStatus, which stamps the HIGH dates.
+        Vulnerability scheduled = vulnerabilityRepository.findById(testVuln.getId()).orElseThrow();
+        assertThat(scheduled.getDueAt()).isEqualTo(LocalDateTime.of(2099, 3, 2, 9, 0));
+
+        mockMvc.perform(patch("/api/v1/retests/{id}", retestId)
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("severity", "MEDIUM"))))
+                .andExpect(status().isOk());
+
+        Vulnerability reRated = vulnerabilityRepository.findById(testVuln.getId()).orElseThrow();
+        assertThat(reRated.getSeverity()).isEqualTo(VulnerabilitySeverity.MEDIUM);
+        assertThat(reRated.getDueAt()).isEqualTo(LocalDateTime.of(2100, 1, 1, 9, 0));
+        assertThat(reRated.getWarningAt()).isEqualTo(LocalDateTime.of(2099, 3, 7, 9, 0));
     }
 }

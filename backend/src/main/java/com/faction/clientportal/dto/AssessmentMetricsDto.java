@@ -21,49 +21,13 @@ public class AssessmentMetricsDto {
     private long totalCount;
 
     /**
-     * Number of assessments in DRAFT status
-     */
-    private long draftCount;
-
-    /**
-     * Number of assessments in IN_PROGRESS status
-     */
-    private long inProgressCount;
-
-    /**
-     * Number of assessments in ON_HOLD status
-     */
-    private long onHoldCount;
-
-    /**
-     * Number of assessments in PENDING_REVIEW status
-     */
-    private long pendingReviewCount;
-
-    /**
-     * Number of assessments in COMPLETED status
-     */
-    private long completedCount;
-
-    /**
-     * Number of assessments in APPROVED status
-     */
-    private long approvedCount;
-
-    /**
-     * Number of assessments in ARCHIVED status
-     */
-    private long archivedCount;
-
-    /**
-     * Number of assessments that are past their planned end date
-     * and not yet completed/approved/archived
+     * Number of assessments that are past their planned end date and not in the configured
+     * completed status
      */
     private long pastDueCount;
 
     /**
-     * Count of assessments grouped by status string.
-     * Includes all status values (legacy and custom).
+     * Count of assessments grouped by status, using the statuses the workflow configures.
      */
     private Map<String, Long> statusCounts;
 }

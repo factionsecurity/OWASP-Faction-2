@@ -34,7 +34,11 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Autowired private ApplicationRepository applicationRepository;
     @Autowired private AssessmentTypeRepository assessmentTypeRepository;
 
-    private static final Set<String> COMPLETED = Set.of("COMPLETED", "APPROVED", "ARCHIVED");
+    private static final CompletedStatusFilter DEFAULT_ONLY = new CompletedStatusFilter(
+            List.of("default"), List.of("Completed"), List.of("default"), "default");
+    private static final CompletedStatusFilter TWO_WORKFLOWS = new CompletedStatusFilter(
+            List.of("default", "second-workflow"), List.of("Completed", "Signed Off"),
+            List.of("default", "second-workflow"), "default");
     private static final Pageable PAGE = PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "name"));
 
     @BeforeEach
@@ -47,7 +51,7 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     private AssessmentSearchCriteria.AssessmentSearchCriteriaBuilder base() {
         return AssessmentSearchCriteria.builder()
-                .completedStatuses(COMPLETED)
+                .completed(DEFAULT_ONLY)
                 .now(LocalDateTime.now());
     }
 
@@ -59,8 +63,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void excludesSoftDeleted_andCountsTotal() {
-        save(a("Live").status("IN_PROGRESS"));
-        save(a("Gone").status("IN_PROGRESS").deletedAt(LocalDateTime.now()));
+        save(a("Live").status("Testing"));
+        save(a("Gone").status("Testing").deletedAt(LocalDateTime.now()));
 
         var page = assessmentRepository.searchAdvanced(base().build(), PAGE);
 
@@ -70,7 +74,7 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void paginates_withCorrectTotal() {
-        for (int i = 0; i < 5; i++) save(a("A" + i).status("IN_PROGRESS"));
+        for (int i = 0; i < 5; i++) save(a("A" + i).status("Testing"));
 
         var page = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(1, 2, Sort.by(Sort.Direction.ASC, "name")));
@@ -83,8 +87,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void search_isCaseInsensitiveSubstring() {
-        save(a("Web App Pentest").status("IN_PROGRESS"));
-        save(a("Mobile Review").status("IN_PROGRESS"));
+        save(a("Web App Pentest").status("Testing"));
+        save(a("Mobile Review").status("Testing"));
 
         assertThat(search(base().search("web").build())).extracting(Assessment::getName).containsExactly("Web App Pentest");
         assertThat(search(base().search("PENTEST").build())).extracting(Assessment::getName).containsExactly("Web App Pentest");
@@ -99,9 +103,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     void search_matchesApplicationNameAsWellAsAssessmentName() {
         String banking = application("APP-1", "Commercial Banking Portal");
         String other = application("APP-2", "Payroll");
-        save(a("Q3 Pentest").applicationId(banking).status("IN_PROGRESS"));
-        save(a("Q3 Pentest").applicationId(other).status("IN_PROGRESS"));
-        save(a("Banking Mobile Review").applicationId(other).status("IN_PROGRESS"));
+        save(a("Q3 Pentest").applicationId(banking).status("Testing"));
+        save(a("Q3 Pentest").applicationId(other).status("Testing"));
+        save(a("Banking Mobile Review").applicationId(other).status("Testing"));
 
         var result = search(base().search("banking").build());
 
@@ -113,8 +117,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void search_treatsWildcardsLiterally() {
-        save(a("app_01").status("IN_PROGRESS"));
-        save(a("appX01").status("IN_PROGRESS"));
+        save(a("app_01").status("Testing"));
+        save(a("appX01").status("Testing"));
 
         // '_' must match literally, not as a single-char wildcard.
         assertThat(search(base().search("app_0").build())).extracting(Assessment::getName).containsExactly("app_01");
@@ -126,9 +130,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     void orgScope_matchesOrganizationOrScopedApplication() {
         String appX = application("APP-X", "X");
         String appY = application("APP-Y", "Y");
-        save(a("In org").organizationId("org-1").applicationId(appY).status("IN_PROGRESS"));
-        save(a("Scoped app").organizationId("org-2").applicationId(appX).status("IN_PROGRESS"));
-        save(a("Neither").organizationId("org-2").applicationId(appY).status("IN_PROGRESS"));
+        save(a("In org").organizationId("org-1").applicationId(appY).status("Testing"));
+        save(a("Scoped app").organizationId("org-2").applicationId(appX).status("Testing"));
+        save(a("Neither").organizationId("org-2").applicationId(appY).status("Testing"));
 
         var result = search(base().scopeOrgIds(Set.of("org-1")).scopeAppIds(Set.of(appX)).build());
         assertThat(result).extracting(Assessment::getName).containsExactlyInAnyOrder("In org", "Scoped app");
@@ -143,9 +147,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void assessmentTypeIds_matchesAny_emptyMeansNoFilter() {
-        save(a("Web").assessmentTypeId("type-web").status("IN_PROGRESS"));
-        save(a("Mobile").assessmentTypeId("type-mobile").status("IN_PROGRESS"));
-        save(a("Cloud").assessmentTypeId("type-cloud").status("IN_PROGRESS"));
+        save(a("Web").assessmentTypeId("type-web").status("Testing"));
+        save(a("Mobile").assessmentTypeId("type-mobile").status("Testing"));
+        save(a("Cloud").assessmentTypeId("type-cloud").status("Testing"));
 
         assertThat(search(base().assessmentTypeIds(List.of("type-web", "type-cloud")).build()))
                 .extracting(Assessment::getName).containsExactlyInAnyOrder("Web", "Cloud");
@@ -156,8 +160,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void filtersByApplicationOrgTypeCampaign() {
-        save(a("Match").applicationId("app-1").organizationId("org-1").assessmentTypeId("t-1").campaignId("c-1").status("IN_PROGRESS"));
-        save(a("Other").applicationId("app-2").organizationId("org-2").assessmentTypeId("t-2").campaignId("c-2").status("IN_PROGRESS"));
+        save(a("Match").applicationId("app-1").organizationId("org-1").assessmentTypeId("t-1").campaignId("c-1").status("Testing"));
+        save(a("Other").applicationId("app-2").organizationId("org-2").assessmentTypeId("t-2").campaignId("c-2").status("Testing"));
 
         assertThat(search(base().applicationId("app-1").build())).extracting(Assessment::getName).containsExactly("Match");
         assertThat(search(base().organizationId("org-1").build())).extracting(Assessment::getName).containsExactly("Match");
@@ -167,16 +171,16 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void status_isCaseInsensitive() {
-        save(a("A").status("In_Progress"));
-        assertThat(search(base().status("IN_PROGRESS").build())).extracting(Assessment::getName).containsExactly("A");
+        save(a("A").status("data gathering"));
+        assertThat(search(base().status("Data Gathering").build())).extracting(Assessment::getName).containsExactly("A");
     }
 
     // ── Owned scope ────────────────────────────────────────────────────────────
 
     @Test
     void ownedScope_restrictsToApps_andEmptyMatchesNothing() {
-        save(a("Owned").applicationId("app-1").status("IN_PROGRESS"));
-        save(a("NotOwned").applicationId("app-9").status("IN_PROGRESS"));
+        save(a("Owned").applicationId("app-1").status("Testing"));
+        save(a("NotOwned").applicationId("app-9").status("Testing"));
 
         assertThat(search(base().ownedAppIds(List.of("app-1")).build())).extracting(Assessment::getName).containsExactly("Owned");
         assertThat(search(base().ownedAppIds(List.of()).build())).isEmpty(); // empty owned → nothing
@@ -184,9 +188,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void applicationIds_restrictsToSelectedApps_emptyMeansNoFilter() {
-        save(a("A1").applicationId("app-1").status("IN_PROGRESS"));
-        save(a("A2").applicationId("app-2").status("IN_PROGRESS"));
-        save(a("A3").applicationId("app-3").status("IN_PROGRESS"));
+        save(a("A1").applicationId("app-1").status("Testing"));
+        save(a("A2").applicationId("app-2").status("Testing"));
+        save(a("A3").applicationId("app-3").status("Testing"));
 
         assertThat(search(base().applicationIds(List.of("app-1", "app-3")).build()))
                 .extracting(Assessment::getName).containsExactlyInAnyOrder("A1", "A3");
@@ -199,9 +203,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void startDateRange_excludesOutOfRangeAndUndated() {
         var now = LocalDateTime.now();
-        save(a("InRange").status("IN_PROGRESS").startDate(now.minusDays(1)));
-        save(a("TooEarly").status("IN_PROGRESS").startDate(now.minusDays(30)));
-        save(a("NullStart").status("IN_PROGRESS").startDate(null));
+        save(a("InRange").status("Testing").startDate(now.minusDays(1)));
+        save(a("TooEarly").status("Testing").startDate(now.minusDays(30)));
+        save(a("NullStart").status("Testing").startDate(null));
 
         var result = search(base().startDateFrom(now.minusDays(5)).startDateTo(now).build());
 
@@ -211,9 +215,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void completedDateRange_excludesOutOfRangeAndUndated() {
         var now = LocalDateTime.now();
-        save(a("InRange").status("COMPLETED").completedDate(now.minusDays(1)));
-        save(a("TooEarly").status("COMPLETED").completedDate(now.minusDays(30)));
-        save(a("NeverCompleted").status("IN_PROGRESS").completedDate(null));
+        save(a("InRange").status("Completed").completedDate(now.minusDays(1)));
+        save(a("TooEarly").status("Completed").completedDate(now.minusDays(30)));
+        save(a("NeverCompleted").status("Testing").completedDate(null));
 
         var result = search(base().completedDateFrom(now.minusDays(5)).completedDateTo(now).build());
 
@@ -224,11 +228,11 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void excludeCompleted_dropsCompletedStatuses_butKeepsNullStatus() {
-        save(a("Active").status("IN_PROGRESS"));
-        save(a("Done").status("COMPLETED"));
+        save(a("Active").status("Testing"));
+        save(a("Done").status("Completed"));
         // Just completed: still inside the reopen window, and still hidden — "show completed" is
         // the only way a completed assessment reaches the list.
-        save(a("JustDone").status("COMPLETED").completedDate(LocalDateTime.now().minusDays(1)));
+        save(a("JustDone").status("Completed").completedDate(LocalDateTime.now().minusDays(1)));
         save(a("NoStatus").status(null));
 
         var result = search(base().excludeCompleted(true).build());
@@ -239,24 +243,77 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void pastDue_onlyOverdueNonCompleted() {
         var now = LocalDateTime.now();
-        save(a("Overdue").status("IN_PROGRESS").plannedEndDate(now.minusDays(1)));
-        save(a("Future").status("IN_PROGRESS").plannedEndDate(now.plusDays(1)));
-        save(a("OverdueButDone").status("COMPLETED").plannedEndDate(now.minusDays(1)));
+        save(a("Overdue").status("Testing").plannedEndDate(now.minusDays(1)));
+        save(a("Future").status("Testing").plannedEndDate(now.plusDays(1)));
+        save(a("OverdueButDone").status("Completed").plannedEndDate(now.minusDays(1)));
 
         var result = search(base().pastDue(true).build());
 
         assertThat(result).extracting(Assessment::getName).containsExactly("Overdue");
     }
 
+    @Test
+    void excludeCompleted_usesEachAssessmentsOwnWorkflowsCompletedStatus() {
+        save(a("DefaultDone").status("Completed"));
+        save(a("DefaultSignedOff").status("Signed Off"));
+        save(a("SecondDone").workflowId("second-workflow").status("Signed Off"));
+        save(a("SecondCompleted").workflowId("second-workflow").status("Completed"));
+        save(a("UnknownDone").workflowId("gone-workflow").status("Completed"));
+        save(a("UnknownSignedOff").workflowId("gone-workflow").status("Signed Off"));
+        save(a("SecondNoStatus").workflowId("second-workflow").status(null));
+
+        var result = search(base().completed(TWO_WORKFLOWS).excludeCompleted(true).build());
+
+        assertThat(result).extracting(Assessment::getName).containsExactlyInAnyOrder(
+                "DefaultSignedOff", "SecondCompleted", "UnknownSignedOff", "SecondNoStatus");
+    }
+
+    @Test
+    void excludeCompleted_aKnownWorkflowWithNoCompletedStatusCompletesNothing() {
+        var filter = new CompletedStatusFilter(List.of("default"), List.of("Completed"),
+                List.of("default", "no-end"), "default");
+        save(a("NoEndCompleted").workflowId("no-end").status("Completed"));
+        save(a("DefaultDone").status("Completed"));
+
+        var result = search(base().completed(filter).excludeCompleted(true).build());
+
+        assertThat(result).extracting(Assessment::getName).containsExactly("NoEndCompleted");
+    }
+
+    @Test
+    void pastDue_usesEachAssessmentsOwnWorkflowsCompletedStatus() {
+        var late = LocalDateTime.now().minusDays(1);
+        save(a("SecondDoneLate").workflowId("second-workflow").status("Signed Off").plannedEndDate(late));
+        save(a("SecondCompletedLate").workflowId("second-workflow").status("Completed").plannedEndDate(late));
+        save(a("UnknownDoneLate").workflowId("gone-workflow").status("Completed").plannedEndDate(late));
+
+        var result = search(base().completed(TWO_WORKFLOWS).pastDue(true).build());
+
+        assertThat(result).extracting(Assessment::getName).containsExactly("SecondCompletedLate");
+    }
+
+    @Test
+    void excludeCompleted_countQueryBindsTheSameFilter() {
+        save(a("ActiveOne").workflowId("second-workflow").status("Fieldwork"));
+        save(a("ActiveTwo").workflowId("second-workflow").status("Draft"));
+        save(a("Done").workflowId("second-workflow").status("Signed Off"));
+
+        var page = assessmentRepository.searchAdvanced(
+                base().completed(TWO_WORKFLOWS).excludeCompleted(true).build(), PageRequest.of(0, 1));
+
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getTotalElements()).isEqualTo(2);
+    }
+
     // ── Assigned-to-me (managers, legacy assessor, assessorIds JSONB) ───────────
 
     @Test
     void assignedToMe_matchesManagersLegacyAndAssessorIds() {
-        save(a("ByEngMgr").status("IN_PROGRESS").engagementManagerId("me"));
-        save(a("ByRemMgr").status("IN_PROGRESS").remediationManagerId("me"));
-        save(a("ByLegacy").status("IN_PROGRESS").assessorId("me"));
-        save(a("ByAssessorIds").status("IN_PROGRESS").assessorIds(List.of("x", "me")));
-        save(a("NotMine").status("IN_PROGRESS").assessorIds(List.of("someone")));
+        save(a("ByEngMgr").status("Testing").engagementManagerId("me"));
+        save(a("ByRemMgr").status("Testing").remediationManagerId("me"));
+        save(a("ByLegacy").status("Testing").assessorId("me"));
+        save(a("ByAssessorIds").status("Testing").assessorIds(List.of("x", "me")));
+        save(a("NotMine").status("Testing").assessorIds(List.of("someone")));
 
         var result = search(base().assignedToMe(true).currentUserId("me").build());
 
@@ -266,9 +323,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void assessorId_matchesLegacyOrAssessorIds() {
-        save(a("Legacy").status("IN_PROGRESS").assessorId("u1"));
-        save(a("InArray").status("IN_PROGRESS").assessorIds(List.of("u1")));
-        save(a("Neither").status("IN_PROGRESS").assessorIds(List.of("u2")));
+        save(a("Legacy").status("Testing").assessorId("u1"));
+        save(a("InArray").status("Testing").assessorIds(List.of("u1")));
+        save(a("Neither").status("Testing").assessorIds(List.of("u2")));
 
         assertThat(search(base().assessorId("u1").build())).extracting(Assessment::getName)
                 .containsExactlyInAnyOrder("Legacy", "InArray");
@@ -278,8 +335,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void teamMembers_intersectAssessorIds_andEmptyMatchesNothing() {
-        save(a("HasMember").status("IN_PROGRESS").assessorIds(List.of("u1", "u3")));
-        save(a("NoMember").status("IN_PROGRESS").assessorIds(List.of("u9")));
+        save(a("HasMember").status("Testing").assessorIds(List.of("u1", "u3")));
+        save(a("NoMember").status("Testing").assessorIds(List.of("u9")));
 
         assertThat(search(base().teamMemberIds(List.of("u1", "u2")).build())).extracting(Assessment::getName).containsExactly("HasMember");
         assertThat(search(base().teamMemberIds(List.of()).build())).isEmpty(); // team with no members → nothing
@@ -289,8 +346,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void severities_keepAssessmentsWithMatchingOpenedVuln() {
-        var withHigh = save(a("HasHigh").status("IN_PROGRESS")).getId();
-        var withLow = save(a("HasLow").status("IN_PROGRESS")).getId();
+        var withHigh = save(a("HasHigh").status("Testing")).getId();
+        var withLow = save(a("HasLow").status("Testing")).getId();
         vuln(withHigh, VulnerabilitySeverity.HIGH, LocalDateTime.now().minusDays(1));
         vuln(withLow, VulnerabilitySeverity.LOW, LocalDateTime.now().minusDays(1));
 
@@ -304,8 +361,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
         // The date range constrains both the assessment's start_date and the severity sub-query's
         // opened_at window, so both assessments are started in-range; the vuln opened_at is the discriminator.
         var now = LocalDateTime.now();
-        var a1 = save(a("Recent").status("IN_PROGRESS").startDate(now.minusDays(1))).getId();
-        var a2 = save(a("Old").status("IN_PROGRESS").startDate(now.minusDays(1))).getId();
+        var a1 = save(a("Recent").status("Testing").startDate(now.minusDays(1))).getId();
+        var a2 = save(a("Old").status("Testing").startDate(now.minusDays(1))).getId();
         vuln(a1, VulnerabilitySeverity.HIGH, now.minusDays(1));
         vuln(a2, VulnerabilitySeverity.HIGH, now.minusDays(30));
 
@@ -320,9 +377,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void sortsByNameDescending() {
-        save(a("Alpha").status("IN_PROGRESS"));
-        save(a("Charlie").status("IN_PROGRESS"));
-        save(a("Bravo").status("IN_PROGRESS"));
+        save(a("Alpha").status("Testing"));
+        save(a("Charlie").status("Testing"));
+        save(a("Bravo").status("Testing"));
 
         var result = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "name"))).getContent();
@@ -335,9 +392,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void endDateRange_excludesOutOfRangeAndUndated() {
         var now = LocalDateTime.now();
-        save(a("InRange").status("IN_PROGRESS").plannedEndDate(now.minusDays(1)));
-        save(a("TooEarly").status("IN_PROGRESS").plannedEndDate(now.minusDays(30)));
-        save(a("NullEnd").status("IN_PROGRESS").plannedEndDate(null));
+        save(a("InRange").status("Testing").plannedEndDate(now.minusDays(1)));
+        save(a("TooEarly").status("Testing").plannedEndDate(now.minusDays(30)));
+        save(a("NullEnd").status("Testing").plannedEndDate(null));
 
         var result = search(base().endDateFrom(now.minusDays(5)).endDateTo(now).build());
 
@@ -349,12 +406,12 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void combinesFilters_appStatusAndDateNarrowTogether() {
         var now = LocalDateTime.now();
-        save(a("Target").applicationId("app-1").status("IN_PROGRESS").startDate(now.minusDays(1)));
-        save(a("WrongApp").applicationId("app-2").status("IN_PROGRESS").startDate(now.minusDays(1)));
-        save(a("WrongStatus").applicationId("app-1").status("COMPLETED").startDate(now.minusDays(1)));
-        save(a("WrongDate").applicationId("app-1").status("IN_PROGRESS").startDate(now.minusDays(60)));
+        save(a("Target").applicationId("app-1").status("Testing").startDate(now.minusDays(1)));
+        save(a("WrongApp").applicationId("app-2").status("Testing").startDate(now.minusDays(1)));
+        save(a("WrongStatus").applicationId("app-1").status("Completed").startDate(now.minusDays(1)));
+        save(a("WrongDate").applicationId("app-1").status("Testing").startDate(now.minusDays(60)));
 
-        var result = search(base().applicationId("app-1").status("IN_PROGRESS")
+        var result = search(base().applicationId("app-1").status("Testing")
                 .startDateFrom(now.minusDays(5)).startDateTo(now).build());
 
         assertThat(result).extracting(Assessment::getName).containsExactly("Target");
@@ -362,20 +419,20 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void combinesFilters_ownedScopePlusStatus() {
-        save(a("Keep").applicationId("app-1").status("IN_PROGRESS"));
-        save(a("WrongStatus").applicationId("app-1").status("COMPLETED"));
-        save(a("Unowned").applicationId("app-9").status("IN_PROGRESS"));
+        save(a("Keep").applicationId("app-1").status("Testing"));
+        save(a("WrongStatus").applicationId("app-1").status("Completed"));
+        save(a("Unowned").applicationId("app-9").status("Testing"));
 
-        var result = search(base().ownedAppIds(List.of("app-1")).status("IN_PROGRESS").build());
+        var result = search(base().ownedAppIds(List.of("app-1")).status("Testing").build());
 
         assertThat(result).extracting(Assessment::getName).containsExactly("Keep");
     }
 
     @Test
     void combinesFilters_searchPlusOrg() {
-        save(a("Web Test").organizationId("org-1").status("IN_PROGRESS"));
-        save(a("Web Test").organizationId("org-2").status("IN_PROGRESS")); // same name, other org
-        save(a("Mobile Test").organizationId("org-1").status("IN_PROGRESS"));
+        save(a("Web Test").organizationId("org-1").status("Testing"));
+        save(a("Web Test").organizationId("org-2").status("Testing")); // same name, other org
+        save(a("Mobile Test").organizationId("org-1").status("Testing"));
 
         var result = search(base().search("web").organizationId("org-1").build());
 
@@ -386,15 +443,15 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void combinesFilters_severityDateWindowAndStatus() {
         var now = LocalDateTime.now();
-        var keep = save(a("Keep").status("IN_PROGRESS").startDate(now.minusDays(1))).getId();
-        var wrongStatus = save(a("WrongStatus").status("COMPLETED").startDate(now.minusDays(1))).getId();
-        var wrongWindow = save(a("WrongWindow").status("IN_PROGRESS").startDate(now.minusDays(1))).getId();
+        var keep = save(a("Keep").status("Testing").startDate(now.minusDays(1))).getId();
+        var wrongStatus = save(a("WrongStatus").status("Completed").startDate(now.minusDays(1))).getId();
+        var wrongWindow = save(a("WrongWindow").status("Testing").startDate(now.minusDays(1))).getId();
         vuln(keep, VulnerabilitySeverity.HIGH, now.minusDays(1));
         vuln(wrongStatus, VulnerabilitySeverity.HIGH, now.minusDays(1));
         vuln(wrongWindow, VulnerabilitySeverity.HIGH, now.minusDays(60));
 
         var result = search(base().severityOrdinals(List.of(VulnerabilitySeverity.HIGH.ordinal()))
-                .status("IN_PROGRESS").startDateFrom(now.minusDays(5)).startDateTo(now).build());
+                .status("Testing").startDateFrom(now.minusDays(5)).startDateTo(now).build());
 
         assertThat(result).extracting(Assessment::getName).containsExactly("Keep");
     }
@@ -404,9 +461,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void unsorted_defaultsToCreatedAtDescending() {
         var t0 = LocalDateTime.now();
-        save(a("First").status("IN_PROGRESS").createdAt(t0.minusDays(2)));
-        save(a("Second").status("IN_PROGRESS").createdAt(t0.minusDays(1)));
-        save(a("Third").status("IN_PROGRESS").createdAt(t0));
+        save(a("First").status("Testing").createdAt(t0.minusDays(2)));
+        save(a("Second").status("Testing").createdAt(t0.minusDays(1)));
+        save(a("Third").status("Testing").createdAt(t0));
 
         var result = assessmentRepository.searchAdvanced(base().build(), PageRequest.of(0, 50)).getContent();
 
@@ -416,9 +473,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void sortsByCreatedAtAscending() {
         var t0 = LocalDateTime.now();
-        save(a("First").status("IN_PROGRESS").createdAt(t0.minusDays(2)));
-        save(a("Second").status("IN_PROGRESS").createdAt(t0.minusDays(1)));
-        save(a("Third").status("IN_PROGRESS").createdAt(t0));
+        save(a("First").status("Testing").createdAt(t0.minusDays(2)));
+        save(a("Second").status("Testing").createdAt(t0.minusDays(1)));
+        save(a("Third").status("Testing").createdAt(t0));
 
         var result = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "createdAt"))).getContent();
@@ -429,8 +486,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void sortsByStartDateAndPlannedEndDate() {
         var t0 = LocalDateTime.now();
-        save(a("B").status("IN_PROGRESS").startDate(t0.minusDays(1)).plannedEndDate(t0.plusDays(2)));
-        save(a("A").status("IN_PROGRESS").startDate(t0.minusDays(3)).plannedEndDate(t0.plusDays(1)));
+        save(a("B").status("Testing").startDate(t0.minusDays(1)).plannedEndDate(t0.plusDays(2)));
+        save(a("A").status("Testing").startDate(t0.minusDays(3)).plannedEndDate(t0.plusDays(1)));
 
         var byStart = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "startDate"))).getContent();
@@ -443,8 +500,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void sortPutsNullsLast_bothDirections() {
-        save(a("HasDate").status("IN_PROGRESS").startDate(LocalDateTime.now().minusDays(1)));
-        save(a("NoDate").status("IN_PROGRESS").startDate(null));
+        save(a("HasDate").status("Testing").startDate(LocalDateTime.now().minusDays(1)));
+        save(a("NoDate").status("Testing").startDate(null));
 
         var asc = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "startDate"))).getContent();
@@ -459,10 +516,10 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     void textSortIsCaseInsensitive() {
         // The database collates byte-wise ('Apple' < 'Zebra' < 'banana'), so an unfolded ORDER BY
         // would list every capitalized name before every lowercase one instead of interleaving.
-        save(a("banana").status("IN_PROGRESS"));
-        save(a("Apple").status("IN_PROGRESS"));
-        save(a("cherry").status("IN_PROGRESS"));
-        save(a("Zebra").status("IN_PROGRESS"));
+        save(a("banana").status("Testing"));
+        save(a("Apple").status("Testing"));
+        save(a("cherry").status("Testing"));
+        save(a("Zebra").status("Testing"));
 
         var result = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "name"))).getContent();
@@ -477,8 +534,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     void sortsByApplicationName_notByApplicationId() {
         String alpha = application("app-z", "Alpha App");
         String zulu = application("app-a", "Zulu App");
-        save(a("OnZulu").applicationId(zulu).status("IN_PROGRESS"));
-        save(a("OnAlpha").applicationId(alpha).status("IN_PROGRESS"));
+        save(a("OnZulu").applicationId(zulu).status("Testing"));
+        save(a("OnAlpha").applicationId(alpha).status("Testing"));
 
         var asc = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "applicationName"))).getContent();
@@ -493,8 +550,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     void sortsByAssessmentTypeName() {
         String alpha = assessmentType("Alpha Type");
         String zulu = assessmentType("Zulu Type");
-        save(a("OnZulu").assessmentTypeId(zulu).status("IN_PROGRESS"));
-        save(a("OnAlpha").assessmentTypeId(alpha).status("IN_PROGRESS"));
+        save(a("OnZulu").assessmentTypeId(zulu).status("Testing"));
+        save(a("OnAlpha").assessmentTypeId(alpha).status("Testing"));
 
         var result = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "assessmentTypeName"))).getContent();
@@ -506,8 +563,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
         // The joins are LEFT joins: an assessment pointing at a deleted/absent application must
         // still appear (nulls last) rather than being silently dropped from the page or the total.
         String appId = application("app-1", "Alpha App");
-        save(a("HasApp").applicationId(appId).status("IN_PROGRESS"));
-        save(a("NoApp").applicationId("app-missing").status("IN_PROGRESS"));
+        save(a("HasApp").applicationId(appId).status("Testing"));
+        save(a("NoApp").applicationId("app-missing").status("Testing"));
 
         var page = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(0, 50, Sort.by(Sort.Direction.ASC, "applicationName")));
@@ -519,8 +576,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void unknownSortKey_fallsBackToCreatedAtDesc_ratherThanFailing() {
         var t0 = LocalDateTime.now();
-        save(a("Older").status("IN_PROGRESS").createdAt(t0.minusDays(1)));
-        save(a("Newer").status("IN_PROGRESS").createdAt(t0));
+        save(a("Older").status("Testing").createdAt(t0.minusDays(1)));
+        save(a("Newer").status("Testing").createdAt(t0));
 
         var result = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "somethingElse"))).getContent();
@@ -531,7 +588,7 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void pagination_partialLastPage() {
-        for (int i = 0; i < 5; i++) save(a("A" + i).status("IN_PROGRESS"));
+        for (int i = 0; i < 5; i++) save(a("A" + i).status("Testing"));
 
         var page = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(2, 2, Sort.by(Sort.Direction.ASC, "name")));
@@ -542,7 +599,7 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void pagination_beyondLastPage_isEmptyWithCorrectTotal() {
-        for (int i = 0; i < 3; i++) save(a("A" + i).status("IN_PROGRESS"));
+        for (int i = 0; i < 3; i++) save(a("A" + i).status("Testing"));
 
         var page = assessmentRepository.searchAdvanced(base().build(),
                 PageRequest.of(5, 2, Sort.by(Sort.Direction.ASC, "name")));
@@ -553,7 +610,7 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void unpaged_returnsAllMatches() {
-        for (int i = 0; i < 5; i++) save(a("A" + i).status("IN_PROGRESS"));
+        for (int i = 0; i < 5; i++) save(a("A" + i).status("Testing"));
 
         var page = assessmentRepository.searchAdvanced(base().build(), Pageable.unpaged());
 
@@ -565,7 +622,7 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     void pagination_isStableWhenSortKeyTies() {
         // All rows share the sort key (name); without the a.id tiebreaker, LIMIT/OFFSET paging
         // could return a row on two pages or skip one, since tied rows are otherwise unordered.
-        for (int i = 0; i < 6; i++) save(a("SameName").status("IN_PROGRESS"));
+        for (int i = 0; i < 6; i++) save(a("SameName").status("Testing"));
         var sort = Sort.by(Sort.Direction.ASC, "name");
 
         Set<String> seen = new java.util.HashSet<>();
@@ -580,8 +637,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void search_blankIsIgnored_returnsAll() {
-        save(a("One").status("IN_PROGRESS"));
-        save(a("Two").status("IN_PROGRESS"));
+        save(a("One").status("Testing"));
+        save(a("Two").status("Testing"));
 
         assertThat(search(base().search("").build())).hasSize(2);
         assertThat(search(base().search("   ").build())).hasSize(2);
@@ -589,14 +646,14 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void search_noMatch_isEmpty() {
-        save(a("Alpha").status("IN_PROGRESS"));
+        save(a("Alpha").status("Testing"));
         assertThat(search(base().search("zzz").build())).isEmpty();
     }
 
     @Test
     void search_treatsPercentLiterally() {
-        save(a("50% done").status("IN_PROGRESS"));
-        save(a("50 done").status("IN_PROGRESS"));
+        save(a("50% done").status("Testing"));
+        save(a("50 done").status("Testing"));
 
         assertThat(search(base().search("50%").build())).extracting(Assessment::getName).containsExactly("50% done");
     }
@@ -605,19 +662,19 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void equalityFilters_noMatch_isEmpty() {
-        save(a("A").applicationId("app-1").status("IN_PROGRESS"));
+        save(a("A").applicationId("app-1").status("Testing"));
 
         assertThat(search(base().applicationId("app-does-not-exist").build())).isEmpty();
-        assertThat(search(base().status("ARCHIVED").build())).isEmpty();
+        assertThat(search(base().status("NA").build())).isEmpty();
     }
 
     // ── Severity depth (multiple, soft-deleted / unopened vuln excluded) ────────
 
     @Test
     void severities_matchAnyOfMultiple() {
-        var h = save(a("HasHigh").status("IN_PROGRESS")).getId();
-        var l = save(a("HasLow").status("IN_PROGRESS")).getId();
-        var m = save(a("HasMedium").status("IN_PROGRESS")).getId();
+        var h = save(a("HasHigh").status("Testing")).getId();
+        var l = save(a("HasLow").status("Testing")).getId();
+        var m = save(a("HasMedium").status("Testing")).getId();
         vuln(h, VulnerabilitySeverity.HIGH, LocalDateTime.now().minusDays(1));
         vuln(l, VulnerabilitySeverity.LOW, LocalDateTime.now().minusDays(1));
         vuln(m, VulnerabilitySeverity.MEDIUM, LocalDateTime.now().minusDays(1));
@@ -631,9 +688,9 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
     @Test
     void severities_excludeSoftDeletedOrUnopenedVuln() {
         var now = LocalDateTime.now();
-        var deleted = save(a("DeletedVuln").status("IN_PROGRESS")).getId();
-        var unopened = save(a("UnopenedVuln").status("IN_PROGRESS")).getId();
-        var ok = save(a("OpenVuln").status("IN_PROGRESS")).getId();
+        var deleted = save(a("DeletedVuln").status("Testing")).getId();
+        var unopened = save(a("UnopenedVuln").status("Testing")).getId();
+        var ok = save(a("OpenVuln").status("Testing")).getId();
         vuln(deleted, VulnerabilitySeverity.HIGH, now.minusDays(1), now); // soft-deleted → excluded
         vuln(unopened, VulnerabilitySeverity.HIGH, null, null);           // opened_at null → excluded
         vuln(ok, VulnerabilitySeverity.HIGH, now.minusDays(1), null);
@@ -647,14 +704,14 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void pastDue_excludesNullPlannedEndDate() {
-        save(a("NoEnd").status("IN_PROGRESS").plannedEndDate(null));
+        save(a("NoEnd").status("Testing").plannedEndDate(null));
         assertThat(search(base().pastDue(true).build())).isEmpty();
     }
 
     @Test
     void excludeCompletedFalse_includesCompleted() {
-        save(a("Active").status("IN_PROGRESS"));
-        save(a("Done").status("COMPLETED"));
+        save(a("Active").status("Testing"));
+        save(a("Done").status("Completed"));
 
         // excludeCompleted defaults to false → completed rows are included
         assertThat(search(base().build())).extracting(Assessment::getName)
@@ -663,8 +720,8 @@ class AssessmentAdvancedSearchTest extends TestContainersConfig {
 
     @Test
     void assignedToMeFalse_doesNotFilter() {
-        save(a("Mine").status("IN_PROGRESS").assessorId("me"));
-        save(a("Theirs").status("IN_PROGRESS").assessorId("other"));
+        save(a("Mine").status("Testing").assessorId("me"));
+        save(a("Theirs").status("Testing").assessorId("other"));
 
         // assignedToMe defaults to false → currentUserId is ignored, both returned
         assertThat(search(base().currentUserId("me").build())).hasSize(2);

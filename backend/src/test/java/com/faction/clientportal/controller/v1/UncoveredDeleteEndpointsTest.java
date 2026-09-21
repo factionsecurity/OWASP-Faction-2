@@ -71,7 +71,7 @@ class UncoveredDeleteEndpointsTest extends TestContainersConfig {
 
         assessment = assessmentRepository.save(Assessment.builder()
                 .name("Q1").applicationId("app-1").organizationId("org-1")
-                .assessmentTypeId("t").status("IN_PROGRESS")
+                .assessmentTypeId("t").status("Testing")
                 .createdAt(LocalDateTime.now()).build());
         vuln = vulnerabilityRepository.save(Vulnerability.builder()
                 .name("SQLi").severity(VulnerabilitySeverity.HIGH)

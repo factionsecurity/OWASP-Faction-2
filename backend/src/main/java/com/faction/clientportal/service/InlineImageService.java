@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -202,6 +203,42 @@ public class InlineImageService {
         // Always lands as ASSESSMENT scope, whatever the source was: a copy taken into an
         // assessment is that assessment's evidence now, not shared boilerplate.
         return Optional.of(uploadImage(targetAssessmentId, filename, contentType, bytes, userId).getId());
+    }
+
+    /**
+     * Rewrites every inline image reference in the HTML to the id {@code materialize} returns for
+     * it — in practice {@link #materializeInto}, so content moved into an assessment points at
+     * images that assessment owns.
+     *
+     * <p>{@code seen} maps source ids to their replacements and may span several fields, so an
+     * image referenced twice is copied once and every reference lands on the same copy. An image
+     * that cannot be copied keeps its original reference: a broken reference the reader can still
+     * investigate beats a silently blank one.
+     *
+     * <p>Static, with the copy passed in, so a caller whose {@code InlineImageService} is a test
+     * double still gets real rewriting around it.
+     */
+    public static String rehomeImages(String html, Map<String, String> seen,
+                                      UnaryOperator<String> materialize) {
+        if (html == null || html.isBlank()) return html;
+
+        Matcher matcher = IMAGE_ID_PATTERN.matcher(html);
+        StringBuilder rewritten = new StringBuilder();
+        while (matcher.find()) {
+            String newImageId = seen.computeIfAbsent(matcher.group(1), sourceImageId -> {
+                try {
+                    String copied = materialize.apply(sourceImageId);
+                    return copied == null ? sourceImageId : copied;
+                } catch (Exception e) {
+                    log.warn("Could not copy inline image {}: {}", sourceImageId, e.getMessage());
+                    return sourceImageId;
+                }
+            });
+            matcher.appendReplacement(rewritten,
+                    Matcher.quoteReplacement("/api/v1/inline-images/" + newImageId));
+        }
+        matcher.appendTail(rewritten);
+        return rewritten.toString();
     }
 
     /** Whether the tracking row exists — tells a dangling reference from one refused for size. */

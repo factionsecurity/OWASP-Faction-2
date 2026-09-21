@@ -3,12 +3,16 @@ package com.faction.clientportal.service;
 import com.faction.clientportal.edition.CommunityOnly;
 import com.faction.clientportal.edition.EnterpriseOnly;
 import com.faction.clientportal.config.TestContainersConfig;
+import com.faction.clientportal.model.AssessmentWorkflow;
 import com.faction.clientportal.model.Campaign;
 import com.faction.clientportal.model.Role;
 import com.faction.clientportal.model.User;
+import com.faction.clientportal.repository.AssessmentTypeRepository;
+import com.faction.clientportal.repository.AssessmentWorkflowRepository;
 import com.faction.clientportal.repository.CampaignRepository;
 import com.faction.clientportal.repository.RoleRepository;
 import com.faction.clientportal.repository.UserRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,11 +44,22 @@ class BootstrapServiceTest extends TestContainersConfig {
     @Autowired
     private CampaignRepository campaignRepository;
 
+    @Autowired
+    private AssessmentWorkflowRepository workflowRepository;
+
+    @Autowired
+    private AssessmentTypeRepository assessmentTypeRepository;
+
     @BeforeEach
     void setUp() {
         userRepository.deleteAll();
         roleRepository.deleteAll();
         campaignRepository.deleteAll();
+    }
+
+    @AfterEach
+    void resetWorkflows() {
+        workflowRepository.deleteAll();
     }
 
     @Test
@@ -152,6 +167,45 @@ class BootstrapServiceTest extends TestContainersConfig {
         assertThat(pentestUser).isPresent();
         assertThat(pentestUser.get().getIsInternal()).isTrue();
         assertThat(pentestUser.get().getRoleIds()).contains(pentesterRole.get().getId());
+    }
+
+    @Test
+    void run_WhenNoWorkflowExists_CreatesDefaultWorkflowOnce() {
+        ApplicationArguments args = mock(ApplicationArguments.class);
+        workflowRepository.deleteAll();
+
+        bootstrapService.run(args);
+        bootstrapService.run(args);
+
+        assertThat(workflowRepository.findAll()).singleElement().satisfies(workflow -> {
+            assertThat(workflow.getId()).isEqualTo("default");
+            assertThat(workflow.getName()).isEqualTo("Default Workflow");
+            assertThat(workflow.isDefaultWorkflow()).isTrue();
+            assertThat(workflow.getCompletedStatus()).isEqualTo("Completed");
+            assertThat(workflow.getVulnerabilitySlas()).isEqualTo(AssessmentWorkflow.defaultVulnerabilitySlas());
+            assertThat(workflow.getRemediationStages()).isEqualTo(AssessmentWorkflow.defaultRemediationStages());
+        });
+    }
+
+    @Test
+    void run_KeepsAnExistingDefaultWorkflowsSettings() {
+        ApplicationArguments args = mock(ApplicationArguments.class);
+        workflowRepository.deleteAll();
+        workflowRepository.save(AssessmentWorkflow.defaultWorkflowBuilder().completedStatus("Signed Off").build());
+
+        bootstrapService.run(args);
+
+        assertThat(workflowRepository.findById("default").orElseThrow().getCompletedStatus()).isEqualTo("Signed Off");
+    }
+
+    @Test
+    void run_LeavesEveryAssessmentTypeOnDefaultWorkflow() {
+        ApplicationArguments args = mock(ApplicationArguments.class);
+
+        bootstrapService.run(args);
+
+        assertThat(assessmentTypeRepository.findAll())
+                .allSatisfy(type -> assertThat(type.getWorkflowId()).isEqualTo("default"));
     }
 
     @Test

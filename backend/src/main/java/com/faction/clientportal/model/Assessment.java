@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -56,6 +57,15 @@ public class Assessment {
      * Reference to the AssessmentType
      */
     private String assessmentTypeId;
+
+    /**
+     * The workflow this assessment was created under (its type's workflow at the time). It keeps it
+     * when the type later changes workflow; only an explicit move changes it.
+     */
+    @Builder.Default
+    @Column(name = "workflow_id", nullable = false)
+    @ColumnDefault("'default'")
+    private String workflowId = AssessmentWorkflow.DEFAULT_ID;
 
     /**
      * Reference to the Organization that owns this assessment
@@ -137,10 +147,10 @@ public class Assessment {
     // Assessment metadata
 
     /**
-     * Current status of the assessment (free-form string; see AssessmentWorkflowConfig)
+     * Current status of the assessment (free-form string; one of its workflow's statuses)
      */
     @Builder.Default
-    private String status = "DRAFT";
+    private String status = AssessmentWorkflow.DEFAULT_NEW_STATUS;
 
     /**
      * User ID of the assessor conducting this assessment (legacy - use assessorIds)
@@ -249,7 +259,7 @@ public class Assessment {
     private LocalDateTime deletedAt;
 
     /**
-     * Peer review sub-status (independent of the main AssessmentStatus).
+     * Peer review sub-status (independent of the assessment's workflow status).
      */
     @Builder.Default
     private AssessmentPeerReviewStatus peerReviewStatus = AssessmentPeerReviewStatus.IN_PROGRESS;
