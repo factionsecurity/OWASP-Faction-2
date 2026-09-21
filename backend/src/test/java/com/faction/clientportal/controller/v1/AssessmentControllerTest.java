@@ -641,6 +641,132 @@ class AssessmentControllerTest extends TestContainersConfig {
     }
 
     @Test
+    void testUpdateAssessment_TypeChangeWithoutTemplate_adoptsTheNewTypesTemplate() throws Exception {
+        AssessmentType mobile = assessmentTypeRepository.save(AssessmentType.builder()
+                .name("Mobile").createdAt(LocalDateTime.now()).build());
+        ReportTemplate mobileTemplate = reportTemplateRepository.save(ReportTemplate.builder()
+                .name("Mobile Template")
+                .description("Template for the mobile type")
+                .assessmentTypeId(mobile.getId())
+                .version(1)
+                .active(true)
+                .userDefinedFields(new ArrayList<>())
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        Assessment assessment = createTestAssessment("Switches type", "New");
+        assessment.setFieldValues(new HashMap<>(Map.of("oldField", "snapshotted from the old type")));
+        assessmentRepository.save(assessment);
+
+        // The Edit info dialog changes the type without naming a template. The assessment adopts the
+        // new type's own template, exactly as creation resolves one, instead of being rejected for
+        // still pointing at the old type's template.
+        UpdateAssessmentRequest updateRequest = UpdateAssessmentRequest.builder()
+                .assessmentTypeId(mobile.getId())
+                .build();
+
+        mockMvc.perform(put("/api/v1/assessments/" + assessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.assessmentTypeId").value(mobile.getId()))
+                .andExpect(jsonPath("$.data.reportTemplateId").value(mobileTemplate.getId()))
+                // Field values were snapshotted from the old type's template, so they do not carry over.
+                .andExpect(jsonPath("$.data.fieldValues").isEmpty());
+    }
+
+    @Test
+    void testUpdateAssessment_TypeChangeWithBlankTemplate_alsoAdoptsTheNewTypesTemplate() throws Exception {
+        AssessmentType mobile = assessmentTypeRepository.save(AssessmentType.builder()
+                .name("Mobile").createdAt(LocalDateTime.now()).build());
+        ReportTemplate mobileTemplate = reportTemplateRepository.save(ReportTemplate.builder()
+                .name("Mobile Template")
+                .assessmentTypeId(mobile.getId())
+                .version(1)
+                .active(true)
+                .userDefinedFields(new ArrayList<>())
+                .createdAt(LocalDateTime.now())
+                .build());
+        Assessment assessment = createTestAssessment("Blank template", "New");
+
+        // The full edit form clears its template picker on a type change and still sends the empty
+        // field, so blank has to mean "named none" rather than a template id that cannot be found.
+        UpdateAssessmentRequest updateRequest = UpdateAssessmentRequest.builder()
+                .assessmentTypeId(mobile.getId())
+                .reportTemplateId("")
+                .build();
+
+        mockMvc.perform(put("/api/v1/assessments/" + assessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.assessmentTypeId").value(mobile.getId()))
+                .andExpect(jsonPath("$.data.reportTemplateId").value(mobileTemplate.getId()));
+    }
+
+    @Test
+    void testUpdateAssessment_TypeChangeWithMismatchedTemplate_isStillRejected() throws Exception {
+        AssessmentType mobile = assessmentTypeRepository.save(AssessmentType.builder()
+                .name("Mobile").createdAt(LocalDateTime.now()).build());
+        Assessment assessment = createTestAssessment("Keeps its guard", "New");
+
+        // Naming a template that belongs to a different type is a caller error, not something to
+        // resolve away: only an unnamed template is filled in for the caller.
+        UpdateAssessmentRequest updateRequest = UpdateAssessmentRequest.builder()
+                .assessmentTypeId(mobile.getId())
+                .reportTemplateId(testTemplate.getId())
+                .build();
+
+        mockMvc.perform(put("/api/v1/assessments/" + assessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testGetMetrics_FilteredBySeveralTypes() throws Exception {
+        AssessmentType mobile = assessmentTypeRepository.save(AssessmentType.builder()
+                .name("Mobile").createdAt(LocalDateTime.now()).build());
+        AssessmentType cloud = assessmentTypeRepository.save(AssessmentType.builder()
+                .name("Cloud").createdAt(LocalDateTime.now()).build());
+        createTestAssessment("Web one", "New");
+        Assessment m = createTestAssessment("Mobile one", "Testing");
+        m.setAssessmentTypeId(mobile.getId());
+        assessmentRepository.save(m);
+        Assessment c = createTestAssessment("Cloud one", "Completed");
+        c.setAssessmentTypeId(cloud.getId());
+        assessmentRepository.save(c);
+
+        // The Scheduling pills count only the selected types, so each pill agrees with the calendar
+        // and list beneath it instead of counting every assessment on the install.
+        mockMvc.perform(get("/api/v1/assessments/metrics")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .param("assessmentTypeIds", mobile.getId(), cloud.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
+                .andExpect(jsonPath("$.data.statusCounts.Testing").value(1))
+                .andExpect(jsonPath("$.data.statusCounts.Completed").value(1))
+                // The unselected type's assessment is gone, not merely outnumbered.
+                .andExpect(jsonPath("$.data.statusCounts.New").doesNotExist());
+
+        // Comma-joined works too — that is how the UI sends a multi-select.
+        mockMvc.perform(get("/api/v1/assessments/metrics")
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .param("assessmentTypeIds", mobile.getId() + "," + cloud.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2));
+
+        // No types selected: every assessment still counts, as before.
+        mockMvc.perform(get("/api/v1/assessments/metrics")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3));
+    }
+
+    @Test
     void testSearchAssessments_FilteredBySeveralTypes() throws Exception {
         AssessmentType mobile = assessmentTypeRepository.save(AssessmentType.builder()
                 .name("Mobile").createdAt(LocalDateTime.now()).build());

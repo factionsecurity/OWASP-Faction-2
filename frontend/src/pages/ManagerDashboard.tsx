@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePageTitle } from '../context/PageTitleContext';
 import {
+  AlertCircle,
   Calendar,
   CalendarCheck,
   CalendarClock,
@@ -34,7 +35,7 @@ import type {
 type AssessmentRow = Assessment & { teamNames: string[] };
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
-import { Button, FormLabel, Input, Select, IconButton } from '../components';
+import { Badge, Button, Checkbox, FormLabel, Input, Select, IconButton } from '../components';
 import Page from '../components/Page';
 import { VULNERABILITY_SEVERITIES, SEVERITY_COLORS } from '../utils/vulnSeverity';
 import '../components/SearchableSelect.css';
@@ -45,7 +46,7 @@ import './ManagerDashboard.css';
 import { useTerminology } from '../context/TerminologyContext';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
-import { mergedStatusNames } from '../utils/workflowLookup';
+import { mergedStatusNames, workflowsForSelectedTypes } from '../utils/workflowLookup';
 
 const TABLE_KEY = 'managerDashboard';
 
@@ -122,6 +123,10 @@ interface FilterFormState {
   assessorId: string;
   campaignId: string;
   severities: string[];
+  /** Offer statuses from archived workflows too. Lives in the advanced panel, so it applies with it. */
+  includeArchivedWorkflows: boolean;
+  /** Hide assessments their own workflow calls completed, leaving only work still in progress. */
+  incompleteOnly: boolean;
 }
 
 function defaultFilterForm(): FilterFormState {
@@ -135,6 +140,8 @@ function defaultFilterForm(): FilterFormState {
     assessorId: '',
     campaignId: '',
     severities: [],
+    includeArchivedWorkflows: false,
+    incompleteOnly: false,
   };
 }
 
@@ -148,6 +155,9 @@ function toApiFilters(form: FilterFormState): ManagerDashboardFilters {
     severities: form.severities.length > 0 ? form.severities : undefined,
     startDateFrom: form.startDate ? `${form.startDate}T00:00:00` : undefined,
     startDateTo: form.endDate ? `${form.endDate}T23:59:59` : undefined,
+    // Only ever sent as false: "show me the unfinished work". Left undefined when off, which is
+    // the server's "no filter", so the default view still shows finished and unfinished alike.
+    showCompleted: form.incompleteOnly ? false : undefined,
   };
 }
 
@@ -178,10 +188,11 @@ export default function ManagerDashboard() {
       }
     }
   }
-  // Advanced panel draft (dates + team + campaign), staged until Apply. Starts from the applied
-  // (possibly restored) values.
+  // Advanced panel draft (dates, team, campaign and the archived-workflows toggle), staged until
+  // Apply. Starts from the applied (possibly restored) values.
   const advancedDraft = (f: FilterFormState) => ({
     startDate: f.startDate, endDate: f.endDate, teamId: f.teamId, campaignId: f.campaignId,
+    includeArchivedWorkflows: f.includeArchivedWorkflows, incompleteOnly: f.incompleteOnly,
   });
   const [draft, setDraft] = useState(() => advancedDraft(applied));
   // Quick range: the panel's picked preset (drives the date fields); the applied one labels the chip.
@@ -196,9 +207,6 @@ export default function ManagerDashboard() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [assessors, setAssessors] = useState<User[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  // Off by default: an archived workflow's statuses still stay filterable on request, but
-  // shouldn't clutter the everyday dropdown.
-  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = usePersistedState(TABLE_KEY, 'includeArchivedWorkflows', false);
 
   // Results table
   const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>([]);
@@ -267,7 +275,7 @@ export default function ManagerDashboard() {
       const response = await managerDashboardApi.searchAssessments(
         { ...appliedFilters, search: assessmentSearch || undefined },
         assessmentPagination.page, assessmentPagination.pageSize,
-        sortParam(assessmentSort) ?? 'startDate,desc');
+        sortParam(assessmentSort));
       if (response.data) {
         setAssessmentRows(response.data.map((row) => ({
           ...row.assessment,
@@ -314,7 +322,8 @@ export default function ManagerDashboard() {
   const clearAllFilters = () => {
     const cleared: FilterFormState = {
       startDate: '', endDate: '', assessmentTypeId: '', teamId: '', status: '',
-      assessorId: '', campaignId: '', severities: [],
+      assessorId: '', campaignId: '', severities: [], includeArchivedWorkflows: false,
+      incompleteOnly: false,
     };
     setApplied(cleared);
     setDraft(advancedDraft(cleared));
@@ -331,6 +340,10 @@ export default function ManagerDashboard() {
   useEffect(() => { setDraft((d) => ({ ...d, endDate: applied.endDate })); }, [applied.endDate]);
   useEffect(() => { setDraft((d) => ({ ...d, teamId: applied.teamId })); }, [applied.teamId]);
   useEffect(() => { setDraft((d) => ({ ...d, campaignId: applied.campaignId })); }, [applied.campaignId]);
+  useEffect(() => { setDraft((d) => ({ ...d, includeArchivedWorkflows: applied.includeArchivedWorkflows })); },
+    [applied.includeArchivedWorkflows]);
+  useEffect(() => { setDraft((d) => ({ ...d, incompleteOnly: applied.incompleteOnly })); },
+    [applied.incompleteOnly]);
 
   const handleQuickRange = (key: string) => {
     setQuickRange(key);
@@ -384,9 +397,26 @@ export default function ManagerDashboard() {
 
   // ── Filter option lists + active-filter chips ───────────────────────────────
   const typeOptions: SelectOption[] = assessmentTypes.map((t) => ({ value: t.id, label: t.name }));
-  const statusOptions: SelectOption[] = mergedStatusNames(
-    includeArchivedWorkflows ? workflows : workflows.filter((w) => !w.archived)
-  ).map((s) => ({ value: s, label: s }));
+  // Statuses follow the selected type: none selected lets the archived toggle decide the list, as
+  // before; a type selected offers only the statuses of the workflow that type runs on.
+  const statusOptions: SelectOption[] = useMemo(() => {
+    const offered = workflowsForSelectedTypes(
+      workflows,
+      assessmentTypes,
+      applied.assessmentTypeId ? [applied.assessmentTypeId] : [],
+      applied.includeArchivedWorkflows ? workflows : workflows.filter((w) => !w.archived),
+    );
+    return mergedStatusNames(offered).map((s) => ({ value: s, label: s }));
+  }, [workflows, assessmentTypes, applied.assessmentTypeId, applied.includeArchivedWorkflows]);
+
+  // Clear a selected status the list no longer offers, so the table is never filtered by a value
+  // the status select can't show. Waits for types and workflows: a persisted selection is restored
+  // before either loads, and clearing it in that window would wipe a saved filter on reload.
+  useEffect(() => {
+    if (!applied.status || assessmentTypes.length === 0 || workflows.length === 0) return;
+    if (statusOptions.some((o) => o.value === applied.status)) return;
+    applyInline({ status: '' });
+  }, [statusOptions, applied.status, assessmentTypes.length, workflows.length]);
   const assessorOptions: SelectOption[] = assessors.map((u) => ({ value: u.id, label: userDisplayName(u) }));
   const teamOptions: SelectOption[] = teams.map((t) => ({ value: t.id, label: t.name }));
   const campaignOptions: SelectOption[] = campaigns.map((c) => ({ value: c.id, label: c.name }));
@@ -411,6 +441,9 @@ export default function ManagerDashboard() {
   }
   if (applied.campaignId) {
     filterChips.push({ key: 'campaign', label: `Campaign: ${campaignName(applied.campaignId)}`, onRemove: () => applyInline({ campaignId: '' }) });
+  }
+  if (applied.incompleteOnly) {
+    filterChips.push({ key: 'incompleteOnly', label: 'Incomplete only', onRemove: () => applyInline({ incompleteOnly: false }) });
   }
 
   const VulnerabilitySummaryCell = ({ summary: vulnSummary }: { summary?: Record<string, number> }) => {
@@ -445,7 +478,23 @@ export default function ManagerDashboard() {
         />
       ),
     },
-    { header: 'App ID', sortKey: 'appId', render: (row) => row.appId || '-' },
+    {
+      header: 'App ID',
+      sortKey: 'appId',
+      // Same past-due badge as Your Assessments, from the same server-computed flag: the planned
+      // end date has passed and the assessment's own workflow does not call its status completed.
+      render: (row) => (
+        <div>
+          <div>{row.appId || '-'}</div>
+          {row.isPastDue && (
+            <Badge variant="danger" size="sm">
+              <AlertCircle size={12} style={{ marginRight: '0.25rem' }} />
+              Past Due
+            </Badge>
+          )}
+        </div>
+      ),
+    },
     {
       header: 'Name',
       sortKey: 'name',
@@ -469,10 +518,16 @@ export default function ManagerDashboard() {
     { header: 'Status', sortKey: 'status', render: (row) => row.status },
     {
       header: 'Findings',
+      // Ranks by severity tier, worst first — a critical outranks any number of lows. See the
+      // server's findings sort; a single total would let volume outweigh severity.
+      sortKey: 'findings',
+      // Counts only mean something once the assessment is finished: while it is open they are a
+      // snapshot of work in progress, and reading them as a result is misleading. `completed` is
+      // the server's answer for the assessment's own workflow, not a status name comparison.
       render: (row) => (
-        <VulnerabilitySummaryCell
-          summary={row.vulnerabilitySummary as unknown as Record<string, number>}
-        />
+        row.completed
+          ? <VulnerabilitySummaryCell summary={row.vulnerabilitySummary as unknown as Record<string, number>} />
+          : '-'
       ),
     },
   ];
@@ -655,32 +710,24 @@ export default function ManagerDashboard() {
               placeholder="All Severities"
             />
             <SearchableSelect
+              value={applied.assessmentTypeId}
+              onChange={(v) => applyInline({ assessmentTypeId: v })}
+              options={typeOptions}
+              searchable={false}
+              placeholder="All Types"
+            />
+            <SearchableSelect
               value={applied.status}
               onChange={(v) => applyInline({ status: v })}
               options={statusOptions}
               searchable={false}
               placeholder="All Statuses"
             />
-            <label className="md-include-archived-workflows">
-              <input
-                type="checkbox"
-                checked={includeArchivedWorkflows}
-                onChange={(e) => setIncludeArchivedWorkflows(e.target.checked)}
-              />
-              Include archived workflows
-            </label>
             <SearchableSelect
               value={applied.assessorId}
               onChange={(v) => applyInline({ assessorId: v })}
               options={assessorOptions}
               placeholder="All Assessors"
-            />
-            <SearchableSelect
-              value={applied.assessmentTypeId}
-              onChange={(v) => applyInline({ assessmentTypeId: v })}
-              options={typeOptions}
-              searchable={false}
-              placeholder="All Types"
             />
             <Button variant="secondary" icon={Download} onClick={handleExportAssessments} disabled={exporting}>
               {exporting ? 'Exporting…' : 'Export CSV'}
@@ -693,12 +740,14 @@ export default function ManagerDashboard() {
         onClearFilters={clearAllFilters}
         advancedFilters={
           <>
+            {/* One window, not two per-field filters: an assessment matches when its start,
+                planned end, or completed date falls inside it. */}
             <div className="filter-field">
-              <FormLabel>Start Date</FormLabel>
+              <FormLabel>From</FormLabel>
               <Input type="date" value={draft.startDate} onChange={(e) => setDate('startDate', e.target.value)} />
             </div>
             <div className="filter-field">
-              <FormLabel>End Date</FormLabel>
+              <FormLabel>To</FormLabel>
               <Input type="date" value={draft.endDate} onChange={(e) => setDate('endDate', e.target.value)} />
             </div>
             <div className="filter-field">
@@ -736,6 +785,23 @@ export default function ManagerDashboard() {
                 searchable={false}
                 placeholder="All Campaigns"
               />
+            </div>
+            <div className="filter-field">
+              <FormLabel>Options</FormLabel>
+              <div className="filter-field-checks">
+                <Checkbox
+                  id="incompleteOnly"
+                  checked={draft.incompleteOnly}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, incompleteOnly: e.target.checked }))}
+                  label="Show incomplete only"
+                />
+                <Checkbox
+                  id="includeArchivedWorkflows"
+                  checked={draft.includeArchivedWorkflows}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, includeArchivedWorkflows: e.target.checked }))}
+                  label="Include archived workflows"
+                />
+              </div>
             </div>
           </>
         }
