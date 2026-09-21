@@ -147,12 +147,12 @@ public interface AssessmentRepository extends JpaRepository<Assessment, String>,
     /**
      * All non-deleted assessment counts grouped by workflow and status. Powers the Assessments
      * summary/nav badge with a single grouped query instead of materializing every row. Each element
-     * is {@code [workflowId, status, count]}; the caller judges "completed" per workflow.
+     * is {@code [workflowId, status, assessmentTypeId, count]}; the caller judges "completed" per workflow.
      */
     @Query("""
-            SELECT a.workflowId, a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, a.assessmentTypeId, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
-            GROUP BY a.workflowId, a.status
+            GROUP BY a.workflowId, a.status, a.assessmentTypeId
             """)
     List<Object[]> countByWorkflowAndStatusGroupedAll();
 
@@ -162,37 +162,37 @@ public interface AssessmentRepository extends JpaRepository<Assessment, String>,
      * non-empty; the service short-circuits the empty cases.
      */
     @Query("""
-            SELECT a.workflowId, a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, a.assessmentTypeId, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
               AND (a.organizationId IN :orgIds OR a.applicationId IN :applicationIds)
-            GROUP BY a.workflowId, a.status
+            GROUP BY a.workflowId, a.status, a.assessmentTypeId
             """)
     List<Object[]> countByWorkflowAndStatusGroupedMembership(Collection<String> orgIds, Collection<String> applicationIds);
 
     /** Grouped counts restricted to the given organizations. */
     @Query("""
-            SELECT a.workflowId, a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, a.assessmentTypeId, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
               AND a.organizationId IN :orgIds
-            GROUP BY a.workflowId, a.status
+            GROUP BY a.workflowId, a.status, a.assessmentTypeId
             """)
     List<Object[]> countByWorkflowAndStatusGroupedOrgs(Collection<String> orgIds);
 
     /** Owned-scope variant: grouped counts restricted to the given application ids. */
     @Query("""
-            SELECT a.workflowId, a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, a.assessmentTypeId, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
               AND a.applicationId IN :applicationIds
-            GROUP BY a.workflowId, a.status
+            GROUP BY a.workflowId, a.status, a.assessmentTypeId
             """)
     List<Object[]> countByWorkflowAndStatusGroupedOwned(Collection<String> applicationIds);
 
     /** Same aggregate, restricted to the caller's teams (the {@code assessments:read:team} tier). */
     @Query("""
-            SELECT a.workflowId, a.status, count(a) FROM Assessment a
+            SELECT a.workflowId, a.status, a.assessmentTypeId, count(a) FROM Assessment a
             WHERE a.deletedAt IS NULL
               AND a.teamId IN :teamIds
-            GROUP BY a.workflowId, a.status
+            GROUP BY a.workflowId, a.status, a.assessmentTypeId
             """)
     List<Object[]> countByWorkflowAndStatusGroupedTeam(Collection<String> teamIds);
 
@@ -202,11 +202,11 @@ public interface AssessmentRepository extends JpaRepository<Assessment, String>,
      * as well as the {@code assessorIds} list, mirroring the list query.
      */
     @Query(value = """
-            SELECT a.workflow_id, a.status, count(*) FROM assessments a
+            SELECT a.workflow_id, a.status, a.assessment_type_id, count(*) FROM assessments a
             WHERE a.deleted_at IS NULL
               AND (a.assessor_id = :assessorId
                    OR a.assessor_ids @> CAST(CONCAT('["', :assessorId, '"]') AS jsonb))
-            GROUP BY a.workflow_id, a.status
+            GROUP BY a.workflow_id, a.status, a.assessment_type_id
             """, nativeQuery = true)
     List<Object[]> countByWorkflowAndStatusGroupedAssigned(String assessorId);
 

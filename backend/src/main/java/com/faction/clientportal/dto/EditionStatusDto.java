@@ -37,4 +37,14 @@ public class EditionStatusDto {
 
     /** Where the UI sends someone who wants what they cannot have. */
     private String upgradeUrl;
+
+    /**
+     * Whether this install lists each assessment type under Your Assessments in the sidebar.
+     *
+     * <p>An install preference, not an edition capability, which is why it sits beside
+     * {@code features} rather than inside it: no edition grants it and every edition may switch it
+     * on. It rides on this response because the response is already loaded once for the whole
+     * application, above the only component that reads it.
+     */
+    private Boolean assessmentTypeMenu;
 }
