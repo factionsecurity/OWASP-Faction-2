@@ -628,21 +628,37 @@ public class AssessmentService {
     }
 
     /**
-     * With {@code moveToTypeWorkflow}: the workflow of the assessment's (new) type when it differs from the
-     * assessment's own, validated (permission, edition, archived target) before anything is saved — on the
-     * one catalog the caller already loaded. Null when there is nothing to move.
+     * The workflow this update moves the assessment onto, or null when it stays where it is.
+     *
+     * <p>Two ways in. Changing the assessment type carries the assessment onto that type's workflow:
+     * the type decides the workflow everywhere else — a new assessment is created on its type's — so
+     * leaving the two disagreeing is what produced assessments holding statuses their own workflow
+     * does not define. Choosing the type is choosing its workflow, so this needs nothing beyond the
+     * right to edit the assessment.
+     *
+     * <p>{@code moveToTypeWorkflow} is the other: an explicit move for an assessment already out of
+     * step with its type, without changing the type. That is a configuration action and still needs
+     * {@code config:write}.
+     *
+     * <p>Either way the move is validated (edition, archived target) before anything is saved, on
+     * the one catalog the caller already loaded.
      */
     private String workflowToMoveTo(String id, UpdateAssessmentRequest request, Authentication authentication,
                                     WorkflowCatalog catalog) {
-        if (!Boolean.TRUE.equals(request.getMoveToTypeWorkflow())) {
+        Assessment current = assessmentRepository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Assessment not found with id: " + id));
+
+        boolean typeChanged = request.getAssessmentTypeId() != null
+                && !request.getAssessmentTypeId().equals(current.getAssessmentTypeId());
+        if (!typeChanged && !Boolean.TRUE.equals(request.getMoveToTypeWorkflow())) {
             return null;
         }
-        if (!hasAuthority(authentication, Permission.CONFIG_WRITE.getPermission())
+        if (!typeChanged
+                && !hasAuthority(authentication, Permission.CONFIG_WRITE.getPermission())
                 && !hasAuthority(authentication, RequiresPermissionAuthorizationManager.SUPER_ADMIN)) {
             throw new AccessDeniedException("Moving an assessment to another workflow needs config:write");
         }
-        Assessment current = assessmentRepository.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Assessment not found with id: " + id));
+
         String typeId = request.getAssessmentTypeId() != null ? request.getAssessmentTypeId() : current.getAssessmentTypeId();
         String workflowId = typeId == null ? AssessmentWorkflow.DEFAULT_ID
                 : assessmentTypeRepository.findById(typeId).map(AssessmentType::getWorkflowId).orElse(AssessmentWorkflow.DEFAULT_ID);

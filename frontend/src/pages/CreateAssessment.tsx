@@ -28,7 +28,7 @@ import type {
   Application,
   AssessmentPrefill,
 } from '../types';
-import { Button, Checkbox, FormLabel, Input, Select, Badge, RichTextEditor, DualListBox, ConfirmDialog } from '../components';
+import { Button, FormLabel, Input, Select, Badge, RichTextEditor, DualListBox, ConfirmDialog } from '../components';
 import SearchableApplicationSelect from '../components/SearchableApplicationSelect';
 import type { RichTextEditorRef } from '../components';
 import AssessmentCalendar from '../components/AssessmentCalendar';
@@ -41,7 +41,6 @@ import { PaidBadge } from '../components/PaidFeature';
 import { useEdition } from '../context/EditionContext';
 import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
-import { usePermissions } from '../utils/permissions';
 import './CreateAssessment.css';
 
 // Planned end date is picked as a duration from the start date; "custom" falls back to a
@@ -181,8 +180,6 @@ export default function CreateAssessment() {
   // Edit mode: the workflow the assessment is on. Create mode uses the selected type's workflow instead.
   const [assessmentWorkflowId, setAssessmentWorkflowId] = useState<string | null>(null);
   // Edit mode, type changed to one on another workflow: move the assessment there too when saving.
-  const [moveToTypeWorkflow, setMoveToTypeWorkflow] = useState(false);
-  const canMoveWorkflow = usePermissions().permissions.canManageAssessmentWorkflow;
   const customWorkflows = useEdition().hasFeature('custom_workflows');
   const [error, setError] = useState('');
   const [isDirty, setIsDirty] = useState(false);
@@ -751,7 +748,6 @@ export default function CreateAssessment() {
 
         setFormData(loadedFormData);
         setAssessmentWorkflowId(assessment.workflowId || DEFAULT_WORKFLOW_ID);
-        setMoveToTypeWorkflow(false);
         setEngagementUrls(loadedUrls);
         setStakeholders(loadedStakeholders);
         setAttachments(assessment.attachments || []);
@@ -1116,7 +1112,6 @@ export default function CreateAssessment() {
         engagementUrls,
         stakeholders,
         ...variablesPayload(),
-        ...(moveTargetId && moveToTypeWorkflow && !moveGated ? { moveToTypeWorkflow: true } : {}),
       };
 
       if (mode === 'create') {
@@ -1168,7 +1163,7 @@ export default function CreateAssessment() {
           setInitialVariableValues(savedVariables);
           // The move ran after the update was saved. Staying on the form, re-read only what the move
           // changed: the workflow the statuses come from, and the status mapped onto it.
-          if (moveTargetId && moveToTypeWorkflow) {
+          if (moveTargetId) {
             if (!shouldClose) {
               try {
                 const fresh = await assessmentsApi.getById(id!);
@@ -1189,7 +1184,6 @@ export default function CreateAssessment() {
                 // The move is saved; until the page is reloaded the form keeps showing the old workflow's statuses.
               }
             }
-            setMoveToTypeWorkflow(false);
           }
         }
       }
@@ -1467,7 +1461,6 @@ export default function CreateAssessment() {
                     onChange={(e) => {
                       setFormData({ ...formData, assessmentTypeId: e.target.value, reportTemplateId: '' });
                       setReportTemplates([]);
-                      setMoveToTypeWorkflow(false);
                     }}
                     required
                   >
@@ -1478,19 +1471,13 @@ export default function CreateAssessment() {
                       </option>
                     ))}
                   </Select>
-                  {moveTargetId && canMoveWorkflow && (
+                  {moveTargetId && (
                     <div className="mt-1">
-                      <Checkbox
-                        label={`Also move this assessment to ${moveTarget?.name ?? "the type's workflow"}`}
-                        checked={moveToTypeWorkflow}
-                        disabled={moveGated}
-                        onChange={(e) => setMoveToTypeWorkflow(e.target.checked)}
-                      />
-                      {moveGated && <PaidBadge />}
                       <small className="text-muted d-block">
-                        {moveToTypeWorkflow
-                          ? 'Its status and findings are mapped onto that workflow when you save.'
-                          : `Otherwise it stays on ${workflow?.name ?? 'its current workflow'}.`}
+                        Saving moves this assessment to{' '}
+                        {moveTarget?.name ?? "the type's workflow"}, because that is the workflow
+                        this type runs on. Its status and findings are mapped onto it.
+                        {moveGated && <PaidBadge />}
                       </small>
                     </div>
                   )}
