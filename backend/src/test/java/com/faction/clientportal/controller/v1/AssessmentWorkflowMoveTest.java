@@ -195,26 +195,55 @@ class AssessmentWorkflowMoveTest extends TestContainersConfig {
                 .andExpect(status().isForbidden());
     }
 
+    /**
+     * The type decides the workflow everywhere else — creating an assessment takes its type's — so
+     * changing the type carries the assessment across rather than leaving the two disagreeing. It
+     * needs no config:write: choosing the type is choosing its workflow, and whoever may edit the
+     * assessment may choose its type.
+     */
     @Test
-    void changingTheTypeWithMoveToTypeWorkflowMovesTheAssessmentOntoTheTypesWorkflow() throws Exception {
+    void changingTheTypeMovesTheAssessmentOntoThatTypesWorkflow() throws Exception {
         AssessmentType onDefault = assessmentTypeRepository.save(AssessmentType.builder()
                 .name("Web " + UUID.randomUUID()).description("Web").workflowId("default")
                 .createdAt(LocalDateTime.now()).build());
         Assessment assessment = assessment(SECOND, "Signed Off");
-        String body = "{\"assessmentTypeId\":\"" + onDefault.getId() + "\",\"moveToTypeWorkflow\":true}";
+
+        mockMvc.perform(put("/api/v1/assessments/" + assessment.getId())
+                        .header("Authorization", "Bearer " + editorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assessmentTypeId\":\"" + onDefault.getId() + "\"}"))
+                .andExpect(status().isOk());
+
+        Assessment moved = assessmentRepository.findById(assessment.getId()).orElseThrow();
+        assertThat(moved.getAssessmentTypeId()).isEqualTo(onDefault.getId());
+        assertThat(moved.getWorkflowId()).isEqualTo("default");
+        // "Signed Off" completes the second workflow, so it lands on the target's completed status.
+        assertThat(moved.getStatus()).isEqualTo("Completed");
+    }
+
+    /**
+     * The flag on its own is a different act from editing: it realigns an assessment already out of
+     * step with its type, without changing the type, and stays a configuration action needing
+     * config:write. Only a type change carries the assessment across on an ordinary edit.
+     */
+    @Test
+    void movingToTheTypesWorkflowWithoutChangingTheTypeStillNeedsConfigWrite() throws Exception {
+        // type-1 is not a stored type, so it resolves to Default Workflow — out of step with SECOND.
+        Assessment assessment = assessment(SECOND, "Signed Off");
+        String body = "{\"moveToTypeWorkflow\":true}";
 
         mockMvc.perform(put("/api/v1/assessments/" + assessment.getId())
                         .header("Authorization", "Bearer " + editorToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isForbidden());
-        assertThat(assessmentRepository.findById(assessment.getId()).orElseThrow().getAssessmentTypeId()).isEqualTo("type-1");
+        assertThat(assessmentRepository.findById(assessment.getId()).orElseThrow().getWorkflowId())
+                .isEqualTo(SECOND);
 
         mockMvc.perform(put("/api/v1/assessments/" + assessment.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk());
         Assessment moved = assessmentRepository.findById(assessment.getId()).orElseThrow();
-        assertThat(moved.getAssessmentTypeId()).isEqualTo(onDefault.getId());
         assertThat(moved.getWorkflowId()).isEqualTo("default");
         assertThat(moved.getStatus()).isEqualTo("Completed");
     }
