@@ -1560,6 +1560,7 @@ export default function AssessmentDetail() {
         assessment={assessment}
         application={application}
         canEditApplication={permissions.canEditApplications}
+        fieldValues={fieldValues}
         onSaved={() => loadData(assessment.id)}
       />
     )}
