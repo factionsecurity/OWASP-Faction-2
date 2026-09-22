@@ -2084,14 +2084,14 @@ public class DocxUtils {
     private void resolveBorder(CTBorder border, ReportData.ReportVulnerability v) {
         if (border == null) return;
         Integer slot = ColourSentinels.slotOf(border.getColor());
-        if (slot != null) border.setColor(palette.fill(slot, v));
+        if (slot != null) border.setColor(palette.colourAsLine(slot, v));
     }
 
     /** The colour for painted text, or null when it was not a sentinel. */
     private String resolveText(String painted, ReportData.ReportVulnerability v, boolean onColour) {
         Integer slot = ColourSentinels.slotOf(painted);
         if (slot == null) return null;
-        return onColour ? palette.text(slot, v) : palette.fill(slot, v);
+        return onColour ? palette.text(slot, v) : palette.colourAsLine(slot, v);
     }
 
     // ── HYPERLINK field replacement ──────────────────────────────────────────

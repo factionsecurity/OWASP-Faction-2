@@ -37,6 +37,19 @@ class PaletteResolver {
     }
 
     /**
+     * The colour half of the pair, used where it is not a background — text sitting on the page, a
+     * border, a list marker.
+     *
+     * <p>Same colour as {@link #fill} when one is configured. The fallback differs: an unconfigured
+     * fill is white, which is right behind text and invisible <em>as</em> text on a white page, so
+     * here it is black.
+     */
+    String colourAsLine(int slot, ReportData.ReportVulnerability vuln) {
+        ReportPalette.ColourPair pair = pairFor(slot, vuln);
+        return normalise(pair == null ? null : pair.getFill(), FALLBACK_TEXT);
+    }
+
+    /**
      * The configured pair for this slot, or null when the dimension, the field or the finding's
      * value is unknown to the palette.
      */

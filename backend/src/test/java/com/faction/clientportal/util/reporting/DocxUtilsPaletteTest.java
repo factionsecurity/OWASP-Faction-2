@@ -522,4 +522,47 @@ class DocxUtilsPaletteTest {
         }
         return count;
     }
+
+    // ── unconfigured values used as text ─────────────────────────────────────
+
+    /**
+     * Text outside a filled cell takes the <em>colour</em> half of the pair. When nothing is set for
+     * the value, that half falls back to the fill default — white — which is right for a cell and
+     * invisible for a heading on a white page. As text it must fall back to black instead.
+     */
+    @Test
+    void unconfiguredTextOutsideAFilledCellFallsBackToBlackNotWhite() throws Exception {
+        ReportData.ReportVulnerability odd = ReportData.ReportVulnerability.builder()
+                .name("Odd").severityKey("CRITICAL").likelihood("Improbable").build();
+        String cell = "<w:tc><w:p><w:r><w:rPr><w:color w:val=\"1A0702\"/></w:rPr>"
+                    + "<w:t>${loop}${likelihood}</w:t></w:r></w:p></w:tc>";
+
+        String xml = renderTable(cell, palette(), odd);
+
+        assertThat(xml).contains("<w:color w:val=\"000000\"/>").doesNotContain("FFFFFF");
+    }
+
+    /** A border with nothing configured is a line on the page, so black rather than invisible. */
+    @Test
+    void anUnconfiguredBorderFallsBackToBlack() throws Exception {
+        ReportData.ReportVulnerability odd = ReportData.ReportVulnerability.builder()
+                .name("Odd").severityKey("CRITICAL").likelihood("Improbable").build();
+        String cell = "<w:tc><w:tcPr><w:tcBorders>"
+                    + "<w:top w:val=\"single\" w:sz=\"4\" w:color=\"FAC702\"/>"
+                    + "</w:tcBorders></w:tcPr>"
+                    + "<w:p><w:r><w:t>${loop}${likelihood}</w:t></w:r></w:p></w:tc>";
+
+        String xml = renderTable(cell, palette(), odd);
+
+        assertThat(xml).contains("w:color=\"000000\"").doesNotContain("FAC702");
+    }
+
+    /** A configured colour is still used as text exactly as set. */
+    @Test
+    void aConfiguredColourIsStillUsedAsText() throws Exception {
+        String cell = "<w:tc><w:p><w:r><w:rPr><w:color w:val=\"1A0701\"/></w:rPr>"
+                    + "<w:t>${loop}${severity}</w:t></w:r></w:p></w:tc>";
+
+        assertThat(renderTable(cell, whiteOnRed(), critical())).contains("<w:color w:val=\"C00000\"/>");
+    }
 }
