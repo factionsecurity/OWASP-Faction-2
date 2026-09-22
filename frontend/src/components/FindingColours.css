@@ -1,0 +1,196 @@
+/* Finding colour pickers and the sentinel legend, inside the Report Designer.
+   Dense to match the rest of the designer: one row per value, everything on one line. */
+
+/* .rd-body sets padding: 0, so the section provides its own. */
+.finding-colours {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0.875rem 1rem 1rem;
+}
+
+/* Matches .rd-section-help in ReportDesigner.css — same boxed, muted treatment the Sections
+   panel uses — but kept here so the component does not depend on a page's stylesheet. */
+.fc-help {
+  margin: 0;
+  padding: 0.875rem 1rem;
+  background: var(--tertiary-bg, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-muted, #6b7280);
+}
+
+.fc-help p {
+  margin: 0;
+}
+
+.fc-help p + p {
+  margin-top: 0.5rem;
+}
+
+.fc-group {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.fc-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fc-group-legend {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.fc-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) auto auto minmax(96px, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+}
+
+.fc-row + .fc-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.fc-row-label {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.fc-swatch input[type='color'] {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.fc-swatch input[type='color']:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.fc-swatch-hex {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* The pair as the reader will see it. An illegible combination shows up here rather than in a
+   delivered report. */
+.fc-preview {
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sits under the rating group it expands, so the relationship reads top-to-bottom. */
+.fc-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: -4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.fc-toggle input {
+  margin: 2px 0 0;
+  cursor: pointer;
+}
+
+.fc-toggle input:disabled,
+.fc-toggle:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.fc-toggle-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted, #6b7280);
+}
+
+.fc-legend {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.fc-legend th {
+  padding: 5px 10px;
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.fc-legend td {
+  padding: 3px 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.fc-hex {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.fc-hex:hover {
+  background: var(--bg-secondary);
+}
+
+.fc-hex-chip {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+}
+
+@media (max-width: 640px) {
+  .fc-row {
+    grid-template-columns: 1fr auto auto;
+  }
+
+  .fc-preview {
+    grid-column: 1 / -1;
+  }
+}

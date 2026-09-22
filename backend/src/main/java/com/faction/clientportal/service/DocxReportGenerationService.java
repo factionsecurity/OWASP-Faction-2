@@ -274,6 +274,11 @@ public class DocxReportGenerationService implements ReportGenerationService {
         if (template.getTemplateFileId() != null) assessment.setTemplateFileId(template.getTemplateFileId());
         if (template.getCss() != null) assessment.setTemplateCss(template.getCss());
         if (template.getFont() != null) assessment.setTemplateFont(template.getFont());
+        if (template.getReportPalette() != null) {
+            // Copied, not shared: the template entity is managed, and handing its palette to the
+            // assessment would let a later edit on either mutate the other.
+            assessment.setTemplatePalette(template.getReportPalette().copy());
+        }
     }
 
     // ── ReportGenerationService — uploaded report ────────────────────────────
@@ -431,6 +436,7 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 .assessors(reportAssessors)
                 .fieldValues(asmtFieldValues)
                 .fieldTypes(asmtFieldTypes)
+                .reportPalette(assessment.getTemplatePalette())
                 .vulnerabilities(reportVulns)
                 .sections(editionPolicy.enabled(Feature.REPORT_SECTIONS) && assessment.getSections() != null
                         ? new ArrayList<>(assessment.getSections())

@@ -33,6 +33,12 @@ public class UpdateReportTemplateRequest {
     @Size(max = 255, message = "Font must not exceed 255 characters")
     private String font;
 
+    /**
+     * The colour palette, or null to leave it alone. The designer sends the whole template on
+     * every save, so a null here means "this edit was not about colours" rather than "clear them".
+     */
+    private com.faction.clientportal.model.ReportPalette reportPalette;
+
     private List<String> sections;
 
     @Valid

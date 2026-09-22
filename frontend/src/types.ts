@@ -475,7 +475,7 @@ export interface UpdateApplicationConnectionRequest {
 }
 
 // Report Template & Assessment Types
-export type FieldType = 'STRING' | 'RICH_TEXT' | 'DROPDOWN';
+export type FieldType = 'STRING' | 'RICH_TEXT' | 'DROPDOWN' | 'HYPERLINK';
 export type FieldScope = 'ASSESSMENT' | 'VULNERABILITY' | 'APPLICATION' | 'ORGANIZATION';
 
 export interface UserDefinedField {
@@ -495,6 +495,39 @@ export interface UserDefinedField {
   showInScheduling?: boolean;
 }
 
+/** Font colour and cell fill for one value of one colourable dimension, as bare RRGGBB hex. */
+export interface ColourPair {
+  text?: string;
+  fill?: string;
+}
+
+/** One user-defined field's allocated colour slot and the colours for its values. */
+export interface FieldColours {
+  slot?: number;
+  values: Record<string, ColourPair>;
+}
+
+/**
+ * What each painted colour sentinel in a DOCX template resolves to.
+ *
+ * Severity is keyed on the enum name (CRITICAL, HIGH, …) so renaming a severity in Organization
+ * Config cannot break it. Likelihood and impact are free-text on the vulnerability — they happen to
+ * use the same five levels, via SeverityLevelSelect — so they are keyed on the stored value and
+ * matched case-insensitively by the backend.
+ */
+export interface ReportPalette {
+  severity: Record<string, ColourPair>;
+  likelihood: Record<string, ColourPair>;
+  impact: Record<string, ColourPair>;
+  customFields: Record<string, FieldColours>;
+  /**
+   * Whether likelihood and impact carry their own colours rather than severity's. Off by default:
+   * all three are the same five levels, so the designer shows one setting until this is set.
+   */
+  separateRatingColours?: boolean;
+  nextCustomSlot?: number;
+}
+
 export interface ReportTemplate {
   id: string;
   name: string;
@@ -502,6 +535,7 @@ export interface ReportTemplate {
   assessmentTypeId: string;
   css?: string;
   font?: string;
+  reportPalette?: ReportPalette;
   templateFileId?: string;
   templateFileName?: string;
   templateFileSize?: number;
@@ -548,6 +582,8 @@ export interface UpdateReportTemplateRequest {
   assessmentTypeId?: string;
   css?: string;
   font?: string;
+  /** Omitted when the edit was not about colours; the backend then leaves the palette alone. */
+  reportPalette?: ReportPalette;
   scoringType?: ScoringType;
   sections?: string[];
   userDefinedFields?: UserDefinedField[];

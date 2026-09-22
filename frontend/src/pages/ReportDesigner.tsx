@@ -6,9 +6,10 @@ import RichTextEditor from '../components/RichTextEditor';
 import Page from '../components/Page';
 import Modal from '../components/Modal';
 import CssEditor from '../components/CssEditor';
+import FindingColours from '../components/FindingColours';
 import './ReportDesigner.css';
 import { reportTemplatesApi, assessmentTypesApi } from '../api';
-import type { ReportTemplate, ReportTemplateSummary, UserDefinedField, FieldType, FieldScope, AssessmentType, ScoringType } from '../types';
+import type { ReportTemplate, ReportTemplateSummary, UserDefinedField, FieldType, FieldScope, AssessmentType, ScoringType, ReportPalette } from '../types';
 
 /** Returns an error message if the CSS has obvious syntax issues, null if it looks valid. */
 function validateCSS(css: string): string | null {
@@ -76,6 +77,10 @@ export default function ReportDesigner() {
   const [cloning, setCloning] = useState(false);
   const [cloneError, setCloneError] = useState<string | null>(null);
   const [localCss, setLocalCss] = useState('');
+  // Held locally for the same reason as localCss: updateTemplate deliberately never touches
+  // selectedTemplate (see the comment there about focus loss), so a control rendered straight from
+  // it would not move until something refetched the template.
+  const [localPalette, setLocalPalette] = useState<ReportPalette | undefined>(undefined);
   const [isDragging, setIsDragging] = useState(false);
   const [assessmentTypeSearch, setAssessmentTypeSearch] = useState('');
   const [assessmentTypeDropdownOpen, setAssessmentTypeDropdownOpen] = useState(false);
@@ -154,6 +159,7 @@ export default function ReportDesigner() {
       if (response.success && response.data) {
         setSelectedTemplate(response.data);
         setLocalCss(response.data.css || '');
+        setLocalPalette(response.data.reportPalette);
       }
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to load template details';
@@ -941,6 +947,25 @@ export default function ReportDesigner() {
               </div>
             </div>
 
+            {/* ── Finding Colours ──────────────────────────────────────── */}
+            <div className="rd-section">
+              <div className="rd-section-header">
+                <span>Finding Colours{isDirty && <span className="unsaved-indicator"> *</span>}</span>
+              </div>
+              <div className="rd-body">
+                <FindingColours
+                  key={`palette-${selectedTemplate.id}`}
+                  palette={localPalette}
+                  fields={selectedTemplate.userDefinedFields ?? []}
+                  onChange={(reportPalette) => {
+                    setLocalPalette(reportPalette);
+                    updateTemplate({ reportPalette });
+                  }}
+                  disabled={saving}
+                />
+              </div>
+            </div>
+
             {/* ── Sections ─────────────────────────────────────────────── */}
             <div className="rd-section">
               <div className="rd-section-header">
@@ -1086,6 +1111,7 @@ export default function ReportDesigner() {
                           <option value="STRING">String</option>
                           <option value="DROPDOWN">Dropdown</option>
                           <option value="RICH_TEXT">Rich Text</option>
+                          <option value="HYPERLINK">Hyperlink</option>
                         </Select>
                       </div>
                     </div>
@@ -1107,12 +1133,14 @@ export default function ReportDesigner() {
                     <div className="rd-row rd-row--top">
                       <div className="rd-label">Default Value</div>
                       <div className="rd-value">
-                        {field.fieldType === 'STRING' && (
+                        {(field.fieldType === 'STRING' || field.fieldType === 'HYPERLINK') && (
                           <Input
                             key={`default-${field.id}`}
                             defaultValue={field.defaultValue || ''}
                             onChange={(e) => updateUserDefinedField(field.id, { defaultValue: e.target.value })}
-                            placeholder="Enter default value"
+                            placeholder={field.fieldType === 'HYPERLINK'
+                              ? 'Email or URL — separate several with commas'
+                              : 'Enter default value'}
                           />
                         )}
                         {field.fieldType === 'RICH_TEXT' && (

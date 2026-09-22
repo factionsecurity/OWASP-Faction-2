@@ -62,6 +62,21 @@ public class ReportTemplate {
     private String font;
 
     /**
+     * What each painted colour sentinel resolves to — the severity, likelihood, impact and
+     * user-defined field colours this template's reports are rendered in.
+     *
+     * <p>A presentation setting like {@link #css} and {@link #font}, and edited in the same place.
+     * It used to live inside the DOCX as {@code ${color …}} marker paragraphs keyed on the
+     * displayed severity label, which meant renaming a severity silently returned every finding to
+     * black, and changing a colour meant opening Word.
+     *
+     * <p>Null on a template created before this existed; every sentinel then resolves to black on
+     * white, and saving the template from the designer seeds it.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    private ReportPalette reportPalette;
+
+    /**
      * S3/MinIO file ID reference for the DOCX template file
      */
     private String templateFileId;

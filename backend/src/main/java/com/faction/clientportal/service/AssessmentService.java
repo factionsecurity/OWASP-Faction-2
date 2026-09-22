@@ -188,6 +188,8 @@ public class AssessmentService {
             .templateName(template.getName())
             .templateCss(template.getCss())
             .templateFont(template.getFont())
+            .templatePalette(template.getReportPalette() == null
+                    ? null : template.getReportPalette().copy())
             .templateFileId(template.getTemplateFileId())
             .scoringType(template.getScoringType())
             .sections(template.getSections() != null ? new ArrayList<>(template.getSections()) : new ArrayList<>())

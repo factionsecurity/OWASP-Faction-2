@@ -4,6 +4,7 @@ import com.faction.clientportal.dto.*;
 import com.faction.clientportal.exception.ResourceNotFoundException;
 import com.faction.clientportal.model.FieldScope;
 import com.faction.clientportal.model.FieldType;
+import com.faction.clientportal.model.ReportPalette;
 import com.faction.clientportal.model.ReportTemplate;
 import com.faction.clientportal.model.UserDefinedField;
 import com.faction.clientportal.repository.AssessmentRepository;
@@ -149,6 +150,9 @@ public class ReportTemplateService {
             .css(request.getCss() != null && !request.getCss().isBlank()
                     ? request.getCss() : DEFAULT_TEMPLATE_CSS)
             .font(request.getFont())
+            // Seeded rather than left null so a template nobody has opened the colour pickers on
+            // still renders its findings in the same colours the web UI shows.
+            .reportPalette(ReportPalette.defaults())
             .scoringType(request.getScoringType())
             .sections(request.getSections() != null ? new ArrayList<>(request.getSections()) : new ArrayList<>())
             .version(1)
@@ -192,12 +196,19 @@ public class ReportTemplateService {
             ? new ArrayList<>()
             : source.getUserDefinedFields().stream().map(UserDefinedField::copy).collect(Collectors.toCollection(ArrayList::new));
 
+        // Same reasoning as the fields above: a shared palette means recolouring one template
+        // silently recolours the other's reports.
+        ReportPalette palette = source.getReportPalette() == null
+            ? ReportPalette.defaults()
+            : source.getReportPalette().copy();
+
         ReportTemplate clone = ReportTemplate.builder()
             .name(name)
             .description(source.getDescription())
             .assessmentTypeId(source.getAssessmentTypeId())
             .css(source.getCss())
             .font(source.getFont())
+            .reportPalette(palette)
             .scoringType(source.getScoringType())
             .sections(source.getSections() != null ? new ArrayList<>(source.getSections()) : new ArrayList<>())
             .version(1)
@@ -335,6 +346,16 @@ public class ReportTemplateService {
         // Update report font
         if (request.getFont() != null) {
             template.setFont(request.getFont());
+        }
+
+        // Update the colour palette. A null means the edit was not about colours, so the existing
+        // palette stands — the designer posts the whole template on every save, and a CSS change
+        // must not wipe the colours. A template that predates palettes gains the defaults here,
+        // which is the only way an existing template ever acquires one.
+        if (request.getReportPalette() != null) {
+            template.setReportPalette(request.getReportPalette());
+        } else if (template.getReportPalette() == null) {
+            template.setReportPalette(ReportPalette.defaults());
         }
 
         // Update scoring type

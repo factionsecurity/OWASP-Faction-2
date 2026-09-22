@@ -1,6 +1,7 @@
 package com.faction.clientportal.service;
 
 import com.faction.clientportal.model.Assessment;
+import com.faction.clientportal.model.ReportPalette;
 import com.faction.clientportal.model.ReportTemplate;
 import org.junit.jupiter.api.Test;
 
@@ -80,5 +81,58 @@ class DocxReportGenerationServiceStylingTest {
         DocxReportGenerationService.applyLiveTemplateStyling(assessment, null);
 
         assertThat(assessment.getTemplateCss()).isEqualTo("h1 { color: red; }");
+    }
+
+    // ── colour palette ───────────────────────────────────────────────────────
+
+    /**
+     * The palette follows the live template exactly as CSS does, so recolouring severities in the
+     * designer takes effect on the next generation rather than the one after.
+     */
+    @Test
+    void picksUpPaletteEditsFromTheDesigner() {
+        Assessment assessment = assessmentWith("body {}", "Arial", "file-1");
+        assessment.setTemplatePalette(ReportPalette.defaults());
+
+        ReportPalette edited = ReportPalette.defaults();
+        edited.getSeverity().put("CRITICAL", ReportPalette.ColourPair.of("990000", "FFCCCC"));
+        ReportTemplate template = ReportTemplate.builder()
+                .id("t1").css("body {}").font("Arial").templateFileId("file-1")
+                .reportPalette(edited).build();
+
+        DocxReportGenerationService.applyLiveTemplateStyling(assessment, template);
+
+        assertThat(assessment.getTemplatePalette().getSeverity().get("CRITICAL").getText())
+                .isEqualTo("990000");
+    }
+
+    /**
+     * Why the palette is snapshotted at all rather than read from the template each time: a
+     * template can be deleted while assessments still reference it, and this method returns early
+     * on a null. The snapshot is what keeps those reports rendering in colour instead of black.
+     */
+    @Test
+    void keepsTheSnapshottedPaletteWhenTheTemplateIsGone() {
+        Assessment assessment = assessmentWith("body {}", "Arial", "file-1");
+        assessment.setTemplatePalette(ReportPalette.defaults());
+
+        DocxReportGenerationService.applyLiveTemplateStyling(assessment, null);
+
+        assertThat(assessment.getTemplatePalette()).isNotNull();
+        assertThat(assessment.getTemplatePalette().getSeverity()).containsKey("CRITICAL");
+    }
+
+    /** A null on the template means "not set" and leaves the snapshot alone, as with CSS. */
+    @Test
+    void aTemplateWithNoPaletteDoesNotClearTheSnapshot() {
+        Assessment assessment = assessmentWith("body {}", "Arial", "file-1");
+        assessment.setTemplatePalette(ReportPalette.defaults());
+
+        ReportTemplate template = ReportTemplate.builder()
+                .id("t1").css("body {}").reportPalette(null).build();
+
+        DocxReportGenerationService.applyLiveTemplateStyling(assessment, template);
+
+        assertThat(assessment.getTemplatePalette()).isNotNull();
     }
 }
