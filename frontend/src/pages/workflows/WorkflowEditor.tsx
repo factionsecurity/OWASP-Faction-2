@@ -288,7 +288,7 @@ export default function WorkflowEditor({ workflow, onSaved, onDirtyChange }: Pro
         <h4 className="workflow-section-title">Status List</h4>
         <FormHint>
           Drag the handle to reorder. Edit a name to rename it: assessments in that status keep it under
-          the new name. Right-click a status to set its colour.
+          the new name. Right-click a status to set its color.
         </FormHint>
         <div className="wf-status-list">
           {draft.statuses.map((row) => (

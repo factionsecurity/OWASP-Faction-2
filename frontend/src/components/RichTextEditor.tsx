@@ -5093,7 +5093,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
                 <input
                   type="color"
                   className="rte-color-picker"
-                  title="Custom border colour"
+                  title="Custom border color"
                   value={cellBorderColor}
                   onChange={e => setCellBorderColor(e.target.value)}
                 />

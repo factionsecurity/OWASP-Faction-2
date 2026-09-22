@@ -150,13 +150,13 @@ export default function FindingColours({ palette, onChange, fields, disabled }: 
         <label className="fc-swatch">
           <input type="color" value={hash(text)} disabled={disabled}
                  onChange={(e) => onText(e.target.value)}
-                 aria-label={`${label} text on colour`} />
+                 aria-label={`${label} text on color`} />
           <span className="fc-swatch-hex">{text}</span>
         </label>
         <label className="fc-swatch">
           <input type="color" value={hash(fill)} disabled={disabled}
                  onChange={(e) => onFill(e.target.value)}
-                 aria-label={`${label} colour`} />
+                 aria-label={`${label} color`} />
           <span className="fc-swatch-hex">{fill}</span>
         </label>
         {/* The preview is the point of showing both at once: an unreadable pair is visible here
@@ -205,15 +205,15 @@ export default function FindingColours({ palette, onChange, fields, disabled }: 
     <div className="finding-colours">
       <div className="fc-help">
         <p>
-          Paint one of the reserved colours below in your DOCX template and Faction replaces it with
-          the colour for that finding&rsquo;s value. They work on cell fills, font colours and table
+          Paint one of the reserved colors below in your DOCX template and Faction replaces it with
+          the color for that finding&rsquo;s value. They work on cell fills, font colors and table
           borders alike.
         </p>
         <p>
-          Each value has two colours. <strong>Colour</strong> is what the thing is &mdash; a cell
-          fill, a border, or text that is not sitting on a coloured background.{' '}
-          <strong>Text on colour</strong> is used only for text that <em>is</em> on one, so it can
-          contrast with it. Text in an unfilled cell, or outside a table, takes the colour itself.
+          Each value has two colors. <strong>Color</strong> is what the thing is &mdash; a cell
+          fill, a border, or text that is not sitting on a colored background.{' '}
+          <strong>Text on color</strong> is used only for text that <em>is</em> on one, so it can
+          contrast with it. Text in an unfilled cell, or outside a table, takes the color itself.
         </p>
       </div>
 
@@ -222,7 +222,7 @@ export default function FindingColours({ palette, onChange, fields, disabled }: 
           <div className="fc-group">
             <div className="fc-group-header">
               <span>Severity</span>
-              <span className="fc-group-legend">text on colour &middot; colour &middot; preview</span>
+              <span className="fc-group-legend">text on color &middot; color &middot; preview</span>
             </div>
             {levelRows('severity')}
           </div>
@@ -241,7 +241,7 @@ export default function FindingColours({ palette, onChange, fields, disabled }: 
         <div className="fc-group">
           <div className="fc-group-header">
             <span>Severity, Likelihood &amp; Impact</span>
-            <span className="fc-group-legend">text on colour &middot; colour &middot; preview</span>
+            <span className="fc-group-legend">text on color &middot; color &middot; preview</span>
           </div>
           {combinedRows()}
         </div>
@@ -255,10 +255,10 @@ export default function FindingColours({ palette, onChange, fields, disabled }: 
           onChange={(e) => setSeparate(e.target.checked)}
         />
         <span>
-          Use different colours for Likelihood and Impact
+          Use different colors for Likelihood and Impact
           <span className="fc-toggle-hint">
-            All three use the same five levels, so one set of colours covers them unless you
-            need them to differ. Unticking this copies the Severity colours back over the other two.
+            All three use the same five levels, so one set of colors covers them unless you
+            need them to differ. Unticking this copies the Severity colors back over the other two.
           </span>
         </span>
       </label>
@@ -271,7 +271,7 @@ export default function FindingColours({ palette, onChange, fields, disabled }: 
               {current.customFields?.[field.variableName]?.slot
                 ? `#${lightSentinel(current.customFields[field.variableName].slot!)}`
                   + ` / #${darkSentinel(current.customFields[field.variableName].slot!)}`
-                : 'set a colour to assign its hexes'}
+                : 'set a color to assign its hexes'}
             </span>
           </div>
           {(field.dropdownOptions ?? []).map((option) =>
@@ -284,7 +284,7 @@ export default function FindingColours({ palette, onChange, fields, disabled }: 
 
       <div className="fc-group">
         <div className="fc-group-header">
-          <span>Colours to paint</span>
+          <span>Colors to paint</span>
           <span className="fc-group-legend">
             both mean the same thing &mdash; paint the dark one on text, the light one on cells
           </span>

@@ -947,10 +947,10 @@ export default function ReportDesigner() {
               </div>
             </div>
 
-            {/* ── Finding Colours ──────────────────────────────────────── */}
+            {/* ── Finding Colors ──────────────────────────────────────── */}
             <div className="rd-section">
               <div className="rd-section-header">
-                <span>Finding Colours{isDirty && <span className="unsaved-indicator"> *</span>}</span>
+                <span>Finding Colors{isDirty && <span className="unsaved-indicator"> *</span>}</span>
               </div>
               <div className="rd-body">
                 <FindingColours
