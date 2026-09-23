@@ -412,6 +412,8 @@ public class AssessmentService {
         // status it moved away from, and by the time that email is built the entity has
         // already been mutated.
         String previousStatus = assessment.getStatus();
+        LocalDateTime previousStartDate = assessment.getStartDate();
+        LocalDateTime previousPlannedEndDate = assessment.getPlannedEndDate();
 
         // Update status
         if (request.getStatus() != null) {
@@ -621,7 +623,8 @@ public class AssessmentService {
         if (finalizing) {
             emailAssessmentEvent(com.faction.clientportal.model.EmailNotificationEvent.ASSESSMENT_COMPLETED,
                     updatedAssessment, null);
-        } else {
+        } else if (worthAnnouncing(updatedAssessment, previousStatus,
+                previousStartDate, previousPlannedEndDate)) {
             emailAssessmentEvent(com.faction.clientportal.model.EmailNotificationEvent.ASSESSMENT_CHANGED,
                     updatedAssessment, previousStatus);
         }
@@ -2012,6 +2015,27 @@ public class AssessmentService {
             log.warn("Could not queue the {} email for assessment {}: {}",
                     event, assessment.getId(), e.getMessage());
         }
+    }
+
+    /**
+     * Whether this save is worth an "assessment changed" email: the status moved, or a date the
+     * reader plans around did.
+     *
+     * <p>Every other edit is silent. The assessment screen saves as you type, so anything else
+     * meant a stakeholder list got a mail per keystroke's worth of autosave — for a custom field, a
+     * rename, a scope edit — each one announcing a change it could not describe, because what
+     * changed was not in the mail. Mail nobody can act on is mail nobody reads, including the
+     * status changes that matter.
+     *
+     * <p>Being assigned to an assessment is still announced, to the person assigned, by the in-app
+     * notification that {@code notifyUserById} sends.
+     */
+    private boolean worthAnnouncing(Assessment assessment, String previousStatus,
+                                    LocalDateTime previousStartDate,
+                                    LocalDateTime previousPlannedEndDate) {
+        return !Objects.equals(previousStatus, assessment.getStatus())
+                || !Objects.equals(previousStartDate, assessment.getStartDate())
+                || !Objects.equals(previousPlannedEndDate, assessment.getPlannedEndDate());
     }
 
     private String subjectFor(com.faction.clientportal.model.EmailNotificationEvent event,
