@@ -30,10 +30,11 @@
   margin-top: 0.5rem;
 }
 
+/* Not overflow: hidden — the color panel opens out of a row and would be clipped. The header
+   rounds its own top corners instead. */
 .fc-group {
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  overflow: hidden;
 }
 
 .fc-group-header {
@@ -42,8 +43,9 @@
   justify-content: space-between;
   gap: 8px;
   padding: 6px 10px;
-  background: var(--bg-secondary);
+  background: var(--tertiary-bg);
   border-bottom: 1px solid var(--border-color);
+  border-radius: 6px 6px 0 0;
   font-size: 12px;
   font-weight: 600;
 }
@@ -73,26 +75,37 @@
   white-space: nowrap;
 }
 
+.fc-field {
+  position: relative;
+}
+
+/* The saved color, as a button: click it to open the panel. */
 .fc-swatch {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  cursor: pointer;
-}
-
-.fc-swatch input[type='color'] {
-  width: 26px;
-  height: 22px;
-  padding: 0;
+  padding: 2px 6px 2px 2px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   background: none;
+  color: inherit;
   cursor: pointer;
 }
 
-.fc-swatch input[type='color']:disabled {
+.fc-swatch:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+.fc-swatch:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.fc-swatch-chip {
+  width: 22px;
+  height: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
 }
 
 .fc-swatch-hex {
@@ -111,6 +124,84 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The panel a swatch opens: pick or type a color, then Set color. */
+.fc-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  width: 220px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--secondary-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.fc-picker-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fc-picker-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fc-picker-native {
+  width: 44px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.fc-picker-hex {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.fc-picker-hex input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--text-primary, inherit);
+  font: inherit;
+  text-transform: uppercase;
+}
+
+.fc-picker-hex:focus-within {
+  border-color: var(--primary-color, #6366f1);
+}
+
+.fc-picker-error {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--danger-color, #ef4444);
+}
+
+.fc-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
 }
 
 /* Sits under the rating group it expands, so the relationship reads top-to-bottom. */
@@ -175,7 +266,7 @@
 }
 
 .fc-hex:hover {
-  background: var(--bg-secondary);
+  background: var(--hover-bg);
 }
 
 .fc-hex-chip {

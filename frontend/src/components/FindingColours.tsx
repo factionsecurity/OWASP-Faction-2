@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import { Button } from './Button';
 import { useTerminology } from '../context/TerminologyContext';
 import { VULNERABILITY_SEVERITIES } from '../utils/vulnSeverity';
 import type { ColourPair, ReportPalette, UserDefinedField } from '../types';
@@ -45,6 +46,116 @@ interface Props {
   /** The template's fields, so a dropdown field can offer its own options as colourable values. */
   fields: UserDefinedField[];
   disabled?: boolean;
+}
+
+const HEX = /^#?[0-9a-fA-F]{6}$/;
+
+interface ColorFieldProps {
+  /** The saved color, bare RRGGBB. */
+  value: string;
+  /** What this swatch sets, for the panel title and screen readers. */
+  label: string;
+  onCommit: (hex: string) => void;
+  disabled?: boolean;
+}
+
+/**
+ * One swatch that opens a small panel for choosing a color, and only saves when **Set color** is
+ * pressed.
+ *
+ * The browser's own color picker has nowhere to put a button, and used bare it saved on every
+ * movement: nothing marked the moment a color was actually set, so it read as though it had not
+ * been. This follows the rich text editor's cell-color picker instead — choose, then commit.
+ * Cancel, Escape or a click outside leave the saved color as it was.
+ */
+function ColorField({ value, label, onCommit, disabled }: ColorFieldProps) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [hexText, setHexText] = useState(value);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Every time the panel opens it starts from the saved color, not a draft left from last time.
+  const openPanel = () => {
+    setDraft(value);
+    setHexText(value);
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const hexValid = HEX.test(hexText.trim());
+
+  const commit = () => {
+    if (!hexValid) return;
+    onCommit(bare(hexText.trim()));
+    setOpen(false);
+  };
+
+  return (
+    <div className="fc-field" ref={wrapRef}>
+      <button
+        type="button"
+        className="fc-swatch"
+        disabled={disabled}
+        onClick={() => (open ? setOpen(false) : openPanel())}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`${label}: #${value}. Change`}
+      >
+        <span className="fc-swatch-chip" style={{ background: hash(value) }} />
+        <span className="fc-swatch-hex">{value}</span>
+      </button>
+
+      {open && (
+        <div className="fc-picker" role="dialog" aria-label={label}>
+          <div className="fc-picker-title">{label}</div>
+          <div className="fc-picker-body">
+            <input
+              type="color"
+              className="fc-picker-native"
+              value={hash(draft)}
+              onChange={(e) => { setDraft(bare(e.target.value)); setHexText(bare(e.target.value)); }}
+              aria-label={`${label} picker`}
+            />
+            <label className="fc-picker-hex">
+              <span>#</span>
+              <input
+                type="text"
+                value={hexText.replace('#', '')}
+                maxLength={7}
+                spellCheck={false}
+                onChange={(e) => {
+                  setHexText(e.target.value);
+                  if (HEX.test(e.target.value.trim())) setDraft(bare(e.target.value.trim()));
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+                aria-label={`${label} hex`}
+                aria-invalid={!hexValid}
+                autoFocus
+              />
+            </label>
+          </div>
+          {!hexValid && <div className="fc-picker-error">Enter six hex digits, e.g. C00000</div>}
+          <div className="fc-picker-actions">
+            <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={commit} disabled={!hexValid}>Set color</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function FindingColours({ palette, onChange, fields, disabled }: Props) {
@@ -147,18 +258,10 @@ export default function FindingColours({ palette, onChange, fields, disabled }: 
     return (
       <div className="fc-row" key={key}>
         <span className="fc-row-label">{label}</span>
-        <label className="fc-swatch">
-          <input type="color" value={hash(text)} disabled={disabled}
-                 onChange={(e) => onText(e.target.value)}
-                 aria-label={`${label} text on color`} />
-          <span className="fc-swatch-hex">{text}</span>
-        </label>
-        <label className="fc-swatch">
-          <input type="color" value={hash(fill)} disabled={disabled}
-                 onChange={(e) => onFill(e.target.value)}
-                 aria-label={`${label} color`} />
-          <span className="fc-swatch-hex">{fill}</span>
-        </label>
+        <ColorField label={`${label} text on color`} value={text} disabled={disabled}
+                    onCommit={onText} />
+        <ColorField label={`${label} color`} value={fill} disabled={disabled}
+                    onCommit={onFill} />
         {/* The preview is the point of showing both at once: an unreadable pair is visible here
             rather than in a delivered report. */}
         <span className="fc-preview" style={{ color: hash(text), background: hash(fill) }}>
