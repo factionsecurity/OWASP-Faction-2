@@ -277,17 +277,17 @@ export function detectDiagramKind(source: string): string {
  * an invitation to click that does nothing, which reads as broken.
  */
 const PALETTE_HINTS: Record<string, string> = {
-  xychart: 'Plot colours come from plotColorPalette in the config header, in plot order.',
-  'xychart-beta': 'Plot colours come from plotColorPalette in the config header, in plot order.',
-  pie: 'Slice colours come from the pie1, pie2 … theme variables in the config header.',
-  timeline: 'Section colours come from the cScale0, cScale1 … theme variables in the config header.',
-  gantt: 'Section colours come from the cScale0, cScale1 … theme variables in the config header.',
-  quadrantchart: 'Point colours are set on the point itself, such as A: [0.3, 0.6] color: #ff0000.',
+  xychart: 'Plot colors come from plotColorPalette in the config header, in plot order.',
+  'xychart-beta': 'Plot colors come from plotColorPalette in the config header, in plot order.',
+  pie: 'Slice colors come from the pie1, pie2 … theme variables in the config header.',
+  timeline: 'Section colors come from the cScale0, cScale1 … theme variables in the config header.',
+  gantt: 'Section colors come from the cScale0, cScale1 … theme variables in the config header.',
+  quadrantchart: 'Point colors are set on the point itself, such as A: [0.3, 0.6] color: #ff0000.',
 };
 
 function paletteHint(kind: string): string {
   return PALETTE_HINTS[kind]
-    ?? 'This diagram type has no individually coloured shapes.';
+    ?? 'This diagram type has no individually colored shapes.';
 }
 
 /** `<input type="color">` only accepts 6-digit hex; anything else shows as the default. */
@@ -556,7 +556,7 @@ export default function MermaidDialog({ isOpen, initialSource, onClose, onInsert
                 {/* While a diagram is broken it has no nodes either, and the error already
                     says so — do not also claim the type cannot be coloured. */}
                 {styleable || error
-                  ? 'Click a shape in the preview to colour it.'
+                  ? 'Click a shape in the preview to color it.'
                   : paletteHint(detectDiagramKind(source))}
               </p>
             : <>

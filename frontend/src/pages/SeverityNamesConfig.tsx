@@ -97,7 +97,7 @@ export default function SeverityNamesConfig({ embedded = false }: Props) {
       <h2>Severity Names</h2>
       <p className="sevnames-intro">
         What this installation calls each severity. Wording only — the five levels, their order and
-        their colours do not change, and a finding recorded as Critical is still Critical to every
+        their colors do not change, and a finding recorded as Critical is still Critical to every
         filter, report token and export.
       </p>
 

@@ -36,24 +36,31 @@ import org.docx4j.toc.TocException;
 import org.docx4j.toc.TocGenerator;
 import org.docx4j.wml.BooleanDefaultTrue;
 import org.docx4j.wml.Br;
+import org.docx4j.wml.CTBorder;
 import org.docx4j.wml.CTShd;
 import org.docx4j.wml.ContentAccessor;
 import org.docx4j.wml.Ftr;
 import org.docx4j.wml.Hdr;
 import org.docx4j.wml.ObjectFactory;
 import org.docx4j.wml.P;
+import org.docx4j.wml.PPr;
+import org.docx4j.wml.PPrBase;
 import org.docx4j.wml.PPrBase.Ind;
 import org.docx4j.wml.R;
 import org.docx4j.wml.RFonts;
 import org.docx4j.wml.RPr;
+import org.docx4j.wml.RPrAbstract;
 import org.docx4j.wml.RStyle;
 import org.docx4j.wml.STTabTlc;
 import org.docx4j.wml.Tbl;
 import org.docx4j.wml.TblGridCol;
+import org.docx4j.wml.TblBorders;
 import org.docx4j.wml.TblPr;
 import org.docx4j.wml.TblWidth;
 import org.docx4j.wml.Tc;
 import org.docx4j.wml.TcPr;
+import org.docx4j.wml.TcPrInner;
+import org.docx4j.wml.U;
 import org.docx4j.wml.Text;
 import org.docx4j.wml.Tr;
 import org.docx4j.wml.TrPr;
@@ -85,7 +92,11 @@ public class DocxUtils {
     public DocxUtils(WordprocessingMLPackage mlp, ReportData data) {
         this.mlp = mlp;
         this.data = data;
+        this.palette = new PaletteResolver(data == null ? null : data.getReportPalette());
     }
+
+    /** Resolves a painted colour sentinel to the colour this template configured for it. */
+    private final PaletteResolver palette;
 
     // ── severity helpers ────────────────────────────────────────────────────
 
@@ -216,6 +227,30 @@ public class DocxUtils {
      * sign and a backslash both carry meaning to Matcher.replaceAll — and both turn up
      * in real URLs and UNC paths.
      */
+    /**
+     * Whether this finding's asset location holds something worth linking.
+     *
+     * <p>When it does, {@code ${assetLocation}} is left in the XML for the object-model pass to
+     * turn into a real hyperlink. When it does not — a host and port, a path, a queue name, which
+     * is just as common — the token takes the long-standing plain-text substitution below, so
+     * nothing about the ordinary case changes.
+     */
+    private boolean assetLocationIsLinked(ReportData.ReportVulnerability v) {
+        return SmartLink.parse(v.getAssetLocation()).stream().anyMatch(SmartLink.Segment::isLink);
+    }
+
+    /**
+     * The values whose {@code ${...}} tokens become real hyperlinks once the finding's XML is back
+     * to objects: every HYPERLINK-typed field, plus the asset location when it is an address.
+     */
+    private Map<String, String> linkableValues(ReportData.ReportVulnerability v) {
+        Map<String, String> values = hyperlinkFieldValues(v.getFieldTypes(), v::getFieldValue);
+        if (assetLocationIsLinked(v)) {
+            values.put("assetLocation", v.getAssetLocation());
+        }
+        return values;
+    }
+
     private String assetLocation(ReportData.ReportVulnerability v) {
         String location = v.getAssetLocation();
         // Nothing at all for a vulnerability with no location, rather than an empty
@@ -421,37 +456,11 @@ public class DocxUtils {
             String txt = getMatchingText(paragraphs, tableVariable);
             if (txt == null) continue;
 
-            HashMap<String, String> colorMap       = new HashMap<>();
-            HashMap<String, String> cellMap        = new HashMap<>();
-            HashMap<String, String> customFieldMap = new HashMap<>();
-
-            String colors = getMatchingText(paragraphs, "${color");
-            if (colors != null) {
-                colors = colors.replace("${color", "").replace("}", "").trim();
-                for (String pair : colors.split(",")) {
-                    pair = pair.trim();
-                    String[] kv = pair.split("=");
-                    if (kv.length == 2) colorMap.put(kv[0].trim(), kv[1].trim().toUpperCase());
-                }
-            }
-            colors = getMatchingText(paragraphs, "${cells");
-            if (colors != null) {
-                colors = colors.replace("${cells", "").replace("}", "").trim();
-                for (String pair : colors.split(",")) {
-                    pair = pair.trim();
-                    String[] kv = pair.split("=");
-                    if (kv.length == 2) cellMap.put(kv[0].trim(), kv[1].trim().toUpperCase());
-                }
-            }
-            String customFields = getMatchingText(paragraphs, "${custom-fields");
-            if (customFields != null) {
-                customFields = customFields.replace("${custom-fields", "").replace("}", "").trim();
-                for (String pair : customFields.split(",")) {
-                    pair = pair.trim();
-                    String[] kv = pair.split("=");
-                    if (kv.length == 2) customFieldMap.put(kv[0].trim(), kv[1].trim().toUpperCase());
-                }
-            }
+            // ${color}, ${cells} and ${custom-fields} used to be parsed here. Colours now live on
+            // the report template, keyed on the severity enum rather than its renameable label.
+            // The markers themselves still have to disappear, or an old template would print its
+            // own configuration into the report; the sweep at the end of this method removes any
+            // row still holding a ${...}, which covers them.
             String noIssuesText = getMatchingText(paragraphs, "${noIssuesText");
             if (noIssuesText != null) {
                 noIssuesText = noIssuesText.replace("${noIssuesText ", "").replace("}", "");
@@ -499,7 +508,9 @@ public class DocxUtils {
                     nxml = nxml.replaceAll("\\$\\{cvssScore\\}",  CData(v.getCvssScoreStr()));
                     nxml = nxml.replaceAll("\\$\\{cvssString\\}", CData(v.getCvssString() == null ? "" : v.getCvssString()));
                     nxml = nxml.replaceAll("\\$\\{tracking\\}",   CData(v.getTrackingId() == null ? "" : v.getTrackingId()));
-                    nxml = nxml.replaceAll("\\$\\{assetLocation\\}", assetLocation(v));
+                    if (!assetLocationIsLinked(v)) {
+                        nxml = nxml.replaceAll("\\$\\{assetLocation\\}", assetLocation(v));
+                    }
 
                     Date opened = toDate(v.getOpenedAt());
                     nxml = nxml.replaceAll("\\$\\{openedAt\\}",
@@ -541,58 +552,20 @@ public class DocxUtils {
                             String varName  = entry.getKey();
                             FieldType fType = entry.getValue();
                             String value    = v.getFieldValue(varName);
-                            if (fType != FieldType.RICH_TEXT) {
+                            if (fType != FieldType.RICH_TEXT && fType != FieldType.HYPERLINK) {
                                 nxml = nxml.replaceAll(
                                         "\\$\\{" + Pattern.quote(varName) + "\\}",
                                         CData(value));
-                                // colour/cell mappings driven by ${custom-fields} config
-                                if (customFieldMap.containsKey(varName)
-                                        && colorMap.containsKey(value)) {
-                                    String colorMatch = customFieldMap.get(varName);
-                                    String color      = colorMap.get(value);
-                                    if ((colorMatch != null && !colorMatch.isEmpty())
-                                            && (color != null && !color.isEmpty())) {
-                                        nxml = nxml.replaceAll(
-                                                "w:val=\"" + colorMatch + "\"",
-                                                "w:val=\"" + color + "\"");
-                                    }
-                                }
-                                if (customFieldMap.containsKey(varName)
-                                        && cellMap.containsKey(value)) {
-                                    String colorMatch = customFieldMap.get(varName);
-                                    String color      = cellMap.get(value);
-                                    if ((colorMatch != null && !colorMatch.isEmpty())
-                                            && (color != null && !color.isEmpty())) {
-                                        nxml = nxml.replaceAll(
-                                                "w:fill=\"" + colorMatch + "\"",
-                                                "w:fill=\"" + color + "\"");
-                                    }
-                                }
                             }
                         }
                     }
 
-                    // sentinel-colour replacements
-                    nxml = nxml.replaceAll("w:color=\"FAC701\"",
-                            "w:color=\"" + colorMap.getOrDefault(sev, "000000") + "\"");
-                    nxml = nxml.replaceAll("w:color=\"FAC702\"",
-                            "w:color=\"" + colorMap.getOrDefault(v.getLikelihood(), "000000") + "\"");
-                    nxml = nxml.replaceAll("w:color=\"FAC703\"",
-                            "w:color=\"" + colorMap.getOrDefault(v.getImpact(), "000000") + "\"");
-                    nxml = nxml.replaceAll("w:fill=\"FAC701\"",
-                            "w:fill=\"" + cellMap.getOrDefault(sev, "FFFFFF") + "\"");
-                    nxml = nxml.replaceAll("w:fill=\"FAC702\"",
-                            "w:fill=\"" + cellMap.getOrDefault(v.getLikelihood(), "FFFFFF") + "\"");
-                    nxml = nxml.replaceAll("w:fill=\"FAC703\"",
-                            "w:fill=\"" + cellMap.getOrDefault(v.getImpact(), "FFFFFF") + "\"");
-                    nxml = nxml.replaceAll("w:val=\"FAC701\"",
-                            "w:val=\"" + colorMap.getOrDefault(sev, "000000") + "\"");
-                    nxml = nxml.replaceAll("w:val=\"FAC702\"",
-                            "w:val=\"" + colorMap.getOrDefault(v.getLikelihood(), "000000") + "\"");
-                    nxml = nxml.replaceAll("w:val=\"FAC703\"",
-                            "w:val=\"" + colorMap.getOrDefault(v.getImpact(), "000000") + "\"");
-
                     Tr newrow = (Tr) XmlUtils.unmarshalString(nxml);
+                    resolveColourSentinels(newrow, v);
+
+                    // HYPERLINK UDFs and a linkable asset location — their tokens rode through
+                    // the XML round trip as text
+                    replaceHyperlinkFields(newrow, linkableValues(v));
 
                     // hyperlink UDF replacements
                     if (v.getFieldTypes() != null) {
@@ -807,9 +780,6 @@ public class DocxUtils {
         int end   = getIndex(mlp.getMainDocumentPart(), sectionTag("fiEnd", section));
         if (begin == -1 || end == -1) return;
 
-        HashMap<String, String> colorMap       = new HashMap<>();
-        HashMap<String, String> cellMap        = new HashMap<>();
-        HashMap<String, String> customFieldMap = new HashMap<>();
         String noIssuesText = "No issues detected for this section.";
 
         // Both marker paragraphs are gone by now, so the block is [begin, end): the paragraph
@@ -820,33 +790,9 @@ public class DocxUtils {
             findingTemplate.add(node);
             List<Object> paragraphs = getAllElementFromObject(node, P.class);
 
-            String colors = getMatchingText(paragraphs, "${color");
-            if (colors != null) {
-                colors = colors.replace("${color", "").replace("}", "").trim();
-                for (String pair : colors.split(",")) {
-                    pair = pair.trim();
-                    String[] kv = pair.split("=");
-                    if (kv.length == 2) colorMap.put(kv[0].trim(), kv[1].trim().toUpperCase());
-                }
-            }
-            colors = getMatchingText(paragraphs, "${fill");
-            if (colors != null) {
-                colors = colors.replace("${fill", "").replace("}", "").trim();
-                for (String pair : colors.split(",")) {
-                    pair = pair.trim();
-                    String[] kv = pair.split("=");
-                    if (kv.length == 2) cellMap.put(kv[0].trim(), kv[1].trim().toUpperCase());
-                }
-            }
-            String customFields = getMatchingText(paragraphs, "${custom-fields");
-            if (customFields != null) {
-                customFields = customFields.replace("${custom-fields", "").replace("}", "").trim();
-                for (String pair : customFields.split(",")) {
-                    pair = pair.trim();
-                    String[] kv = pair.split("=");
-                    if (kv.length == 2) customFieldMap.put(kv[0].trim(), kv[1].trim().toUpperCase());
-                }
-            }
+            // ${color}, ${fill} and ${custom-fields} are no longer read — see checkTables. The
+            // paragraphs are still skipped when the block repeats, below, so an old template does
+            // not print its configuration once per finding.
             String nit = getMatchingText(paragraphs, "${noIssuesText");
             if (nit != null) {
                 noIssuesText = nit.replace("${noIssuesText ", "").replace("}", "");
@@ -897,7 +843,9 @@ public class DocxUtils {
                 nxml = nxml.replaceAll("\\$\\{cvssScore\\}",  v.getCvssScoreStr());
                 nxml = nxml.replaceAll("\\$\\{tracking\\}",
                         v.getTrackingId() == null ? "" : v.getTrackingId());
-                nxml = nxml.replaceAll("\\$\\{assetLocation\\}", assetLocation(v));
+                if (!assetLocationIsLinked(v)) {
+                    nxml = nxml.replaceAll("\\$\\{assetLocation\\}", assetLocation(v));
+                }
 
                 Date opened = toDate(v.getOpenedAt());
                 nxml = nxml.replaceAll("\\$\\{openedAt\\}",
@@ -929,8 +877,11 @@ public class DocxUtils {
                 }
 
                 // strip config rows
+                // Retired configuration markers. No longer interpreted, but an old template still
+                // physically contains them, and this block is re-emitted once per finding — so
+                // without this the report would carry the config text, repeated.
                 if (nxml.contains("${color") || nxml.contains("${fill")
-                        || nxml.contains("${custom-fields")) {
+                        || nxml.contains("${cells") || nxml.contains("${custom-fields")) {
                     nxml = "";
                 }
 
@@ -939,50 +890,21 @@ public class DocxUtils {
                         String varName  = entry.getKey();
                         FieldType fType = entry.getValue();
                         String value    = v.getFieldValue(varName);
-                        if (fType != FieldType.RICH_TEXT) {
+                        // HYPERLINK is left for the link pass after unmarshalling, as in the table
+                        // path — substituting it here would leave nothing to link.
+                        if (fType != FieldType.RICH_TEXT && fType != FieldType.HYPERLINK) {
                             nxml = nxml.replaceAll(
                                     "\\$\\{" + Pattern.quote(varName) + "\\}",
                                     CData(value));
-                            if (customFieldMap.containsKey(varName)
-                                    && colorMap.containsKey(value)) {
-                                String cm = customFieldMap.get(varName);
-                                String co = colorMap.get(value);
-                                if ((cm != null && !cm.isEmpty()) && (co != null && !co.isEmpty())) {
-                                    nxml = nxml.replaceAll(
-                                            "w:val=\"" + cm + "\"",
-                                            "w:val=\"" + co + "\"");
-                                }
-                            }
-                            if (customFieldMap.containsKey(varName)
-                                    && cellMap.containsKey(value)) {
-                                String cm = customFieldMap.get(varName);
-                                String co = cellMap.get(value);
-                                if ((cm != null && !cm.isEmpty()) && (co != null && !co.isEmpty())) {
-                                    nxml = nxml.replaceAll(
-                                            "w:fill=\"" + cm + "\"",
-                                            "w:fill=\"" + co + "\"");
-                                }
-                            }
                         }
                     }
                 }
 
-                nxml = nxml.replaceAll("w:val=\"FAC701\"",
-                        "w:val=\"" + colorMap.getOrDefault(sev, "000000") + "\"");
-                nxml = nxml.replaceAll("w:val=\"FAC702\"",
-                        "w:val=\"" + colorMap.getOrDefault(v.getLikelihood(), "000000") + "\"");
-                nxml = nxml.replaceAll("w:val=\"FAC703\"",
-                        "w:val=\"" + colorMap.getOrDefault(v.getImpact(), "000000") + "\"");
-                nxml = nxml.replaceAll("w:fill=\"FAC701\"",
-                        "w:fill=\"" + cellMap.getOrDefault(sev, "FFFFFF") + "\"");
-                nxml = nxml.replaceAll("w:fill=\"FAC702\"",
-                        "w:fill=\"" + cellMap.getOrDefault(v.getLikelihood(), "FFFFFF") + "\"");
-                nxml = nxml.replaceAll("w:fill=\"FAC703\"",
-                        "w:fill=\"" + cellMap.getOrDefault(v.getImpact(), "FFFFFF") + "\"");
-
                 if (!nxml.isEmpty()) {
                     try {
                         Object paragraph = XmlUtils.unmarshalString(nxml);
+                        resolveColourSentinels(paragraph, v);
+                        replaceHyperlinkFields(paragraph, linkableValues(v));
                         if (v.getFieldTypes() != null) {
                             for (String varName : v.getFieldTypes().keySet()) {
                                 replaceHyperlink(paragraph,
@@ -1073,7 +995,12 @@ public class DocxUtils {
         map.put(getKey("totalclosedvulns"),     getTotalClosedVulns());
         map.putAll(getVulnMap());
 
-        // assessment-level plain-text UDFs
+        // assessment-level plain-text UDFs. HYPERLINK fields are in here too, deliberately: the
+        // pass below has already turned their tokens in the body into real links, so what is left
+        // for the plain-text pass is the places it cannot reach — headers and footers, which are
+        // replaced by string surgery on their XML and have no object tree to hang a relationship
+        // off. There the value resolves to text. Leaving HYPERLINK out entirely would instead
+        // print "${contact}" on every page of the delivered report.
         if (data.getFieldTypes() != null) {
             for (Map.Entry<String, FieldType> entry : data.getFieldTypes().entrySet()) {
                 if (entry.getValue() != FieldType.RICH_TEXT) {
@@ -1081,6 +1008,10 @@ public class DocxUtils {
                 }
             }
         }
+
+        // Must precede replacementText, which would otherwise consume the tokens as plain text
+        replaceHyperlinkFields(mlp.getMainDocumentPart(),
+                hyperlinkFieldValues(data.getFieldTypes(), data::getFieldValue));
 
         replacementHyperlinks(mlp.getMainDocumentPart(), map);
         replacementDate("today",     new Date());
@@ -1763,9 +1694,15 @@ public class DocxUtils {
             for (Map.Entry<String, FieldType> entry : data.getFieldTypes().entrySet()) {
                 if (entry.getValue() != FieldType.RICH_TEXT) {
                     String varName = entry.getKey();
+                    // A HYPERLINK field becomes an anchor here, for the same reason it does in
+                    // replaceVulnUdfsInHtml: this content reaches the document through the XHTML
+                    // importer, where markup is the only way to produce a link.
+                    String replacement = entry.getValue() == FieldType.HYPERLINK
+                            ? SmartLink.toHtml(data.getFieldValue(varName))
+                            : data.getFieldValue(varName);
                     content = content.replaceAll(
                             "\\$\\{" + Pattern.quote(varName) + "\\}",
-                            data.getFieldValue(varName));
+                            Matcher.quoteReplacement(replacement));
                 }
             }
         }
@@ -1785,9 +1722,16 @@ public class DocxUtils {
             FieldType fType = entry.getValue();
             if (fType != FieldType.RICH_TEXT) {
                 try {
+                    // A HYPERLINK field lands here as an anchor: this content goes through the
+                    // XHTML importer, not the run-splitting pass, so markup is how it becomes a
+                    // link. Printing the bare address would leave the same field clickable in the
+                    // template and dead inside a description.
+                    String replacement = fType == FieldType.HYPERLINK
+                            ? SmartLink.toHtml(v.getFieldValue(varName))
+                            : v.getFieldValue(varName);
                     content = content.replaceAll(
                             "\\$\\{" + Pattern.quote(varName) + "\\}",
-                            v.getFieldValue(varName));
+                            Matcher.quoteReplacement(replacement));
                 } catch (Exception ignored) {}
             }
         }
@@ -1982,6 +1926,318 @@ public class DocxUtils {
         }
     }
 
+    // ── colour-sentinel resolution ───────────────────────────────────────────
+
+    /**
+     * Swaps every painted colour sentinel under {@code root} for the colour this finding maps to.
+     *
+     * <p>Works on the object model rather than the marshalled XML because the right colour depends
+     * on <em>where</em> the sentinel is, and that is a structural question. A palette entry is a
+     * pair: the colour itself, and the colour to write on top of it. Setting Critical to white on
+     * red means the white is only ever right when it is actually sitting on the red — used for a
+     * heading on a white page it is invisible, and invisible in a way nobody notices until a client
+     * opens the report.
+     *
+     * <p>So the on-colour half applies to a run only when that run sits on a sentinel fill: its
+     * cell is filled, its paragraph is shaded, or the run itself is. Everywhere else — an unfilled
+     * cell, a plain paragraph, a table border — the thing <em>is</em> the colour, and takes the
+     * colour itself.
+     *
+     * <p>Every sentinel present is resolved, not just the slots the palette knows about. One
+     * nobody configured still becomes black or white rather than being left alone, because the
+     * alternative is shipping the reserved amber to a client.
+     */
+    private void resolveColourSentinels(Object node, ReportData.ReportVulnerability v) {
+        resolveColourSentinels(node, v, false);
+    }
+
+    /** @param onColour whether anything here sits on a sentinel-filled background */
+    private void resolveColourSentinels(Object node, ReportData.ReportVulnerability v,
+                                        boolean onColour) {
+        if (node instanceof JAXBElement<?> element) node = element.getValue();
+        if (node == null) return;
+
+        if (node instanceof Tc cell) {
+            // A cell resets the context: what it is nested inside says nothing about whether its
+            // own text is on a colour.
+            onColour = resolveCellColours(cell, v);
+        } else if (node instanceof Tbl table) {
+            resolveTableColours(table, v);
+        } else if (node instanceof P paragraph) {
+            onColour = resolveParagraphColours(paragraph, v, onColour);
+        } else if (node instanceof R run) {
+            resolveRunProperties(run.getRPr(), v, onColour);
+            return;
+        }
+
+        if (node instanceof ContentAccessor accessor) {
+            for (Object child : accessor.getContent()) {
+                resolveColourSentinels(child, v, onColour);
+            }
+        }
+    }
+
+    /** @return whether this cell is filled with a sentinel, so its text is on a colour */
+    private boolean resolveCellColours(Tc cell, ReportData.ReportVulnerability v) {
+        TcPr properties = cell.getTcPr();
+        if (properties == null) return false;
+
+        boolean filled = resolveShading(properties.getShd(), v);
+        TcPrInner.TcBorders borders = properties.getTcBorders();
+        if (borders != null) {
+            resolveBorder(borders.getTop(), v);
+            resolveBorder(borders.getBottom(), v);
+            resolveBorder(borders.getLeft(), v);
+            resolveBorder(borders.getRight(), v);
+            resolveBorder(borders.getInsideH(), v);
+            resolveBorder(borders.getInsideV(), v);
+        }
+        return filled;
+    }
+
+    private void resolveTableColours(Tbl table, ReportData.ReportVulnerability v) {
+        if (table.getTblPr() == null) return;
+        resolveShading(table.getTblPr().getShd(), v);
+
+        TblBorders borders = table.getTblPr().getTblBorders();
+        if (borders != null) {
+            resolveBorder(borders.getTop(), v);
+            resolveBorder(borders.getBottom(), v);
+            resolveBorder(borders.getLeft(), v);
+            resolveBorder(borders.getRight(), v);
+            resolveBorder(borders.getInsideH(), v);
+            resolveBorder(borders.getInsideV(), v);
+        }
+    }
+
+    /** @return whether text in this paragraph is on a colour, given what it is sitting in */
+    private boolean resolveParagraphColours(P paragraph, ReportData.ReportVulnerability v,
+                                            boolean onColour) {
+        PPr properties = paragraph.getPPr();
+        if (properties == null) return onColour;
+
+        if (resolveShading(properties.getShd(), v)) onColour = true;
+
+        PPrBase.PBdr borders = properties.getPBdr();
+        if (borders != null) {
+            resolveBorder(borders.getTop(), v);
+            resolveBorder(borders.getBottom(), v);
+            resolveBorder(borders.getLeft(), v);
+            resolveBorder(borders.getRight(), v);
+        }
+
+        // The paragraph mark. A numbered or bulleted title takes its marker colour from here, not
+        // from any run — there is no run for "1." or the bullet glyph. Miss this and the marker
+        // keeps the reserved amber while the text beside it resolves, which reads as a font bug
+        // rather than as a template one.
+        resolveRunProperties(properties.getRPr(), v, onColour);
+
+        return onColour;
+    }
+
+    /**
+     * Resolves the colours on one set of run properties.
+     *
+     * <p>Takes {@link RPrAbstract} so it serves both a run's own {@code w:rPr} and a paragraph
+     * mark's, which are the same element in two positions and carry list-marker formatting in the
+     * second.
+     */
+    private void resolveRunProperties(RPrAbstract properties, ReportData.ReportVulnerability v,
+                                      boolean onColour) {
+        if (properties == null) return;
+
+        // Shading carried here puts this text on a colour whatever it is sitting in.
+        if (resolveShading(properties.getShd(), v)) onColour = true;
+
+        org.docx4j.wml.Color colour = properties.getColor();
+        if (colour != null) {
+            String resolved = resolveText(colour.getVal(), v, onColour);
+            if (resolved != null) colour.setVal(resolved);
+        }
+
+        // The underline follows the text it underlines.
+        U underline = properties.getU();
+        if (underline != null) {
+            String resolved = resolveText(underline.getColor(), v, onColour);
+            if (resolved != null) underline.setColor(resolved);
+        }
+    }
+
+    /**
+     * Resolves a shading's fill, and its pattern colour if that was painted too.
+     *
+     * @return whether the fill was a sentinel — the question that decides what text on it gets
+     */
+    private boolean resolveShading(CTShd shading, ReportData.ReportVulnerability v) {
+        if (shading == null) return false;
+
+        Integer patternSlot = ColourSentinels.slotOf(shading.getColor());
+        if (patternSlot != null) shading.setColor(palette.fill(patternSlot, v));
+
+        Integer fillSlot = ColourSentinels.slotOf(shading.getFill());
+        if (fillSlot == null) return false;
+        shading.setFill(palette.fill(fillSlot, v));
+        return true;
+    }
+
+    /** A border is the coloured thing, not something written on a colour, so it takes the colour. */
+    private void resolveBorder(CTBorder border, ReportData.ReportVulnerability v) {
+        if (border == null) return;
+        Integer slot = ColourSentinels.slotOf(border.getColor());
+        if (slot != null) border.setColor(palette.colourAsLine(slot, v));
+    }
+
+    /** The colour for painted text, or null when it was not a sentinel. */
+    private String resolveText(String painted, ReportData.ReportVulnerability v, boolean onColour) {
+        Integer slot = ColourSentinels.slotOf(painted);
+        if (slot == null) return null;
+        return onColour ? palette.text(slot, v) : palette.colourAsLine(slot, v);
+    }
+
+    // ── HYPERLINK field replacement ──────────────────────────────────────────
+
+    /**
+     * Turns each {@code ${varName}} token belonging to a {@code HYPERLINK} field into real Word
+     * hyperlinks, wherever the token sits in {@code part}.
+     *
+     * <p>This is what {@link #replaceHyperlink} cannot do. That method rewrites a hyperlink the
+     * template author had already inserted — it needs a {@code w:hyperlink} to be there before it
+     * starts. A {@code HYPERLINK} field's token is ordinary text, so the element and its
+     * relationship have to be built here, and the run holding the token split around them.
+     *
+     * <p>Must run before {@link #replacementText}, which would otherwise consume the token as
+     * plain text; the hyperlinks it produces survive that pass's marshal/unmarshal round trip
+     * untouched.
+     *
+     * <p>The token is assumed to sit inside a single run, as every other token pass in this class
+     * assumes. Word splits runs wherever it likes — at a spell-check boundary, on an rsid change —
+     * but {@code VariablePrepare.prepare} has already stitched those back together by the time
+     * this runs.
+     *
+     * @param part   the document, table row or body part to walk
+     * @param values variable name → the raw value the user typed
+     */
+    private void replaceHyperlinkFields(Object part, Map<String, String> values) {
+        if (part == null || values == null || values.isEmpty()) return;
+
+        // TraversalUtil visits a node's children, not the node itself, so a part that *is* a
+        // paragraph — which is what a findings block hands us, one paragraph at a time — would
+        // otherwise be skipped entirely and leave its tokens in the delivered report.
+        List<P> paragraphs = part instanceof P paragraph
+                ? List.of(paragraph)
+                : getParagraphs(part);
+
+        for (P paragraph : paragraphs) {
+            for (Map.Entry<String, String> entry : values.entrySet()) {
+                String token = "${" + entry.getKey() + "}";
+                String value = entry.getValue() == null ? "" : entry.getValue();
+                replaceTokenWithLinks(paragraph, token, value);
+            }
+        }
+    }
+
+    /**
+     * Replaces every occurrence of {@code token} in this paragraph's runs with the rendering of
+     * {@code value} — plain runs for the text, {@code w:hyperlink} elements for the addresses.
+     *
+     * <p>The run holding the token keeps its formatting: each plain piece is a clone of the
+     * original run, so a bold or coloured template line stays bold or coloured, and only the link
+     * text picks up Word's built-in Hyperlink style.
+     */
+    private void replaceTokenWithLinks(P paragraph, String token, String value) {
+        List<Object> content = paragraph.getContent();
+        for (int i = 0; i < content.size(); i++) {
+            Object item = content.get(i);
+            if (!(item instanceof R run)) continue;
+
+            String runText = getRunText(run);
+            if (runText == null || !runText.contains(token)) continue;
+
+            List<Object> rendered = new ArrayList<>();
+            int pos = 0;
+            int at;
+            while ((at = runText.indexOf(token, pos)) >= 0) {
+                if (at > pos) rendered.add(textRun(run, runText.substring(pos, at)));
+                for (SmartLink.Segment segment : SmartLink.parse(value)) {
+                    if (segment.isLink()) {
+                        rendered.add(linkTo(segment.text(), segment.href()));
+                    } else {
+                        rendered.add(textRun(run, segment.text()));
+                    }
+                }
+                pos = at + token.length();
+            }
+            if (pos < runText.length()) rendered.add(textRun(run, runText.substring(pos)));
+
+            content.remove(i);
+            content.addAll(i, rendered);
+            i += rendered.size() - 1;
+        }
+    }
+
+    /** The concatenated text of a run, or null if it holds no text at all. */
+    private String getRunText(R run) {
+        StringBuilder text = new StringBuilder();
+        boolean sawText = false;
+        for (Object item : run.getContent()) {
+            Object unwrapped = item instanceof JAXBElement<?> el ? el.getValue() : item;
+            if (unwrapped instanceof Text t) {
+                text.append(t.getValue() == null ? "" : t.getValue());
+                sawText = true;
+            }
+        }
+        return sawText ? text.toString() : null;
+    }
+
+    /** A copy of {@code template}'s formatting carrying {@code value} as its only text. */
+    private R textRun(R template, String value) {
+        R run = new R();
+        if (template.getRPr() != null) {
+            run.setRPr(XmlUtils.deepCopy(template.getRPr()));
+        }
+        Text text = new Text();
+        text.setValue(value);
+        text.setSpace("preserve");   // leading/trailing spaces around a link must survive
+        run.getContent().add(text);
+        return run;
+    }
+
+    /**
+     * A {@code w:hyperlink} pointing at {@code href}, with its own external relationship.
+     *
+     * <p>Each call adds a relationship rather than reusing one for a repeated target. Word is
+     * happy either way, and the same field referenced twice in a template is rare enough that
+     * de-duplicating would cost more in complexity than it saves in file size.
+     */
+    private P.Hyperlink linkTo(String displayText, String href) {
+        RelationshipsPart relsPart = mlp.getMainDocumentPart().getRelationshipsPart();
+        org.docx4j.relationships.Relationship rel = new org.docx4j.relationships.Relationship();
+        rel.setId(relsPart.getNextId());
+        rel.setType("http://schemas.openxmlformats.org/officeDocument/2006/"
+                + "relationships/hyperlink");
+        rel.setTarget(href);
+        rel.setTargetMode("External");
+        relsPart.getRelationships().getRelationship().add(rel);
+
+        P.Hyperlink hyperlink = new P.Hyperlink();
+        hyperlink.setId(rel.getId());
+        updateHyperlinkDisplayText(hyperlink, displayText);
+        return hyperlink;
+    }
+
+    /** The {@code HYPERLINK}-typed entries of a field-type map, as variable name → value. */
+    private Map<String, String> hyperlinkFieldValues(Map<String, FieldType> types,
+                                                     java.util.function.Function<String, String> valueOf) {
+        Map<String, String> values = new HashMap<>();
+        if (types == null) return values;
+        for (Map.Entry<String, FieldType> entry : types.entrySet()) {
+            if (entry.getValue() == FieldType.HYPERLINK) {
+                values.put(entry.getKey(), valueOf.apply(entry.getKey()));
+            }
+        }
+        return values;
+    }
+
     private String getHyperlinkDisplayText(P.Hyperlink hyperlink) {
         StringBuilder text = new StringBuilder();
         for (Object obj : hyperlink.getContent()) {
@@ -2078,53 +2334,7 @@ public class DocxUtils {
         return result;
     }
 
-    private int changeColorOfCell(Tr row, String variable, String color) {
-        for (Object para : getAllElementFromObject(row, P.class)) {
-            if (matchText((P) para, variable)) {
-                Tc cell = (Tc) ((P) para).getParent();
-                if (cell.getTcPr().getShd() != null) {
-                    cell.getTcPr().getShd().setFill(color);
-                } else {
-                    CTShd shader = new CTShd();
-                    shader.setColor("auto");
-                    shader.setFill(color);
-                    cell.getTcPr().setShd(shader);
-                }
-            }
-        }
-        return -1;
-    }
 
-    private int changeColorOfText(Tr row, String variable, String color) {
-        for (Object para : getAllElementFromObject(row, P.class)) {
-            if (matchText((P) para, variable)) {
-                for (Object o : ((P) para).getContent()) {
-                    if (o.getClass().getName().equals("org.docx4j.wml.R")) {
-                        BooleanDefaultTrue setBold = new BooleanDefaultTrue();
-                        setBold.setVal(false);
-                        BooleanDefaultTrue setI = new BooleanDefaultTrue();
-                        setI.setVal(false);
-                        if (((R) o).getRPr() != null) {
-                            if (((R) o).getRPr().getB() != null
-                                    && ((R) o).getRPr().getB().isVal()) setBold.setVal(true);
-                            if (((R) o).getRPr().getI() != null
-                                    && ((R) o).getRPr().getI().isVal()) setI.setVal(true);
-                        }
-                        org.docx4j.wml.ObjectFactory factory =
-                                new org.docx4j.wml.ObjectFactory();
-                        org.docx4j.wml.RPr rpr = factory.createRPr();
-                        org.docx4j.wml.Color colr = factory.createColor();
-                        colr.setVal(color);
-                        rpr.setColor(colr);
-                        rpr.setB(setBold);
-                        rpr.setI(setI);
-                        ((R) o).setRPr(rpr);
-                    }
-                }
-            }
-        }
-        return -1;
-    }
 
     private int indexOfRow(Tbl table, List<Object> paragraphs, String variable) {
         for (Object para : paragraphs) {

@@ -770,7 +770,7 @@ export default function AssessmentDetail() {
     (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
 
   const stringDropdownFields = fieldDefinitions
-    .filter((f) => f.fieldType === 'STRING' || f.fieldType === 'DROPDOWN')
+    .filter((f) => f.fieldType === 'STRING' || f.fieldType === 'DROPDOWN' || f.fieldType === 'HYPERLINK')
     .sort(sortByDisplayOrder);
   const richTextFields = fieldDefinitions
     .filter((f) => f.fieldType === 'RICH_TEXT')

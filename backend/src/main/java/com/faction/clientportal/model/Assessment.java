@@ -110,6 +110,16 @@ public class Assessment {
     private String templateFont;
 
     /**
+     * Snapshot of the template's colour palette — what each painted colour sentinel resolves to.
+     *
+     * <p>Snapshotted for the same reason the CSS is: the template can be deleted while assessments
+     * still reference it, and {@code applyLiveTemplateStyling} returns early on a null template.
+     * Without a copy here those reports would render every sentinel as black on white.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    private ReportPalette templatePalette;
+
+    /**
      * Snapshot of template scoring type (NATIVE, CVSS_31, CVSS_40)
      */
     private String scoringType;

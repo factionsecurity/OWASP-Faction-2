@@ -430,6 +430,7 @@ export default function OrgConfig() {
               <option value="STRING">String</option>
               <option value="DROPDOWN">Dropdown</option>
               <option value="RICH_TEXT">Rich Text</option>
+              <option value="HYPERLINK">Hyperlink</option>
             </Select>
           </div>
         </div>

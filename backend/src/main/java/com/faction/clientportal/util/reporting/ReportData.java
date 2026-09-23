@@ -1,6 +1,7 @@
 package com.faction.clientportal.util.reporting;
 
 import com.faction.clientportal.model.FieldType;
+import com.faction.clientportal.model.ReportPalette;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -48,6 +49,18 @@ public class ReportData {
 
     /** Vulnerabilities in display order */
     private List<ReportVulnerability> vulnerabilities;
+
+    /**
+     * The report template's colour palette — what each painted colour sentinel resolves to.
+     *
+     * <p>Read from the template rather than snapshotted onto the assessment, the way CSS and font
+     * are. Those snapshots exist for historical reasons and are re-read from the live template on
+     * every generation anyway (see {@code applyLiveTemplateStyling}), so a second copy of the
+     * palette would only ever be overwritten immediately.
+     *
+     * <p>Null for a template that has none, which resolves every sentinel to black on white.
+     */
+    private ReportPalette reportPalette;
 
     /**
      * The assessment's report sections in template order, or empty when the assessment has
