@@ -105,6 +105,9 @@ class AssessmentServiceTest {
     @Mock
     private AssessmentWorkflowMoveService workflowMoveService;
 
+    @Mock
+    private com.faction.clientportal.service.email.EventNotificationEmailSender eventEmailSender;
+
     @InjectMocks
     private AssessmentService assessmentService;
 
@@ -2131,5 +2134,130 @@ class AssessmentServiceTest {
                 .fieldValues(new HashMap<>())
                 .createdAt(LocalDateTime.now())
                 .build();
+    }
+
+    // ── which saves are worth an email ───────────────────────────────────────
+
+    private void stubUpdate() {
+        when(assessmentRepository.findByIdAndDeletedAtIsNull(testAssessment.getId()))
+                .thenReturn(Optional.of(testAssessment));
+        when(assessmentRepository.save(any(Assessment.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    private com.faction.clientportal.model.EmailNotificationEvent emailedEvent() {
+        ArgumentCaptor<com.faction.clientportal.service.email.EventNotificationEmailSender.Event> captor =
+                ArgumentCaptor.forClass(
+                        com.faction.clientportal.service.email.EventNotificationEmailSender.Event.class);
+        verify(eventEmailSender).send(captor.capture());
+        return captor.getValue().getEvent();
+    }
+
+    /**
+     * The assessment screen saves as you type, so a stakeholder list was getting an "Assessment
+     * changed" email for every edit to a custom field — and for every keystroke's worth of autosave
+     * behind it. Nothing in that mail told the reader what changed, because nothing they care about
+     * had.
+     */
+    @Test
+    void updateAssessment_fieldValueEditSendsNoEmail() {
+        com.faction.clientportal.model.UserDefinedField summary =
+                com.faction.clientportal.model.UserDefinedField.builder()
+                        .id("f-1").variableName("summary1").displayName("Executive Summary")
+                        .fieldType(com.faction.clientportal.model.FieldType.RICH_TEXT)
+                        .build();
+        testAssessment.getFieldDefinitions().add(summary);
+        stubUpdate();
+
+        assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder()
+                        .fieldValues(java.util.Map.of("f-1", "Rewritten summary"))
+                        .build(),
+                "testuser");
+
+        verify(eventEmailSender, never()).send(any());
+    }
+
+    @Test
+    void updateAssessment_renamingOrRescopingSendsNoEmail() {
+        stubUpdate();
+
+        assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder()
+                        .name("Renamed assessment")
+                        .scope("A wider scope")
+                        .build(),
+                "testuser");
+
+        verify(eventEmailSender, never()).send(any());
+    }
+
+    /** Assessor changes are announced to the person assigned, not to the whole stakeholder list. */
+    @Test
+    void updateAssessment_assessorChangeSendsNoEmail() {
+        stubUpdate();
+
+        assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder()
+                        .assessorIds(List.of("user-2"))
+                        .build(),
+                "testuser");
+
+        verify(eventEmailSender, never()).send(any());
+    }
+
+    @Test
+    void updateAssessment_statusChangeSendsTheChangedEmail() {
+        stubUpdate();
+
+        assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder().status("Testing").build(),
+                "testuser");
+
+        assertThat(emailedEvent())
+                .isEqualTo(com.faction.clientportal.model.EmailNotificationEvent.ASSESSMENT_CHANGED);
+    }
+
+    @Test
+    void updateAssessment_startDateChangeSendsTheChangedEmail() {
+        stubUpdate();
+
+        assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder()
+                        .startDate(testAssessment.getStartDate().plusDays(3))
+                        .build(),
+                "testuser");
+
+        assertThat(emailedEvent())
+                .isEqualTo(com.faction.clientportal.model.EmailNotificationEvent.ASSESSMENT_CHANGED);
+    }
+
+    @Test
+    void updateAssessment_plannedEndDateChangeSendsTheChangedEmail() {
+        stubUpdate();
+
+        assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder()
+                        .plannedEndDate(testAssessment.getPlannedEndDate().plusDays(7))
+                        .build(),
+                "testuser");
+
+        assertThat(emailedEvent())
+                .isEqualTo(com.faction.clientportal.model.EmailNotificationEvent.ASSESSMENT_CHANGED);
+    }
+
+    /** Re-saving the same dates is not a date change. */
+    @Test
+    void updateAssessment_resendingTheSameDatesSendsNoEmail() {
+        stubUpdate();
+
+        assessmentService.updateAssessment(testAssessment.getId(),
+                UpdateAssessmentRequest.builder()
+                        .startDate(testAssessment.getStartDate())
+                        .plannedEndDate(testAssessment.getPlannedEndDate())
+                        .build(),
+                "testuser");
+
+        verify(eventEmailSender, never()).send(any());
     }
 }
