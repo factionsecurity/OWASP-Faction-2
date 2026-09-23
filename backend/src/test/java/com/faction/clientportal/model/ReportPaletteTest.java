@@ -1,5 +1,6 @@
 package com.faction.clientportal.model;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,18 +29,35 @@ class ReportPaletteTest {
     }
 
     /**
-     * The defaults are the web UI's own severity palette, so a report and the screen it came from
-     * do not disagree about what Critical looks like. Light-mode values, because a report is
-     * printed on white.
+     * The defaults are the severity badge colors every finding list and drawer in Faction shows,
+     * so a report and the screen it came from agree about what Critical looks like.
+     *
+     * <p>The badge color is the <em>color itself</em> — the cell fill, and the text color wherever
+     * the text is not on a filled cell. The text <em>on</em> it follows the solid count pills on the
+     * Engagements page: white, except dark on Medium's amber, where white would not read.
      */
     @Test
-    void theSeverityDefaultsMatchTheWebUiPalette() {
+    void theSeverityDefaultsAreTheBadgeColorsWithPillTextOnThem() {
         ReportPalette palette = ReportPalette.defaults();
 
         assertThat(palette.getSeverity().get("CRITICAL"))
-                .returns("B91C1C", ReportPalette.ColourPair::getText)
-                .returns("FCE1E1", ReportPalette.ColourPair::getFill);
-        assertThat(palette.getSeverity().get("INFORMATIONAL"))
+                .returns("EF4444", ReportPalette.ColourPair::getFill)
+                .returns("FFFFFF", ReportPalette.ColourPair::getText);
+        assertThat(palette.getSeverity().get("HIGH"))
+                .returns("F97316", ReportPalette.ColourPair::getFill)
+                .returns("FFFFFF", ReportPalette.ColourPair::getText);
+        assertThat(palette.getSeverity().get("MEDIUM"))
+                .returns("F59E0B", ReportPalette.ColourPair::getFill)
+                .returns("1A1A1A", ReportPalette.ColourPair::getText);
+        assertThat(palette.getSeverity().get("LOW"))
+                .returns("3B82F6", ReportPalette.ColourPair::getFill)
+                .returns("FFFFFF", ReportPalette.ColourPair::getText);
+    }
+
+    /** Informational was deliberately left out of the badge-color change. */
+    @Test
+    void informationalKeepsItsOriginalDefault() {
+        assertThat(ReportPalette.defaults().getSeverity().get("INFORMATIONAL"))
                 .returns("334155", ReportPalette.ColourPair::getText)
                 .returns("EFF0F2", ReportPalette.ColourPair::getFill);
     }
@@ -85,7 +103,7 @@ class ReportPaletteTest {
     void copyingCarriesWhetherTheRatingsWereSplit() {
         ReportPalette palette = ReportPalette.defaults();
         palette.setSeparateRatingColours(true);
-        palette.getImpact().put("LOW", ReportPalette.ColourPair.of("123456", "ABCDEF"));
+        palette.putImpact("LOW", ReportPalette.ColourPair.of("123456", "ABCDEF"));
 
         ReportPalette copy = palette.copy();
 
@@ -97,11 +115,12 @@ class ReportPaletteTest {
     @Test
     void theSeededRatingDimensionsDoNotShareObjects() {
         ReportPalette palette = ReportPalette.defaults();
+        String seeded = palette.getSeverity().get("CRITICAL").getText();
 
-        palette.getLikelihood().put("CRITICAL", ReportPalette.ColourPair.of("000000", "FFFFFF"));
+        palette.putLikelihood("CRITICAL", ReportPalette.ColourPair.of("000000", "FFFFFF"));
 
-        assertThat(palette.getSeverity().get("CRITICAL").getText()).isEqualTo("B91C1C");
-        assertThat(palette.getImpact().get("CRITICAL").getText()).isEqualTo("B91C1C");
+        assertThat(palette.getSeverity().get("CRITICAL").getText()).isEqualTo(seeded);
+        assertThat(palette.getImpact().get("CRITICAL").getText()).isEqualTo(seeded);
     }
 
     // ── slot allocation ──────────────────────────────────────────────────────
@@ -178,15 +197,16 @@ class ReportPaletteTest {
     void copyingSharesNothingMutable() {
         ReportPalette original = ReportPalette.defaults();
         original.allocateSlot("risk_rating");
-        original.getCustomFields().get("risk_rating").getValues()
-                .put("Elevated", ReportPalette.ColourPair.of("111111", "EEEEEE"));
+        original.getCustomFields().get("risk_rating")
+                .putValue("Elevated", ReportPalette.ColourPair.of("111111", "EEEEEE"));
 
+        String originalCritical = original.getSeverity().get("CRITICAL").getText();
         ReportPalette copy = original.copy();
-        copy.getSeverity().put("CRITICAL", ReportPalette.ColourPair.of("000000", "FFFFFF"));
-        copy.getCustomFields().get("risk_rating").getValues()
-                .put("Elevated", ReportPalette.ColourPair.of("222222", "DDDDDD"));
+        copy.putSeverity("CRITICAL", ReportPalette.ColourPair.of("000000", "FFFFFF"));
+        copy.getCustomFields().get("risk_rating")
+                .putValue("Elevated", ReportPalette.ColourPair.of("222222", "DDDDDD"));
 
-        assertThat(original.getSeverity().get("CRITICAL").getText()).isEqualTo("B91C1C");
+        assertThat(original.getSeverity().get("CRITICAL").getText()).isEqualTo(originalCritical);
         assertThat(original.getCustomFields().get("risk_rating").getValues().get("Elevated").getText())
                 .isEqualTo("111111");
     }
@@ -201,5 +221,49 @@ class ReportPaletteTest {
 
         assertThat(copy.getCustomFields().get("data_class").getSlot()).isEqualTo(5);
         assertThat(copy.allocateSlot("exposure")).isEqualTo(6);
+    }
+
+    // ── jsonb round trip ─────────────────────────────────────────────────────
+
+    /**
+     * The palette is persisted as a jsonb column, so Jackson has to be able to write it and read it
+     * back unchanged. Repository tests here run against mocks and would not notice if it could not.
+     *
+     * <p>Worth pinning because the getters hand out unmodifiable views and the setters copy: the
+     * kind of change that can quietly stop a column round-tripping.
+     */
+    @Test
+    void survivesAJsonRoundTrip() throws Exception {
+        ReportPalette original = ReportPalette.defaults();
+        original.putLikelihood("High", ReportPalette.ColourPair.of("AA0000", "FFDDDD"));
+        original.allocateSlot("risk_rating");
+        original.getCustomFields().get("risk_rating")
+                .putValue("Elevated", ReportPalette.ColourPair.of("111111", "EEEEEE"));
+        original.setSeparateRatingColours(true);
+
+        ObjectMapper mapper = new ObjectMapper();
+        ReportPalette read = mapper.readValue(mapper.writeValueAsString(original), ReportPalette.class);
+
+        assertThat(read.getSeverity()).isEqualTo(original.getSeverity());
+        assertThat(read.getLikelihood()).isEqualTo(original.getLikelihood());
+        assertThat(read.getImpact()).isEqualTo(original.getImpact());
+        assertThat(read.getSeparateRatingColours()).isTrue();
+        assertThat(read.getNextCustomSlot()).isEqualTo(original.getNextCustomSlot());
+        assertThat(read.getCustomFields().get("risk_rating").getSlot()).isEqualTo(4);
+        assertThat(read.getCustomFields().get("risk_rating").getValues().get("Elevated").getFill())
+                .isEqualTo("EEEEEE");
+    }
+
+    /**
+     * Only the real fields are written. A derived getter would add a property that comes back as an
+     * unknown field on read and can poison the stored column.
+     */
+    @Test
+    void writesOnlyItsOwnFields() throws Exception {
+        String json = new ObjectMapper().writeValueAsString(ReportPalette.defaults());
+
+        assertThat(new ObjectMapper().readTree(json).fieldNames()).toIterable()
+                .containsExactlyInAnyOrder("severity", "likelihood", "impact", "customFields",
+                        "separateRatingColours", "nextCustomSlot");
     }
 }

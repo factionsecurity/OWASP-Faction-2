@@ -31,8 +31,11 @@ class DocxUtilsPaletteTest {
 
     private ReportPalette palette() {
         ReportPalette palette = ReportPalette.defaults();
-        palette.getLikelihood().put("High", ReportPalette.ColourPair.of("AA0000", "FFDDDD"));
-        palette.getImpact().put("Low", ReportPalette.ColourPair.of("0000AA", "DDDDFF"));
+        // Set here rather than borrowed from defaults(), so these tests are about resolution and
+        // do not change meaning when the seeded colors do.
+        palette.putSeverity("CRITICAL", ReportPalette.ColourPair.of("B91C1C", "FCE1E1"));
+        palette.putLikelihood("High", ReportPalette.ColourPair.of("AA0000", "FFDDDD"));
+        palette.putImpact("Low", ReportPalette.ColourPair.of("0000AA", "DDDDFF"));
         return palette;
     }
 
@@ -43,7 +46,7 @@ class DocxUtilsPaletteTest {
      */
     private ReportPalette whiteOnRed() {
         ReportPalette palette = palette();
-        palette.getSeverity().put("CRITICAL", ReportPalette.ColourPair.of("FFFFFF", "C00000"));
+        palette.putSeverity("CRITICAL", ReportPalette.ColourPair.of("FFFFFF", "C00000"));
         return palette;
     }
 
@@ -126,8 +129,8 @@ class DocxUtilsPaletteTest {
     void aCustomFieldResolvesOnItsAllocatedSlot() throws Exception {
         ReportPalette palette = palette();
         int slot = palette.allocateSlot("risk_rating");
-        palette.getCustomFields().get("risk_rating").getValues()
-                .put("Elevated", ReportPalette.ColourPair.of("7C2D12", "FFEDD5"));
+        palette.getCustomFields().get("risk_rating")
+                .putValue("Elevated", ReportPalette.ColourPair.of("7C2D12", "FFEDD5"));
 
         ReportData.ReportVulnerability vuln = ReportData.ReportVulnerability.builder()
                 .name("SQL Injection").severityKey("CRITICAL")

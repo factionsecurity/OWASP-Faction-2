@@ -34,8 +34,11 @@ class PaletteResolverTest {
 
     private ReportPalette paletteWithSeverity() {
         ReportPalette palette = ReportPalette.defaults();
-        palette.getLikelihood().put("High", ReportPalette.ColourPair.of("AA0000", "FFDDDD"));
-        palette.getImpact().put("Low", ReportPalette.ColourPair.of("0000AA", "DDDDFF"));
+        // Explicit, so the lookup tests do not lean on whatever the seeded defaults are.
+        palette.putSeverity("CRITICAL", ReportPalette.ColourPair.of("B91C1C", "FCE1E1"));
+        palette.putSeverity("HIGH", ReportPalette.ColourPair.of("C2410C", "FEE9DA"));
+        palette.putLikelihood("High", ReportPalette.ColourPair.of("AA0000", "FFDDDD"));
+        palette.putImpact("Low", ReportPalette.ColourPair.of("0000AA", "DDDDFF"));
         return palette;
     }
 
@@ -75,8 +78,8 @@ class PaletteResolverTest {
     void aCustomFieldResolvesFromItsOwnValue() {
         ReportPalette palette = ReportPalette.defaults();
         int slot = palette.allocateSlot("risk_rating");
-        palette.getCustomFields().get("risk_rating").getValues()
-                .put("Elevated", ReportPalette.ColourPair.of("7C2D12", "FFEDD5"));
+        palette.getCustomFields().get("risk_rating")
+                .putValue("Elevated", ReportPalette.ColourPair.of("7C2D12", "FFEDD5"));
 
         Map<String, String> values = new LinkedHashMap<>();
         values.put("risk_rating", "Elevated");
@@ -133,7 +136,7 @@ class PaletteResolverTest {
     @Test
     void aHalfConfiguredPairFallsBackOnlyForTheMissingHalf() {
         ReportPalette palette = ReportPalette.defaults();
-        palette.getLikelihood().put("High", ReportPalette.ColourPair.of("AA0000", null));
+        palette.putLikelihood("High", ReportPalette.ColourPair.of("AA0000", null));
 
         PaletteResolver resolver = new PaletteResolver(palette);
         var vuln = finding("CRITICAL", "High", null);
@@ -150,7 +153,7 @@ class PaletteResolverTest {
     @Test
     void aColourIsNormalisedToUpperCaseWithoutItsHash() {
         ReportPalette palette = ReportPalette.defaults();
-        palette.getImpact().put("High", ReportPalette.ColourPair.of("#ab12cd", "#EF34ab"));
+        palette.putImpact("High", ReportPalette.ColourPair.of("#ab12cd", "#EF34ab"));
 
         PaletteResolver resolver = new PaletteResolver(palette);
         var vuln = finding("CRITICAL", null, "High");
@@ -171,7 +174,7 @@ class PaletteResolverTest {
     @Test
     void likelihoodMatchesWhicheverCaseTheValueWasStoredIn() {
         ReportPalette palette = ReportPalette.defaults();
-        palette.getLikelihood().put("CRITICAL", ReportPalette.ColourPair.of("AA0000", "FFDDDD"));
+        palette.putLikelihood("CRITICAL", ReportPalette.ColourPair.of("AA0000", "FFDDDD"));
         PaletteResolver resolver = new PaletteResolver(palette);
 
         assertThat(resolver.text(ColourSentinels.SLOT_LIKELIHOOD, finding("CRITICAL", "Critical", null)))
@@ -185,7 +188,7 @@ class PaletteResolverTest {
     @Test
     void impactMatchesWhicheverCaseTheValueWasStoredIn() {
         ReportPalette palette = ReportPalette.defaults();
-        palette.getImpact().put("HIGH", ReportPalette.ColourPair.of("0000AA", "DDDDFF"));
+        palette.putImpact("HIGH", ReportPalette.ColourPair.of("0000AA", "DDDDFF"));
 
         assertThat(new PaletteResolver(palette)
                 .fill(ColourSentinels.SLOT_IMPACT, finding("CRITICAL", null, "High")))
@@ -201,7 +204,7 @@ class PaletteResolverTest {
     @Test
     void aMixedCasePaletteKeyStillMatches() {
         ReportPalette palette = ReportPalette.builder().build();
-        palette.getLikelihood().put("Medium", ReportPalette.ColourPair.of("BB7700", "FFEECC"));
+        palette.putLikelihood("Medium", ReportPalette.ColourPair.of("BB7700", "FFEECC"));
 
         assertThat(new PaletteResolver(palette)
                 .text(ColourSentinels.SLOT_LIKELIHOOD, finding("CRITICAL", "MEDIUM", null)))
@@ -216,8 +219,8 @@ class PaletteResolverTest {
     @Test
     void anExactKeyBeatsACaseInsensitiveOne() {
         ReportPalette palette = ReportPalette.builder().build();
-        palette.getLikelihood().put("Medium", ReportPalette.ColourPair.of("BB7700", "FFEECC"));
-        palette.getLikelihood().put("MEDIUM", ReportPalette.ColourPair.of("112233", "445566"));
+        palette.putLikelihood("Medium", ReportPalette.ColourPair.of("BB7700", "FFEECC"));
+        palette.putLikelihood("MEDIUM", ReportPalette.ColourPair.of("112233", "445566"));
 
         assertThat(new PaletteResolver(palette)
                 .text(ColourSentinels.SLOT_LIKELIHOOD, finding("CRITICAL", "MEDIUM", null)))
@@ -229,8 +232,8 @@ class PaletteResolverTest {
     void aCustomFieldValueIsMatchedCaseInsensitivelyToo() {
         ReportPalette palette = ReportPalette.defaults();
         int slot = palette.allocateSlot("risk_rating");
-        palette.getCustomFields().get("risk_rating").getValues()
-                .put("Elevated", ReportPalette.ColourPair.of("7C2D12", "FFEDD5"));
+        palette.getCustomFields().get("risk_rating")
+                .putValue("Elevated", ReportPalette.ColourPair.of("7C2D12", "FFEDD5"));
 
         Map<String, String> values = new LinkedHashMap<>();
         values.put("risk_rating", "elevated");

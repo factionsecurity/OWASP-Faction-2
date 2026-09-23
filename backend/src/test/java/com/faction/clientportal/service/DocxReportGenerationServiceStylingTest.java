@@ -95,7 +95,7 @@ class DocxReportGenerationServiceStylingTest {
         assessment.setTemplatePalette(ReportPalette.defaults());
 
         ReportPalette edited = ReportPalette.defaults();
-        edited.getSeverity().put("CRITICAL", ReportPalette.ColourPair.of("990000", "FFCCCC"));
+        edited.putSeverity("CRITICAL", ReportPalette.ColourPair.of("990000", "FFCCCC"));
         ReportTemplate template = ReportTemplate.builder()
                 .id("t1").css("body {}").font("Arial").templateFileId("file-1")
                 .reportPalette(edited).build();

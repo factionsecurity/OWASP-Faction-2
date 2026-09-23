@@ -72,8 +72,7 @@ class ReportTemplatePaletteTest {
 
         ReportPalette palette = captureSaved().getReportPalette();
         assertThat(palette).isNotNull();
-        assertThat(palette.getSeverity().get("CRITICAL").getText()).isEqualTo("B91C1C");
-        assertThat(palette.getSeverity().get("CRITICAL").getFill()).isEqualTo("FCE1E1");
+        assertThat(palette.getSeverity()).isEqualTo(ReportPalette.defaults().getSeverity());
     }
 
     /**
@@ -128,8 +127,9 @@ class ReportTemplatePaletteTest {
         assertThat(clonePalette.getSeverity()).isNotSameAs(original.getSeverity());
         assertThat(clonePalette.getCustomFields().get("risk_rating").getSlot()).isEqualTo(4);
 
-        clonePalette.getSeverity().put("CRITICAL", ReportPalette.ColourPair.of("000000", "FFFFFF"));
-        assertThat(original.getSeverity().get("CRITICAL").getText()).isEqualTo("B91C1C");
+        String originalCritical = original.getSeverity().get("CRITICAL").getText();
+        clonePalette.putSeverity("CRITICAL", ReportPalette.ColourPair.of("000000", "FFFFFF"));
+        assertThat(original.getSeverity().get("CRITICAL").getText()).isEqualTo(originalCritical);
     }
 
     /**
@@ -175,8 +175,8 @@ class ReportTemplatePaletteTest {
         existing(ReportPalette.defaults());
 
         ReportPalette edited = ReportPalette.defaults();
-        edited.getSeverity().put("CRITICAL", ReportPalette.ColourPair.of("990000", "FFCCCC"));
-        edited.getLikelihood().put("High", ReportPalette.ColourPair.of("AA0000", "FFDDDD"));
+        edited.putSeverity("CRITICAL", ReportPalette.ColourPair.of("990000", "FFCCCC"));
+        edited.putLikelihood("High", ReportPalette.ColourPair.of("AA0000", "FFDDDD"));
 
         UpdateReportTemplateRequest request = new UpdateReportTemplateRequest();
         request.setReportPalette(edited);
@@ -195,7 +195,7 @@ class ReportTemplatePaletteTest {
     @Test
     void anUpdateWithNoPaletteLeavesTheExistingOneAlone() {
         ReportPalette original = ReportPalette.defaults();
-        original.getSeverity().put("CRITICAL", ReportPalette.ColourPair.of("990000", "FFCCCC"));
+        original.putSeverity("CRITICAL", ReportPalette.ColourPair.of("990000", "FFCCCC"));
         existing(original);
 
         UpdateReportTemplateRequest request = new UpdateReportTemplateRequest();

@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -75,19 +76,83 @@ public class ReportPalette {
     @Builder.Default
     private Integer nextCustomSlot = 4;
 
+    // ── reading ──────────────────────────────────────────────────────────────
+    //
+    // The four maps are handed out as read-only views. They are the palette's own state, and a
+    // caller that mutated one would change a template's colours without going through anything
+    // that saves them — CodeQL flags the same thing as exposing internal representation. Use the
+    // put* methods below to change a colour.
+
+    public Map<String, ColourPair> getSeverity() {
+        return Collections.unmodifiableMap(severity());
+    }
+
+    public Map<String, ColourPair> getLikelihood() {
+        return Collections.unmodifiableMap(likelihood());
+    }
+
+    public Map<String, ColourPair> getImpact() {
+        return Collections.unmodifiableMap(impact());
+    }
+
+    public Map<String, FieldColours> getCustomFields() {
+        return Collections.unmodifiableMap(customFields());
+    }
+
+    // ── writing ──────────────────────────────────────────────────────────────
+
+    /** Sets the colours for one severity, keyed on {@link VulnerabilitySeverity#name()}. */
+    public void putSeverity(String severityName, ColourPair colours) {
+        severity().put(severityName, colours);
+    }
+
+    /** Sets the colours for one likelihood value, keyed on the value stored on the finding. */
+    public void putLikelihood(String value, ColourPair colours) {
+        likelihood().put(value, colours);
+    }
+
+    /** Sets the colours for one impact value, keyed on the value stored on the finding. */
+    public void putImpact(String value, ColourPair colours) {
+        impact().put(value, colours);
+    }
+
+    // Stored copies, so a caller keeping a reference to the map it passed in cannot change the
+    // palette afterwards. Jackson and Hibernate hand over a fresh map, so the copy costs nothing.
+
+    public void setSeverity(Map<String, ColourPair> colours) {
+        this.severity = colours == null ? new LinkedHashMap<>() : new LinkedHashMap<>(colours);
+    }
+
+    public void setLikelihood(Map<String, ColourPair> colours) {
+        this.likelihood = colours == null ? new LinkedHashMap<>() : new LinkedHashMap<>(colours);
+    }
+
+    public void setImpact(Map<String, ColourPair> colours) {
+        this.impact = colours == null ? new LinkedHashMap<>() : new LinkedHashMap<>(colours);
+    }
+
+    public void setCustomFields(Map<String, FieldColours> fields) {
+        this.customFields = fields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(fields);
+    }
+
     /**
-     * A palette for a newly created template: every severity coloured from the web UI's own
-     * palette, so a report and the screen it came from agree about what Critical looks like.
+     * A palette for a newly created template, so a report and the screen it came from agree about
+     * what Critical looks like.
      *
-     * <p>The light-mode values from {@code SeverityBadge.css}, since a report is printed on white,
-     * with its {@code rgba(…, 0.16)} backgrounds flattened over white into opaque hex.
+     * <p>The fill — the color itself, used for a filled cell and for text that is not on one — is
+     * the severity badge color from {@code SeverityBadge.css}, the one every finding list and drawer
+     * shows. The text on it follows the solid count pills in {@code Engagements.css}: white, except
+     * dark on Medium's amber, where white does not read.
+     *
+     * <p>Informational keeps a pale tint and a slate text color from before; it was left out when
+     * the others moved to the badge colors.
      */
     public static ReportPalette defaults() {
         Map<String, ColourPair> severity = new LinkedHashMap<>();
-        severity.put(VulnerabilitySeverity.CRITICAL.name(),      ColourPair.of("B91C1C", "FCE1E1"));
-        severity.put(VulnerabilitySeverity.HIGH.name(),          ColourPair.of("C2410C", "FEE9DA"));
-        severity.put(VulnerabilitySeverity.MEDIUM.name(),        ColourPair.of("B45309", "FDEFD8"));
-        severity.put(VulnerabilitySeverity.LOW.name(),           ColourPair.of("1D4ED8", "E0EBFE"));
+        severity.put(VulnerabilitySeverity.CRITICAL.name(),      ColourPair.of("FFFFFF", "EF4444"));
+        severity.put(VulnerabilitySeverity.HIGH.name(),          ColourPair.of("FFFFFF", "F97316"));
+        severity.put(VulnerabilitySeverity.MEDIUM.name(),        ColourPair.of("1A1A1A", "F59E0B"));
+        severity.put(VulnerabilitySeverity.LOW.name(),           ColourPair.of("FFFFFF", "3B82F6"));
         severity.put(VulnerabilitySeverity.INFORMATIONAL.name(), ColourPair.of("334155", "EFF0F2"));
 
         // Likelihood and impact are the same five levels as severity, so they seed with the same
@@ -141,6 +206,21 @@ public class ReportPalette {
                 .build();
     }
 
+    private Map<String, ColourPair> severity() {
+        if (severity == null) severity = new LinkedHashMap<>();
+        return severity;
+    }
+
+    private Map<String, ColourPair> likelihood() {
+        if (likelihood == null) likelihood = new LinkedHashMap<>();
+        return likelihood;
+    }
+
+    private Map<String, ColourPair> impact() {
+        if (impact == null) impact = new LinkedHashMap<>();
+        return impact;
+    }
+
     private Map<String, FieldColours> customFields() {
         if (customFields == null) customFields = new LinkedHashMap<>();
         return customFields;
@@ -180,6 +260,25 @@ public class ReportPalette {
 
         @Builder.Default
         private Map<String, ColourPair> values = new LinkedHashMap<>();
+
+        /** Read-only, for the same reason as the palette's own maps. Use {@link #putValue}. */
+        public Map<String, ColourPair> getValues() {
+            return Collections.unmodifiableMap(liveValues());
+        }
+
+        public void setValues(Map<String, ColourPair> colours) {
+            this.values = colours == null ? new LinkedHashMap<>() : new LinkedHashMap<>(colours);
+        }
+
+        /** Sets the colours for one of this field's values. */
+        public void putValue(String value, ColourPair colours) {
+            liveValues().put(value, colours);
+        }
+
+        private Map<String, ColourPair> liveValues() {
+            if (values == null) values = new LinkedHashMap<>();
+            return values;
+        }
 
         public FieldColours copy() {
             return FieldColours.builder().slot(slot).values(copyOf(values)).build();

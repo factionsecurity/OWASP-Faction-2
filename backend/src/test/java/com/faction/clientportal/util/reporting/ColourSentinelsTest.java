@@ -150,11 +150,20 @@ class ColourSentinelsTest {
         }
     }
 
-    /** Rough perceived brightness, 0–1. Enough to tell "amber" from "nearly black". */
+    /**
+     * Rough perceived brightness, 0–1. Enough to tell "amber" from "nearly black".
+     *
+     * <p>A sentinel that is not six hex digits fails the test rather than escaping as an unchecked
+     * {@link NumberFormatException}, which would report as an error with no mention of the value.
+     */
     private static double luminance(String hex) {
-        int r = Integer.parseInt(hex.substring(0, 2), 16);
-        int g = Integer.parseInt(hex.substring(2, 4), 16);
-        int b = Integer.parseInt(hex.substring(4, 6), 16);
-        return (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+        try {
+            int r = Integer.parseInt(hex.substring(0, 2), 16);
+            int g = Integer.parseInt(hex.substring(2, 4), 16);
+            int b = Integer.parseInt(hex.substring(4, 6), 16);
+            return (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+        } catch (NumberFormatException | IndexOutOfBoundsException e) {
+            throw new AssertionError("Sentinel is not a six-digit hex colour: " + hex, e);
+        }
     }
 }

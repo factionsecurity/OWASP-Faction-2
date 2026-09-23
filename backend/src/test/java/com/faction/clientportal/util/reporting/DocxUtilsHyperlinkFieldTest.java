@@ -414,8 +414,11 @@ class DocxUtilsHyperlinkFieldTest {
                 .build());
         utils.generateDocx("", null);
 
-        String headerXml = XmlUtils.marshaltoString(
-                pkg.getHeaderFooterPolicy().getDefaultHeader().getJaxbElement(), true, false);
+        // Via the document model's section rather than the package: the package-level
+        // getHeaderFooterPolicy() is deprecated.
+        HeaderPart defaultHeader = pkg.getDocumentModel().getSections().get(0)
+                .getHeaderFooterPolicy().getDefaultHeader();
+        String headerXml = XmlUtils.marshaltoString(defaultHeader.getJaxbElement(), true, false);
         assertThat(headerXml).contains("ops@acme.com").doesNotContain("${contact}");
     }
 
