@@ -1028,4 +1028,143 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .build();
         return assessmentRepository.save(assessment);
     }
+
+    // ── CSV import ─────────────────────────────────────────────────────────
+
+    private org.springframework.mock.web.MockMultipartFile importCsv(String body) {
+        return new org.springframework.mock.web.MockMultipartFile("file", "assessments.csv", "text/csv",
+                body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void importTemplate_IsDownloadable() throws Exception {
+        mockMvc.perform(get("/api/v1/assessments/import/template")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=assessment-import-template.csv"))
+                .andExpect(content().string(startsWith("name,appId,applicationName,assessmentType")));
+    }
+
+    @Test
+    void importPreview_ReturnsRowsWithoutWriting() throws Exception {
+        mockMvc.perform(multipart("/api/v1/assessments/import/preview")
+                        .file(importCsv("""
+                                name,applicationName,assessmentType,startDate,durationDays
+                                CSV One,test application,penetration test,2026-10-05,5
+                                """))
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.valid").value(true))
+                .andExpect(jsonPath("$.data.rows[0].application").value("Test Application"))
+                .andExpect(jsonPath("$.data.rows[0].endDate").value("2026-10-10"));
+
+        org.assertj.core.api.Assertions.assertThat(assessmentRepository.count()).isZero();
+    }
+
+    @Test
+    void import_CreatesAssessments() throws Exception {
+        mockMvc.perform(multipart("/api/v1/assessments/import")
+                        .file(importCsv("""
+                                name,applicationName,assessmentType,startDate,durationDays
+                                CSV One,Test Application,Penetration Test,2026-10-05,5
+                                CSV Two,Test Application,Penetration Test,2026-11-05,5
+                                """))
+                        .param("notifyStakeholders", "false")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.created").value(2));
+
+        org.assertj.core.api.Assertions.assertThat(assessmentRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void import_WithRowErrors_Returns400WithThePreview() throws Exception {
+        mockMvc.perform(multipart("/api/v1/assessments/import")
+                        .file(importCsv("""
+                                name,applicationName,assessmentType,startDate,durationDays
+                                CSV One,Test Application,No Such Type,2026-10-05,5
+                                """))
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data.valid").value(false))
+                .andExpect(jsonPath("$.data.rows[0].errors[0]").value("Unknown assessment type 'No Such Type'"));
+
+        org.assertj.core.api.Assertions.assertThat(assessmentRepository.count()).isZero();
+    }
+
+    @Test
+    void import_UnknownColumn_Returns400() throws Exception {
+        mockMvc.perform(multipart("/api/v1/assessments/import/preview")
+                        .file(importCsv("name,widgets\nx,3\n"))
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void import_RequiresCreateAll() throws Exception {
+        // create:team is not enough: team scope isn't enforced on create, and a bulk tool
+        // must not widen that gap.
+        Role teamRole = roleRepository.save(Role.builder().name("TeamScheduler")
+                .description("Team-scoped create")
+                .permissions(List.of("assessments:create:team", "assessments:read:team")).build());
+        User scheduler = userRepository.save(User.builder()
+                .username("teamscheduler").email("teamscheduler@test.com")
+                .firstName("Team").lastName("Scheduler")
+                .password(passwordEncoder.encode("password")).loginOption(LoginOption.NATIVE)
+                .roleIds(List.of(teamRole.getId())).teamIds(new ArrayList<>())
+                .isInternal(true).createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+        String token = jwtService.generateToken(scheduler.getUsername(),
+                List.of(new SimpleGrantedAuthority("assessments:create:team"),
+                        new SimpleGrantedAuthority("assessments:read:team")));
+
+        mockMvc.perform(get("/api/v1/assessments/import/template")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(multipart("/api/v1/assessments/import/preview")
+                        .file(importCsv("name\nx\n"))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(multipart("/api/v1/assessments/import")
+                        .file(importCsv("name\nx\n"))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void importPreview_NewCampaignNeedsCampaignCreatePermission() throws Exception {
+        Role schedulerRole = roleRepository.save(Role.builder().name("Scheduler")
+                .description("Creates assessments, not campaigns")
+                .permissions(List.of("assessments:create:all", "assessments:read:all")).build());
+        User scheduler = userRepository.save(User.builder()
+                .username("scheduler").email("scheduler@test.com")
+                .firstName("Sche").lastName("Duler")
+                .password(passwordEncoder.encode("password")).loginOption(LoginOption.NATIVE)
+                .roleIds(List.of(schedulerRole.getId())).teamIds(new ArrayList<>())
+                .isInternal(true).createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+        String token = jwtService.generateToken(scheduler.getUsername(),
+                List.of(new SimpleGrantedAuthority("assessments:create:all"),
+                        new SimpleGrantedAuthority("assessments:read:all")));
+        String body = """
+                name,applicationName,assessmentType,startDate,durationDays,campaign
+                CSV One,Test Application,Penetration Test,2026-10-05,5,Controller Campaign
+                """;
+
+        mockMvc.perform(multipart("/api/v1/assessments/import/preview")
+                        .file(importCsv(body))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.valid").value(false))
+                .andExpect(jsonPath("$.data.rows[0].errors[0]").value(
+                        "Campaign 'Controller Campaign' doesn't exist, and you don't have permission to create campaigns"));
+
+        // The super admin in setUp may create it.
+        mockMvc.perform(multipart("/api/v1/assessments/import/preview")
+                        .file(importCsv(body))
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.valid").value(true))
+                .andExpect(jsonPath("$.data.newCampaignCount").value(1));
+    }
 }

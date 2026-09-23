@@ -103,6 +103,10 @@ export const permissions = {
       'assessments:create:team',
     ]),
 
+  /** Bulk CSV import: create:all only — team-scoped create isn't enforced per row. */
+  canImportAssessments: (authorities: string[]): boolean =>
+    hasAnyPermission(authorities, ['assessments:create:all']),
+
   canEditAssessments: (authorities: string[]): boolean =>
     hasPermissionPattern(authorities, /^assessments:edit/),
 

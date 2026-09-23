@@ -295,3 +295,70 @@ test.describe('Engagements Page - Responsive Design', () => {
     await expect(page.locator('.metrics-dashboard')).toBeVisible();
   });
 });
+
+// ─── Assessment CSV import ───────────────────────────────────────────────────
+
+test.describe('Assessment CSV import', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await navigateToEngagements(page);
+  });
+
+  /** An assessment type that exists in this environment, read through the API. */
+  async function anyAssessmentTypeName(page: Page): Promise<string> {
+    const token = await page.evaluate(() => localStorage.getItem('token'));
+    const res = await page.request.get(`${TEST_CONFIG.apiURL}/assessment-types`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json();
+    const types = Array.isArray(body.data) ? body.data : [];
+    expect(types.length).toBeGreaterThan(0);
+    return types[0].name;
+  }
+
+  async function chooseCsv(page: Page, csv: string) {
+    await page.locator('.asmt-import-file').setInputFiles({
+      name: 'assessments.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(csv, 'utf-8'),
+    });
+  }
+
+  test('previews and imports a valid file', async ({ page }) => {
+    const type = await anyAssessmentTypeName(page);
+    const suffix = Date.now();
+    const name = `CSV Import ${suffix}`;
+
+    await page.locator('button:has-text("Import CSV")').click();
+    await expect(page.locator('text=Import Assessments from CSV')).toBeVisible();
+    await chooseCsv(page, [
+      'name,appId,applicationName,assessmentType,startDate,durationDays',
+      `${name},CSV-${suffix},CSV App ${suffix},${type},2026-10-05,5`,
+    ].join('\n'));
+    await page.locator('button:has-text("Preview")').click();
+
+    await expect(page.locator('.asmt-import-table')).toContainText(name);
+    await expect(page.locator('.asmt-import-table')).toContainText('New');
+    const create = page.locator('button:has-text("Create 1 assessment")');
+    await expect(create).toBeEnabled();
+    await create.click();
+
+    await expect(page.locator('text=Created 1 assessment')).toBeVisible({ timeout: TEST_CONFIG.timeout.medium });
+    await page.locator('.modal button:has-text("Close")').click();
+    await switchToListView(page);
+    await expect(page.locator('.data-table')).toContainText(name, { timeout: TEST_CONFIG.timeout.medium });
+  });
+
+  test('blocks the import while a row has errors', async ({ page }) => {
+    await page.locator('button:has-text("Import CSV")').click();
+    await chooseCsv(page, [
+      'name,appId,assessmentType,startDate,durationDays',
+      'Broken Row,APP-X,No Such Type Anywhere,2026-10-05,5',
+    ].join('\n'));
+    await page.locator('button:has-text("Preview")').click();
+
+    await expect(page.locator('.asmt-import-row-error')).toContainText("Unknown assessment type 'No Such Type Anywhere'");
+    await expect(page.locator('button:has-text("Create 1 assessment")')).toBeDisabled();
+    await expect(page.locator('text=Fix the errors in your file and preview again.')).toBeVisible();
+  });
+});

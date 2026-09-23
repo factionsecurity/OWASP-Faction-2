@@ -7,6 +7,8 @@ import com.faction.clientportal.model.User;
 import com.faction.clientportal.security.RequiresPermission;
 import com.faction.clientportal.dto.*;
 import com.faction.clientportal.dto.common.JsonApiResponse;
+import com.faction.clientportal.exception.AssessmentImportInvalidException;
+import com.faction.clientportal.service.AssessmentCsvImportService;
 import com.faction.clientportal.service.AssessmentLockService;
 import com.faction.clientportal.service.AssessmentService;
 import com.faction.clientportal.service.ReportGenerationService;
@@ -34,6 +36,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -55,6 +58,7 @@ public class AssessmentController {
     private final UserService userService;
     private final ReportGenerationService reportGenerationService;
     private final UploadRequests uploadRequests;
+    private final AssessmentCsvImportService assessmentCsvImportService;
 
     /**
      * Sortable assessment columns → the keys the search query's ORDER BY whitelist resolves. The
@@ -104,6 +108,78 @@ public class AssessmentController {
         String userId = authentication.getName();
         AssessmentDto assessment = assessmentService.createAssessment(request, userId);
         return ResponseUtil.success("Assessment created successfully", assessment);
+    }
+
+    // ── CSV import ───────────────────────────────────────────────────────────
+
+    @GetMapping(value = "/import/template", produces = "text/csv")
+    @RequiresPermission({Permission.ASSESSMENTS_CREATE_ALL})
+    @Operation(
+        summary = "Download the assessment CSV import template",
+        description = "Every built-in column, one column per assessment custom-field variable, and an example row.",
+        responses = {
+            @ApiResponse(responseCode = "200", description = "Template returned"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires assessments:create:all")
+        }
+    )
+    public ResponseEntity<String> downloadImportTemplate() {
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=assessment-import-template.csv")
+                .body(assessmentCsvImportService.template());
+    }
+
+    @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequiresPermission({Permission.ASSESSMENTS_CREATE_ALL})
+    @Operation(
+        summary = "Preview an assessment CSV import",
+        description = "Dry run: resolves every row and reports what it would create and any errors. Writes nothing.",
+        responses = {
+            @ApiResponse(responseCode = "200", description = "Preview returned (see valid and each row's errors)"),
+            @ApiResponse(responseCode = "400", description = "The file is missing, empty, too large or too long, or has unknown, duplicate or missing columns"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires assessments:create:all")
+        }
+    )
+    public ResponseEntity<JsonApiResponse<AssessmentImportPreviewDto>> previewImport(
+            @RequestParam("file") MultipartFile file, Authentication authentication) throws IOException {
+        return ResponseUtil.success("Import previewed",
+                assessmentCsvImportService.preview(file, authorities(authentication)));
+    }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequiresPermission({Permission.ASSESSMENTS_CREATE_ALL})
+    @Operation(
+        summary = "Import assessments from a CSV",
+        description = "Creates one assessment per row, all or nothing. Missing applications are created, and "
+                + "missing campaigns too when the caller has campaigns:create:all. notifyStakeholders sends the "
+                + "usual assessment-created notifications and email.",
+        responses = {
+            @ApiResponse(responseCode = "200", description = "All rows imported"),
+            @ApiResponse(responseCode = "400", description = "File problem, or rows with errors (data holds the preview); nothing imported"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires assessments:create:all")
+        }
+    )
+    public ResponseEntity<JsonApiResponse<AssessmentImportResultDto>> importAssessments(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "notifyStakeholders", defaultValue = "false") boolean notifyStakeholders,
+            Authentication authentication) throws IOException {
+        return ResponseUtil.success("Assessments imported",
+                assessmentCsvImportService.importCsv(file, notifyStakeholders, authentication.getName(),
+                        authorities(authentication)));
+    }
+
+    /** The caller's granted authorities, which decide whether an import may create campaigns. */
+    private static java.util.Set<String> authorities(Authentication authentication) {
+        return authentication == null ? java.util.Set.of()
+                : authentication.getAuthorities().stream()
+                        .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    /** Rows failed validation: 400, with the fresh preview so the dialog can show why. */
+    @ExceptionHandler(AssessmentImportInvalidException.class)
+    public ResponseEntity<JsonApiResponse<AssessmentImportPreviewDto>> handleInvalidImport(
+            AssessmentImportInvalidException e) {
+        return ResponseEntity.badRequest().body(new JsonApiResponse<>(false, e.getMessage(), e.getPreview()));
     }
 
     @GetMapping

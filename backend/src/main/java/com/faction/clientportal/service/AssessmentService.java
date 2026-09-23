@@ -70,10 +70,25 @@ public class AssessmentService {
     private final AssessmentWorkflowMoveService workflowMoveService;
 
     /**
-     * Create a new assessment from a report template
-     * Snapshots the template's field definitions at creation time
+     * Create a new assessment from a report template.
+     * Snapshots the template's field definitions at creation time.
      */
     public AssessmentDto createAssessment(CreateAssessmentRequest request, String userId) {
+        WorkflowCatalog catalog = workflowCatalogService.load();
+        Assessment saved = persistNewAssessment(request, userId, catalog);
+        announceNewAssessment(saved, true);
+        return migrateAndConvertToDto(saved, catalog);
+    }
+
+    /**
+     * Everything a new assessment is made of — the row, its field-image references, the
+     * "Assessment scheduled" chat post and its notebook root — and nothing that reaches outside
+     * the database. The CSV import runs this for a whole batch in one transaction, so a failure
+     * part-way leaves nothing behind, and only announces once the batch has committed.
+     *
+     * @param catalog the workflow catalog, loaded once by the caller — a batch shares one
+     */
+    public Assessment persistNewAssessment(CreateAssessmentRequest request, String userId, WorkflowCatalog catalog) {
         Application application;
         if (org.springframework.util.StringUtils.hasText(request.getApplicationId())) {
             application = applicationRepository.findById(request.getApplicationId())
@@ -100,7 +115,6 @@ public class AssessmentService {
         // Verify assessment type exists, and resolve the workflow it takes at creation
         AssessmentType assessmentType = assessmentTypeRepository.findById(request.getAssessmentTypeId())
             .orElseThrow(() -> new ResourceNotFoundException("Assessment type not found with id: " + request.getAssessmentTypeId()));
-        WorkflowCatalog catalog = workflowCatalogService.load();
         AssessmentWorkflow workflow = catalog.forType(assessmentType);
 
         ReportTemplate template;
@@ -234,18 +248,6 @@ public class AssessmentService {
         log.info("Created assessment: {} from template: {} (version: {})",
             savedAssessment.getName(), template.getName(), template.getVersion());
 
-        // Notify assigned assessors and managers
-        String assessmentLink = "/assessments/" + savedAssessment.getId();
-        notifyUsers(savedAssessment.getAssessorIds(), savedAssessment.getName(), assessmentLink, "ASSESSOR_ASSIGNED");
-        notifyUserById(savedAssessment.getEngagementManagerId(), savedAssessment.getName(), assessmentLink, "ASSESSMENT_CREATED");
-        notifyUserById(savedAssessment.getRemediationManagerId(), savedAssessment.getName(), assessmentLink, "ASSESSMENT_CREATED");
-
-        // Stakeholders and the app owner hear about it through the admin-configured
-        // routing table rather than the per-user notification preferences: they are
-        // addresses on an application, not accounts with a preference of their own.
-        emailAssessmentEvent(com.faction.clientportal.model.EmailNotificationEvent.ASSESSMENT_CREATED,
-                savedAssessment, null);
-
         // Announce the new assessment in the application's chat
         String scheduledMsg = "**Assessment scheduled**: \"" + savedAssessment.getName() + "\" by {actor}"
             + (savedAssessment.getStartDate() != null
@@ -263,10 +265,29 @@ public class AssessmentService {
             userId
         );
 
-        extensionEventService.assessmentChanged(
-            savedAssessment.getId(), com.faction.extender.AssessmentManager.Operation.Create);
+        return savedAssessment;
+    }
 
-        return migrateAndConvertToDto(savedAssessment, catalog);
+    /**
+     * Tell people and extensions about a newly persisted assessment. {@code notify} covers the
+     * in-app notifications and the stakeholder email; the extension event always fires, because
+     * an integration mirroring assessments has to see every one, announced or not.
+     */
+    public void announceNewAssessment(Assessment assessment, boolean notify) {
+        if (notify) {
+            String assessmentLink = "/assessments/" + assessment.getId();
+            notifyUsers(assessment.getAssessorIds(), assessment.getName(), assessmentLink, "ASSESSOR_ASSIGNED");
+            notifyUserById(assessment.getEngagementManagerId(), assessment.getName(), assessmentLink, "ASSESSMENT_CREATED");
+            notifyUserById(assessment.getRemediationManagerId(), assessment.getName(), assessmentLink, "ASSESSMENT_CREATED");
+
+            // Stakeholders and the app owner hear about it through the admin-configured
+            // routing table rather than the per-user notification preferences: they are
+            // addresses on an application, not accounts with a preference of their own.
+            emailAssessmentEvent(com.faction.clientportal.model.EmailNotificationEvent.ASSESSMENT_CREATED,
+                    assessment, null);
+        }
+        extensionEventService.assessmentChanged(
+                assessment.getId(), com.faction.extender.AssessmentManager.Operation.Create);
     }
 
     /**

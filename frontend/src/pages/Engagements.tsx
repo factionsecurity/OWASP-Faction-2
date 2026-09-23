@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Edit2, Trash2, Plus, Calendar, List, Download, Eye } from 'lucide-react';
+import { Edit2, Trash2, Plus, Calendar, List, Download, Upload, Eye } from 'lucide-react';
 import { assessmentsApi, applicationsApi, assessmentTypesApi, vulnerabilitiesApi } from '../api';
 import type {
   Assessment,
@@ -13,6 +13,7 @@ import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } f
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import { Button, Badge, ConfirmDialog, IconButton, ActionButtons, FormLabel, Input } from '../components';
 import AssessmentCalendar from '../components/AssessmentCalendar';
+import AssessmentImportModal from '../components/AssessmentImportModal';
 import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { usePermissions } from '../utils/permissions';
@@ -150,6 +151,7 @@ export default function Engagements() {
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [pageVulnerabilities, setPageVulnerabilities] = useState<Vulnerability[]>([]);
+  const [showImport, setShowImport] = useState(false);
 
   const [showDateChangeConfirm, setShowDateChangeConfirm] = useState(false);
   const [pendingDateChange, setPendingDateChange] = useState<{
@@ -615,6 +617,11 @@ export default function Engagements() {
             {view === 'calendar' ? <List size={18} /> : <Calendar size={18} />}
             {view === 'calendar' ? 'List View' : 'Calendar View'}
           </Button>
+          {permissions.canImportAssessments && (
+            <Button variant="secondary" onClick={() => setShowImport(true)}>
+              <Upload size={18} /> Import CSV
+            </Button>
+          )}
           <Button variant="primary" onClick={handleCreateClick}>
             <Plus size={18} /> Create Assessment
           </Button>
@@ -743,6 +750,12 @@ export default function Engagements() {
         confirmText="Save Changes"
         cancelText="Cancel"
         variant="info"
+      />
+
+      <AssessmentImportModal
+        isOpen={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={() => { loadData(); loadMetrics(); }}
       />
     </Page>
   );

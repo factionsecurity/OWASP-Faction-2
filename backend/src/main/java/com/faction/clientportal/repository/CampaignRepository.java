@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -14,6 +15,7 @@ public interface CampaignRepository extends JpaRepository<Campaign, String> {
     Optional<Campaign> findByName(String name);
     boolean existsByName(String name);
     Optional<Campaign> findByIsDefaultTrue();
+    List<Campaign> findAllByNameIgnoreCase(String name);
 
     @Query("SELECT c FROM Campaign c WHERE LOWER(c.name) LIKE LOWER(CONCAT(?1, '%'))")
     Page<Campaign> searchByName(String searchTerm, Pageable pageable);
