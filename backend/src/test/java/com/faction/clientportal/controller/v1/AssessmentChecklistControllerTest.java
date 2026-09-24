@@ -265,4 +265,132 @@ class AssessmentChecklistControllerTest extends TestContainersConfig {
                         .header("Authorization", "Bearer " + noPermToken))
                 .andExpect(status().isForbidden());
     }
+
+    // ── Assessment scope on writes ─────────────────────────────────────────────
+
+    private User scopedUser(String username) {
+        return userRepository.save(User.builder()
+                .username(username).email(username + "@test.com")
+                .password(passwordEncoder.encode("password"))
+                .firstName("Scoped").lastName("User")
+                .loginOption(LoginOption.NATIVE)
+                .isInternal(true).createdAt(LocalDateTime.now()).build());
+    }
+
+    private String tokenFor(User user, String... authorities) {
+        return jwtService.generateToken(user.getUsername(),
+                java.util.Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList());
+    }
+
+    private String assessmentAssignedTo(User user) {
+        return assessmentRepository.save(com.faction.clientportal.model.Assessment.builder()
+                .name("Assigned host").applicationId("app-1").organizationId("org-1")
+                .assessmentTypeId("type-1").status("Testing")
+                .assessorIds(new java.util.ArrayList<>(List.of(user.getId())))
+                .createdAt(LocalDateTime.now()).build()).getId();
+    }
+
+    private AssessmentChecklist checklistOn(String onAssessmentId) {
+        return assessmentChecklistRepository.save(AssessmentChecklist.builder()
+                .assessmentId(onAssessmentId)
+                .templateId(savedTemplate.getId())
+                .templateName("Test Checklist")
+                .responses(List.of(
+                        ChecklistResponse.builder().questionId("q1").questionText("Check login").order(0).build()))
+                .createdBy("admin").lastUpdatedBy("admin")
+                .createdAt(Instant.now()).updatedAt(Instant.now())
+                .build());
+    }
+
+    private String onePassResponse() throws Exception {
+        ChecklistResponseDto r1 = new ChecklistResponseDto();
+        r1.setQuestionId("q1");
+        r1.setQuestionText("Check login");
+        r1.setResult("PASS");
+        r1.setOrder(0);
+        UpdateAssessmentChecklistRequest req = new UpdateAssessmentChecklistRequest();
+        req.setResponses(List.of(r1));
+        return objectMapper.writeValueAsString(req);
+    }
+
+    @Test
+    void updateResponses_EditSelfOnUnassignedAssessment_IsForbiddenAndUnchanged() throws Exception {
+        User pen = scopedUser("self-pen");
+        AssessmentChecklist checklist = checklistOn(assessmentId);
+
+        mockMvc.perform(put("/api/v1/assessments/" + assessmentId + "/checklists/" + checklist.getId())
+                        .header("Authorization", "Bearer " + tokenFor(pen, "assessments:read:all", "assessments:edit:self"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(onePassResponse()))
+                .andExpect(status().isForbidden());
+
+        org.assertj.core.api.Assertions.assertThat(assessmentChecklistRepository.findById(checklist.getId())
+                .orElseThrow().getResponses().get(0).getResult()).isNull();
+    }
+
+    @Test
+    void updateResponses_EditSelfOnAssignedAssessment_Succeeds() throws Exception {
+        User pen = scopedUser("self-pen");
+        String mine = assessmentAssignedTo(pen);
+        AssessmentChecklist checklist = checklistOn(mine);
+
+        mockMvc.perform(put("/api/v1/assessments/" + mine + "/checklists/" + checklist.getId())
+                        .header("Authorization", "Bearer " + tokenFor(pen, "assessments:read:assigned", "assessments:edit:self"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(onePassResponse()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.responses[0].result").value("PASS"));
+    }
+
+    @Test
+    void updateResponses_EditAssignedOnAssignedAssessment_Succeeds() throws Exception {
+        User pen = scopedUser("assigned-pen");
+        String mine = assessmentAssignedTo(pen);
+        AssessmentChecklist checklist = checklistOn(mine);
+
+        mockMvc.perform(put("/api/v1/assessments/" + mine + "/checklists/" + checklist.getId())
+                        .header("Authorization", "Bearer " + tokenFor(pen, "assessments:read:assigned", "assessments:edit:assigned"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(onePassResponse()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void addChecklist_OutOfScope_IsForbidden() throws Exception {
+        User pen = scopedUser("self-pen");
+        AddAssessmentChecklistRequest req = new AddAssessmentChecklistRequest();
+        req.setTemplateId(savedTemplate.getId());
+
+        mockMvc.perform(post("/api/v1/assessments/" + assessmentId + "/checklists")
+                        .header("Authorization", "Bearer " + tokenFor(pen, "assessments:edit:assigned"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+
+        org.assertj.core.api.Assertions.assertThat(assessmentChecklistRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void removeChecklist_OutOfScope_IsForbiddenAndKept() throws Exception {
+        User pen = scopedUser("self-pen");
+        AssessmentChecklist checklist = checklistOn(assessmentId);
+
+        mockMvc.perform(delete("/api/v1/assessments/" + assessmentId + "/checklists/" + checklist.getId())
+                        .header("Authorization", "Bearer " + tokenFor(pen, "assessments:edit:self")))
+                .andExpect(status().isForbidden());
+
+        org.assertj.core.api.Assertions.assertThat(assessmentChecklistRepository.findById(checklist.getId())).isPresent();
+    }
+
+    @Test
+    void addChecklist_UnknownAssessment_IsForbiddenNotNotFound() throws Exception {
+        AddAssessmentChecklistRequest req = new AddAssessmentChecklistRequest();
+        req.setTemplateId(savedTemplate.getId());
+
+        mockMvc.perform(post("/api/v1/assessments/" + UUID.randomUUID() + "/checklists")
+                        .header("Authorization", "Bearer " + editToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
 }

@@ -43,7 +43,10 @@ public class AssessmentChecklistService {
                 .collect(Collectors.toList());
     }
 
-    public AssessmentChecklistDto addToAssessment(String assessmentId, AddAssessmentChecklistRequest req, String username) {
+    public AssessmentChecklistDto addToAssessment(String assessmentId, AddAssessmentChecklistRequest req,
+                                                  Authentication authentication) {
+        accessScopeService.checkAssessmentEditAccess(authentication, assessmentId);
+        String username = authentication.getName();
         ChecklistTemplate template = templateRepository.findById(req.getTemplateId())
                 .orElseThrow(() -> new ResourceNotFoundException("Checklist template not found: " + req.getTemplateId()));
 
@@ -73,7 +76,9 @@ public class AssessmentChecklistService {
     }
 
     public AssessmentChecklistDto updateResponses(String assessmentId, String checklistId,
-                                                   UpdateAssessmentChecklistRequest req, String username) {
+                                                  UpdateAssessmentChecklistRequest req, Authentication authentication) {
+        accessScopeService.checkAssessmentEditAccess(authentication, assessmentId);
+        String username = authentication.getName();
         AssessmentChecklist checklist = repository.findById(checklistId)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment checklist not found: " + checklistId));
 
@@ -94,7 +99,8 @@ public class AssessmentChecklistService {
         return AssessmentChecklistDto.fromEntity(repository.save(checklist));
     }
 
-    public void removeFromAssessment(String assessmentId, String checklistId) {
+    public void removeFromAssessment(String assessmentId, String checklistId, Authentication authentication) {
+        accessScopeService.checkAssessmentEditAccess(authentication, assessmentId);
         AssessmentChecklist checklist = repository.findById(checklistId)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment checklist not found: " + checklistId));
 
