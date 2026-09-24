@@ -54,7 +54,13 @@ public enum Feature {
      * Creating and copying workflows beyond Default Workflow. Editing an existing workflow's
      * settings is open source; only bringing a new one into existence is gated.
      */
-    CUSTOM_WORKFLOWS("custom_workflows", "Custom Workflows");
+    CUSTOM_WORKFLOWS("custom_workflows", "Custom Workflows"),
+
+    /**
+     * The built-in MCP server: AI clients (Claude Code, Cursor, VS Code…) connect to
+     * {@code /api/mcp} with a personal API key and act as that user.
+     */
+    MCP_SERVER("mcp_server", "MCP Server");
 
     private final String key;
     private final String displayName;

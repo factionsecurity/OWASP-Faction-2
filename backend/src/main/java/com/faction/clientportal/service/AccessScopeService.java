@@ -323,7 +323,11 @@ public class AccessScopeService {
                     .map(u -> AssessmentScope.team(u.getTeamIds() == null ? Set.<String>of() : Set.copyOf(u.getTeamIds())))
                     .orElseGet(AssessmentScope::deny);
         }
-        if (authorities.contains(Permission.ASSESSMENTS_EDIT_ASSIGNED.getPermission())) {
+        if (authorities.contains(Permission.ASSESSMENTS_EDIT_ASSIGNED.getPermission())
+                || authorities.contains(Permission.ASSESSMENTS_EDIT_SELF.getPermission())) {
+            // edit:self ("Edit own assessments") is the assigned tier: the assessments you are an
+            // assessor on. It used to fall through to deny, which only went unnoticed because the
+            // endpoints that accept it never checked scope.
             return currentUser(authentication)
                     .map(u -> AssessmentScope.assigned(u.getId()))
                     .orElseGet(AssessmentScope::deny);
@@ -393,6 +397,16 @@ public class AccessScopeService {
         if (!resolveAssessmentEditScope(authentication).permits(assessment)) {
             throw new AccessDeniedException("Access denied");
         }
+    }
+
+    /**
+     * Overload for callers holding only an assessment id. A missing assessment is denied rather
+     * than reported as absent, so the endpoint cannot be used to probe which ids exist.
+     */
+    public void checkAssessmentEditAccess(Authentication authentication, String assessmentId) {
+        Assessment assessment = assessmentRepository.findByIdAndDeletedAtIsNull(assessmentId)
+                .orElseThrow(() -> new AccessDeniedException("Access denied"));
+        checkAssessmentEditAccess(authentication, assessment);
     }
 
     /** Guard for interactions tied to an application (comments, edits by scope). */

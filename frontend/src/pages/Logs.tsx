@@ -10,15 +10,17 @@ import { Modal } from '../components';
 import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
 import RetestActivityLog from './RetestActivityLog';
+import { McpLogTab } from '@enterprise';
 import { CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 import './Logs.css';
 
 // Log categories — each tab owns its own table; more user-action logs can be added here.
 // `feature` marks a tab that only exists in builds carrying that capability; the rest of
 // the page, and the Logs section itself, stay regardless.
-type LogTab = 'ai' | 'retests';
+type LogTab = 'ai' | 'mcp' | 'retests';
 const TABS: { key: LogTab; label: string; feature?: FeatureKey }[] = [
   { key: 'ai', label: 'AI Requests', feature: 'ai_observability' },
+  { key: 'mcp', label: 'MCP', feature: 'mcp_server' },
   { key: 'retests', label: 'Retests' },
 ];
 
@@ -132,6 +134,8 @@ export default function Logs() {
       </div>
 
       {activeTab === 'retests' && <RetestActivityLog />}
+
+      {activeTab === 'mcp' && <McpLogTab />}
 
       {activeTab === 'ai' && <>
       <p className="logs-intro">

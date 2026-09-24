@@ -2069,6 +2069,32 @@ export interface AiRequestLog {
   responseContent?: string;
 }
 
+export interface McpServerConfig {
+  enabled: boolean;
+  endpointPath: string;
+}
+
+export interface McpStatus {
+  licensed: boolean;
+  enabled: boolean;
+  endpointPath: string;
+}
+
+export interface McpToolCallLog {
+  id: string;
+  createdAt: string;
+  username: string;
+  apiKeyId?: string;
+  toolName: string;
+  arguments?: string;
+  assessmentId?: string;
+  vulnerabilityId?: string;
+  success: boolean;
+  errorMessage?: string;
+  correlationId?: string;
+  durationMs: number;
+}
+
 export interface AiPromptSummary {
   id: string;
   name: string;
@@ -2281,7 +2307,8 @@ export type FeatureKey =
   | 'external_owners'
   | 'custom_roles'
   | 'report_sections'
-  | 'custom_workflows';
+  | 'custom_workflows'
+  | 'mcp_server';
 
 /** Quota keys from the backend `Quota` enum. Capabilities that ship, but capped. */
 export type QuotaKey = 'ai_providers' | 'ai_prompts' | 'extensions';

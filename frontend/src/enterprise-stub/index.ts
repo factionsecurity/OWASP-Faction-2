@@ -18,5 +18,8 @@ export const SsoConfig = Unavailable;
 export const BrandingPage = Unavailable;
 export const InboundEmailConfigPage = Unavailable;
 export const AiTokenUsageCard = Unavailable;
+export const McpServerConfigCard = Unavailable;
+export const McpLogTab = Unavailable;
+export const McpConnectCard = Unavailable;
 /** No outside source to pre-fill the scheduling form from, so no button in its action bar. */
 export const AssessmentPrefillAction: (props: AssessmentPrefillActionProps) => null = () => null;

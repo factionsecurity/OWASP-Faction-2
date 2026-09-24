@@ -40,18 +40,18 @@ public class AssessmentChecklistController {
     }
 
     @PostMapping
-    @RequiresPermission({Permission.ASSESSMENTS_EDIT_ALL, Permission.ASSESSMENTS_EDIT_TEAM, Permission.ASSESSMENTS_EDIT_SELF})
+    @RequiresPermission({Permission.ASSESSMENTS_EDIT_ALL, Permission.ASSESSMENTS_EDIT_TEAM, Permission.ASSESSMENTS_EDIT_ASSIGNED, Permission.ASSESSMENTS_EDIT_SELF})
     @Operation(summary = "Add a checklist to an assessment")
     public ResponseEntity<JsonApiResponse<AssessmentChecklistDto>> addToAssessment(
             @PathVariable String assessmentId,
             @Valid @RequestBody AddAssessmentChecklistRequest request,
             Authentication authentication) {
         return ResponseUtil.created("Assessment checklist added successfully",
-                service.addToAssessment(assessmentId, request, authentication.getName()));
+                service.addToAssessment(assessmentId, request, authentication));
     }
 
     @PutMapping("/{checklistId}")
-    @RequiresPermission({Permission.ASSESSMENTS_EDIT_ALL, Permission.ASSESSMENTS_EDIT_TEAM, Permission.ASSESSMENTS_EDIT_SELF})
+    @RequiresPermission({Permission.ASSESSMENTS_EDIT_ALL, Permission.ASSESSMENTS_EDIT_TEAM, Permission.ASSESSMENTS_EDIT_ASSIGNED, Permission.ASSESSMENTS_EDIT_SELF})
     @Operation(summary = "Update checklist responses")
     public ResponseEntity<JsonApiResponse<AssessmentChecklistDto>> updateResponses(
             @PathVariable String assessmentId,
@@ -59,16 +59,17 @@ public class AssessmentChecklistController {
             @RequestBody UpdateAssessmentChecklistRequest request,
             Authentication authentication) {
         return ResponseUtil.success("Assessment checklist updated successfully",
-                service.updateResponses(assessmentId, checklistId, request, authentication.getName()));
+                service.updateResponses(assessmentId, checklistId, request, authentication));
     }
 
     @DeleteMapping("/{checklistId}")
-    @RequiresPermission({Permission.ASSESSMENTS_EDIT_ALL, Permission.ASSESSMENTS_EDIT_TEAM, Permission.ASSESSMENTS_EDIT_SELF})
+    @RequiresPermission({Permission.ASSESSMENTS_EDIT_ALL, Permission.ASSESSMENTS_EDIT_TEAM, Permission.ASSESSMENTS_EDIT_ASSIGNED, Permission.ASSESSMENTS_EDIT_SELF})
     @Operation(summary = "Remove a checklist from an assessment")
     public ResponseEntity<Void> removeFromAssessment(
             @PathVariable String assessmentId,
-            @PathVariable String checklistId) {
-        service.removeFromAssessment(assessmentId, checklistId);
+            @PathVariable String checklistId,
+            Authentication authentication) {
+        service.removeFromAssessment(assessmentId, checklistId, authentication);
         return ResponseEntity.noContent().build();
     }
 }
