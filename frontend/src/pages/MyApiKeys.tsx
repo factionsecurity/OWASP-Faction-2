@@ -22,6 +22,8 @@ import {
 import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { usePermissions } from '../utils/permissions';
+import { useEdition } from '../context/EditionContext';
+import { McpConnectCard } from '@enterprise';
 import './MyApiKeys.css';
 
 const PAGE_SIZE = 10;
@@ -45,6 +47,7 @@ export default function MyApiKeys() {
   const { hasPermission } = usePermissions();
   const canCreate = hasPermission('apikeys:create:self');
   const canRevoke = hasPermission('apikeys:delete:self');
+  const { hasFeature } = useEdition();
 
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -236,6 +239,8 @@ export default function MyApiKeys() {
       </div>
 
       {loadError && <ErrorMessage>{loadError}</ErrorMessage>}
+
+      {hasFeature('mcp_server') && <McpConnectCard />}
 
       <DataTable
         columns={columns}

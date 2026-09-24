@@ -15,7 +15,7 @@ import type {
 } from '../types';
 import { Button, IconButton, Input, Textarea, FormLabel, Select, Modal, ConfirmDialog, Toast } from '../components';
 import Page from '../components/Page';
-import { AiTokenUsageCard } from '@enterprise';
+import { AiTokenUsageCard, McpServerConfigCard } from '@enterprise';
 import {
   Bot,
   CheckCircle2,
@@ -881,6 +881,8 @@ export default function AiConfigPage() {
         </div>
       </div>
       )}
+
+      {hasFeature('mcp_server') && <McpServerConfigCard />}
 
       {/* Prompt add / edit modal */}
       <Modal
