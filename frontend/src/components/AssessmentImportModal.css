@@ -1,0 +1,15 @@
+.asmt-import { display: flex; flex-direction: column; gap: 0.75rem; }
+.asmt-import-lede { margin: 0; font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5; }
+.asmt-import-file { font-size: 0.875rem; color: var(--text-secondary); }
+.asmt-import-counts { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.asmt-import-table-wrap { max-height: 50vh; overflow: auto; border: 1px solid var(--border-color); border-radius: 6px; }
+.asmt-import-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.asmt-import-table th,
+.asmt-import-table td { padding: 0.375rem 0.5rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-color); }
+.asmt-import-table th { position: sticky; top: 0; background: var(--secondary-bg); font-weight: 600; color: var(--text-muted); }
+.asmt-import-table td .badge { margin-left: 0.375rem; }
+.asmt-import-row-error td { background: var(--danger-bg, rgba(239, 68, 68, 0.08)); }
+.asmt-import-errors { margin: 0; padding-left: 1rem; color: var(--danger-color); }
+.asmt-import-table td:last-child { min-width: 16rem; overflow-wrap: anywhere; }
+.asmt-import-nowrap { white-space: nowrap; }
+.asmt-import-result p { margin: 0 0 0.25rem; }

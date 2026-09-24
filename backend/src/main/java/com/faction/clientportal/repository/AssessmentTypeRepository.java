@@ -17,6 +17,8 @@ public interface AssessmentTypeRepository extends JpaRepository<AssessmentType, 
 
     boolean existsByName(String name);
 
+    List<AssessmentType> findAllByNameIgnoreCase(String name);
+
     @Query("SELECT a FROM AssessmentType a WHERE LOWER(a.name) LIKE LOWER(CONCAT(?1, '%')) OR LOWER(a.description) LIKE LOWER(CONCAT(?1, '%'))")
     Page<AssessmentType> searchByNameOrDescription(String searchTerm, Pageable pageable);
 

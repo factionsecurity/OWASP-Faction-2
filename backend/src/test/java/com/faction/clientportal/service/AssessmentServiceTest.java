@@ -2260,4 +2260,35 @@ class AssessmentServiceTest {
 
         verify(eventEmailSender, never()).send(any());
     }
+
+    // ── announceNewAssessment ─────────────────────────────────────────────────
+
+    @Test
+    void announceNewAssessment_withoutNotify_onlyFiresTheExtensionEvent() {
+        Assessment assessment = Assessment.builder()
+                .id("a-1").name("Quiet").assessorIds(List.of("u-1"))
+                .engagementManagerId("u-2").build();
+
+        assessmentService.announceNewAssessment(assessment, false);
+
+        verify(extensionEventService).assessmentChanged(
+                "a-1", com.faction.extender.AssessmentManager.Operation.Create);
+        verifyNoInteractions(eventEmailSender);
+        verify(userRepository, never()).findById(any());
+    }
+
+    @Test
+    void announceNewAssessment_withNotify_notifiesAndEmails() {
+        Assessment assessment = Assessment.builder()
+                .id("a-2").name("Loud").assessorIds(List.of("u-1")).build();
+        when(userRepository.findById("u-1")).thenReturn(Optional.of(
+                User.builder().id("u-1").username("jane").build()));
+
+        assessmentService.announceNewAssessment(assessment, true);
+
+        verify(userRepository).findById("u-1");
+        verify(eventEmailSender).send(any());
+        verify(extensionEventService).assessmentChanged(
+                "a-2", com.faction.extender.AssessmentManager.Operation.Create);
+    }
 }

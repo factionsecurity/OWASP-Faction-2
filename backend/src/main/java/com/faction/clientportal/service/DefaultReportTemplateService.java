@@ -94,6 +94,24 @@ public class DefaultReportTemplateService {
     }
 
     /**
+     * The template a new assessment of this type would get without installing anything: the
+     * named project default when it is active, otherwise the only active template. Empty when
+     * neither exists. Read-only, so the CSV import preview can use it.
+     */
+    public Optional<ReportTemplate> findExistingForAssessmentType(String assessmentTypeId) {
+        List<ReportTemplate> active = reportTemplateRepository
+                .findByAssessmentTypeIdAndActiveTrueAndDeletedAtIsNull(assessmentTypeId, Pageable.unpaged())
+                .getContent();
+        Optional<ReportTemplate> named = active.stream()
+                .filter(t -> templateName.equals(t.getName()))
+                .findFirst();
+        if (named.isPresent()) {
+            return named;
+        }
+        return active.size() == 1 ? Optional.of(active.get(0)) : Optional.empty();
+    }
+
+    /**
      * The template an assessment of this type gets when none was chosen for it — an assessment
      * created without one, or a scheduled successor whose predecessor's template has since been
      * deleted. In order: the type's template carrying the default name; failing that, the type's
@@ -105,17 +123,9 @@ public class DefaultReportTemplateService {
      *         where the cause is no longer visible.
      */
     public ReportTemplate resolveForAssessmentType(String assessmentTypeId) {
-        List<ReportTemplate> active = reportTemplateRepository
-                .findByAssessmentTypeIdAndActiveTrueAndDeletedAtIsNull(assessmentTypeId, Pageable.unpaged())
-                .getContent();
-        Optional<ReportTemplate> named = active.stream()
-                .filter(t -> templateName.equals(t.getName()))
-                .findFirst();
-        if (named.isPresent()) {
-            return named.get();
-        }
-        if (active.size() == 1) {
-            return active.get(0);
+        Optional<ReportTemplate> existing = findExistingForAssessmentType(assessmentTypeId);
+        if (existing.isPresent()) {
+            return existing.get();
         }
 
         AssessmentType type = assessmentTypeRepository.findById(assessmentTypeId)

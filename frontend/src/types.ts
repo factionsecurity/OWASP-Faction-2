@@ -320,6 +320,40 @@ export interface ApplicationImportResult {
   errors: { line: number; identifier?: string; message: string }[];
 }
 
+/** One row of an assessment CSV import dry run. */
+export interface AssessmentImportPreviewRow {
+  line: number;
+  name: string;
+  application?: string;
+  newApplication: boolean;
+  assessmentType?: string;
+  startDate?: string;
+  endDate?: string;
+  assessors: string[];
+  campaign?: string;
+  newCampaign: boolean;
+  team?: string;
+  errors: string[];
+}
+
+export interface AssessmentImportPreview {
+  rows: AssessmentImportPreviewRow[];
+  total: number;
+  validCount: number;
+  errorCount: number;
+  newApplicationCount: number;
+  newCampaignCount: number;
+  /** True only when every row is valid; the import refuses otherwise. */
+  valid: boolean;
+}
+
+export interface AssessmentImportResult {
+  created: number;
+  createdApplications: string[];
+  createdCampaigns: string[];
+  assessmentIds: string[];
+}
+
 // Application Types
 export type ApplicationStatus = 'PRODUCTION' | 'DEVELOPMENT' | 'STAGING' | 'TESTING' | 'DECOMMISSIONED' | 'PLANNED';
 

@@ -41,6 +41,10 @@ public interface ApplicationRepository extends JpaRepository<Application, String
 
     Optional<Application> findByNameIgnoreCase(String name);
 
+    /** CSV assessment import: every match, so a case-insensitive collision is reported, not guessed. */
+    List<Application> findAllByAppIdIgnoreCase(String appId);
+    List<Application> findAllByNameIgnoreCase(String name);
+
     List<Application> findByOrganizationId(String organizationId);
 
     /** How many applications are attributed to a sub-organization — guards its deletion. */
