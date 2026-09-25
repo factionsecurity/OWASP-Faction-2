@@ -113,8 +113,6 @@
   min-width: 0;
 }
 
-/* A row rather than a block: an optional badge sits beside the name, and the truncation
-   moved onto the label so a long name ellipsises without taking the badge with it. */
 .dual-list-box-item-name {
   display: flex;
   align-items: center;
@@ -132,9 +130,14 @@
   white-space: nowrap;
 }
 
-/* Whatever the caller passed as a badge keeps its size while the name gives way. */
-.dual-list-box-item-name > :not(.dual-list-box-item-label) {
-  flex: 0 0 auto;
+/* Whatever the caller passed as a badge (e.g. Free/Busy/Away/Holiday) gets its own line
+   under the name, above the email — wraps so multiple badges (Holiday + Away) never
+   force the row wider or clip. */
+.dual-list-box-item-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.125rem;
 }
 
 .dual-list-box-item-email {
