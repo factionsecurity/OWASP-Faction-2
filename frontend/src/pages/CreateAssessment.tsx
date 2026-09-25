@@ -41,7 +41,7 @@ import { PaidBadge } from '../components/PaidFeature';
 import { useEdition } from '../context/EditionContext';
 import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
-import { unavailabilityLabel } from '../utils/unavailability';
+import { AvailabilityBadge } from '../components/AvailabilityBadge';
 import { findUnavailability, UnavailabilityList } from '../components/UnavailabilityWarning';
 import type { Unavailability } from '../types';
 import './CreateAssessment.css';
@@ -1332,33 +1332,13 @@ export default function CreateAssessment() {
    * Free/busy mark for one candidate. Nothing until both dates are set: with no window
    * chosen, an "Available" badge would be an answer to a question nobody asked.
    */
-  const assessorBadge = (userId: string) => {
-    if (!formData.startDate || !formData.plannedEndDate) return null;
-    const availability = assessorAvailability[userId];
-    if (!availability) return null;
-
-    if (!availability.busy) {
-      return <Badge variant="success" size="sm">Free</Badge>;
-    }
-
-    // The names go in a title rather than the badge: the picker is a narrow column, and
-    // "why" is a follow-up question, not the thing being scanned for.
-    const clashes = availability.conflicts;
-    const away = availability.unavailable ?? [];
-    const fmt = (d: string) => new Date(d).toLocaleDateString();
-    const lines = [
-      ...clashes.map((c) => `${c.name} (${fmt(c.startDate)} – ${fmt(c.plannedEndDate)})`),
-      ...away.map((u) => `${unavailabilityLabel(u)} (${u.start === u.end ? u.start : `${u.start} – ${u.end}`})`),
-    ];
-    const count = clashes.length + away.length;
-    return (
-      <span title={`Unavailable:\n${lines.join('\n')}`}>
-        <Badge variant={clashes.length > 0 ? 'danger' : 'warning'} size="sm">
-          {clashes.length > 0 ? 'Busy' : 'Away'}{count > 1 ? ` (${count})` : ''}
-        </Badge>
-      </span>
-    );
-  };
+  const assessorBadge = (userId: string) => (
+    <AvailabilityBadge
+      availability={assessorAvailability[userId]}
+      windowStart={formData.startDate}
+      windowEnd={formData.plannedEndDate}
+    />
+  );
 
   return (
     <Page variant="flush" fill className="create-assessment-page">
