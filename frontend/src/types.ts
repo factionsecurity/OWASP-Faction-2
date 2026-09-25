@@ -870,6 +870,80 @@ export interface Unavailability {
   sourceId?: string;
 }
 
+export interface HolidayEntry {
+  date: string;
+  key?: string | null;
+  name: string;
+  added: boolean;
+}
+
+export interface HolidayRegion {
+  code: string;
+  name: string;
+  subdivisions: HolidayRegion[];
+}
+
+export interface TimeOffEntry {
+  id: string;
+  userId: string;
+  startDate: string;
+  endDate: string;
+  note?: string | null;
+}
+
+export interface UserAvailability {
+  userId: string;
+  holidayRegion?: string | null;
+  effectiveRegion?: string | null;
+  defaultRegion?: string | null;
+  upcomingHolidays: HolidayEntry[];
+  timeOff: TimeOffEntry[];
+}
+
+export type ScheduleBlockScope = 'EVERYONE' | 'TEAM' | 'USERS';
+
+export interface ScheduleBlock {
+  id: string;
+  title: string;
+  note?: string | null;
+  startDate: string;
+  endDate: string;
+  scope: ScheduleBlockScope;
+  teamId?: string | null;
+  teamName?: string | null;
+  userIds: string[];
+  createdBy?: string;
+}
+
+export interface ScheduleBlockRequest {
+  title: string;
+  note?: string;
+  startDate: string;
+  endDate: string;
+  scope: ScheduleBlockScope;
+  teamId?: string;
+  userIds?: string[];
+}
+
+export interface HolidayOverrideEntry {
+  id: string;
+  date: string;
+  name: string;
+}
+
+export interface RegionHolidays {
+  region: string;
+  year: number;
+  library: HolidayEntry[];
+  disabledKeys: string[];
+  added: HolidayOverrideEntry[];
+}
+
+/** Props for the overlay's availability card; `userId` set means a manager editing someone else. */
+export interface AvailabilityProfileCardProps {
+  userId?: string;
+}
+
 /**
  * Whether one candidate assessor is already booked across a proposed assessment window.
  * Asked about everyone who could be assigned, so the picker can show availability before
@@ -1026,6 +1100,7 @@ export interface AssessorTimelineProps {
   /** Called with the visible [start, end] dates (inclusive, YYYY-MM-DD) so the parent can fetch them. */
   onRangeChange?: (start: string, end: string) => void;
   loading?: boolean;
+  unavailability?: Unavailability[];
 }
 
 /** A person who can be assigned to an assessment (the assessor picker's option shape). */

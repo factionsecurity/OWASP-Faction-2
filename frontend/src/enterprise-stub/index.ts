@@ -10,7 +10,7 @@
  * feature is unavailable — so a stub that drew its own placeholder would be a second,
  * inconsistent version of that screen. Returning null keeps one upgrade experience.
  */
-import type { AssessmentPrefillActionProps, AssessorTimelineProps } from '../types';
+import type { AssessmentPrefillActionProps, AssessorTimelineProps, AvailabilityProfileCardProps } from '../types';
 
 const Unavailable = () => null;
 
@@ -25,3 +25,6 @@ export const McpConnectCard = Unavailable;
 export const AssessmentPrefillAction: (props: AssessmentPrefillActionProps) => null = () => null;
 /** Engagements' By User view; the call site shows the not-in-this-edition panel instead. */
 export const AssessorTimeline: (props: AssessorTimelineProps) => null = () => null;
+/** The profile's availability card and the admin page; call sites wrap them in PaidFeature or a feature check. */
+export const AvailabilityProfileCard: (props: AvailabilityProfileCardProps) => null = () => null;
+export const AvailabilityAdminPage = Unavailable;

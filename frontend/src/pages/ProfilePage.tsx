@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2, KeyRound } from 'lucide-react';
 import { usePageTitle } from '../context/PageTitleContext';
+import { useEdition } from '../context/EditionContext';
 import { profileApi } from '../api';
 import type { User } from '../types';
+import { AvailabilityProfileCard } from '@enterprise';
 import {
   Button,
   ConfirmDialog,
@@ -21,6 +23,7 @@ import './ProfilePage.css';
 
 export default function ProfilePage() {
   const { setPageTitle } = usePageTitle();
+  const { hasFeature } = useEdition();
   const [user, setUser] = useState<User | null>(null);
   const [loadError, setLoadError] = useState('');
   const [toast, setToast] = useState<string | null>(null);
@@ -237,6 +240,8 @@ export default function ProfilePage() {
       />
 
       <NotificationPreferencesSection />
+
+      {hasFeature('team_scheduling') && <AvailabilityProfileCard />}
 
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </Page>

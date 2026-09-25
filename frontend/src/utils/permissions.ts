@@ -266,6 +266,11 @@ export const permissions = {
   canConfigureAvailability: (authorities: string[]): boolean =>
     isSuperAdmin(authorities) || hasAnyPermission(authorities, ['availability:configure']),
 
+  // The Availability admin page: blocks for managers, holiday calendars for configurators.
+  canViewAvailabilityAdmin: (authorities: string[]): boolean =>
+    isSuperAdmin(authorities) || hasAnyPermission(authorities,
+      ['availability:manage:team', 'availability:manage:all', 'availability:configure']),
+
   // Assigned users management
   canAssignApplicationUsers: (authorities: string[]): boolean =>
     hasAnyPermission(authorities, ['applications:edit:all']) || isSuperAdmin(authorities),

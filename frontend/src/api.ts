@@ -8,6 +8,13 @@ import type { MentionableUser, AssessorAvailability, RetestCompletionLog, Retest
   CreateWorkflowRequest,
   UpdateWorkflowRequest,
   WorkflowMovePreview,
+  HolidayRegion,
+  TimeOffEntry,
+  UserAvailability,
+  ScheduleBlock,
+  ScheduleBlockRequest,
+  RegionHolidays,
+  Unavailability,
 } from './types';
 
 const api = axios.create({
@@ -2362,4 +2369,30 @@ export const statusApi = {
     const response = await api.get<ServiceStatus>('/status');
     return response.data;
   },
+};
+
+export const availabilityApi = {
+  me: () => api.get<ApiResponse<UserAvailability>>('/availability/me').then(r => r.data),
+  setMyRegion: (region: string | null) => api.put<ApiResponse<UserAvailability>>('/availability/me/region', { region }).then(r => r.data),
+  addMyTimeOff: (b: { startDate: string; endDate: string; note?: string }) => api.post<ApiResponse<TimeOffEntry>>('/availability/me/time-off', b).then(r => r.data),
+  updateMyTimeOff: (id: string, b: { startDate: string; endDate: string; note?: string }) => api.put<ApiResponse<TimeOffEntry>>(`/availability/me/time-off/${id}`, b).then(r => r.data),
+  deleteMyTimeOff: (id: string) => api.delete<ApiResponse<void>>(`/availability/me/time-off/${id}`).then(r => r.data),
+  user: (userId: string) => api.get<ApiResponse<UserAvailability>>(`/availability/users/${userId}`).then(r => r.data),
+  setUserRegion: (userId: string, region: string | null) => api.put<ApiResponse<UserAvailability>>(`/availability/users/${userId}/region`, { region }).then(r => r.data),
+  addUserTimeOff: (userId: string, b: { startDate: string; endDate: string; note?: string }) => api.post<ApiResponse<TimeOffEntry>>(`/availability/users/${userId}/time-off`, b).then(r => r.data),
+  updateUserTimeOff: (userId: string, id: string, b: { startDate: string; endDate: string; note?: string }) => api.put<ApiResponse<TimeOffEntry>>(`/availability/users/${userId}/time-off/${id}`, b).then(r => r.data),
+  deleteUserTimeOff: (userId: string, id: string) => api.delete<ApiResponse<void>>(`/availability/users/${userId}/time-off/${id}`).then(r => r.data),
+  regions: () => api.get<ApiResponse<HolidayRegion[]>>('/availability/regions').then(r => r.data),
+  blocks: () => api.get<ApiResponse<ScheduleBlock[]>>('/availability/blocks').then(r => r.data),
+  createBlock: (b: ScheduleBlockRequest) => api.post<ApiResponse<ScheduleBlock>>('/availability/blocks', b).then(r => r.data),
+  updateBlock: (id: string, b: ScheduleBlockRequest) => api.put<ApiResponse<ScheduleBlock>>(`/availability/blocks/${id}`, b).then(r => r.data),
+  deleteBlock: (id: string) => api.delete<ApiResponse<void>>(`/availability/blocks/${id}`).then(r => r.data),
+  calendar: (start: string, end: string) => api.get<ApiResponse<Unavailability[]>>('/availability/calendar', { params: { start, end } }).then(r => r.data),
+  config: () => api.get<ApiResponse<{ defaultHolidayRegion: string | null }>>('/availability/config').then(r => r.data),
+  setConfig: (defaultHolidayRegion: string | null) => api.put<ApiResponse<{ defaultHolidayRegion: string | null }>>('/availability/config', { defaultHolidayRegion }).then(r => r.data),
+  regionHolidays: (region: string, year: number) => api.get<ApiResponse<RegionHolidays>>('/availability/regions/holidays', { params: { region, year } }).then(r => r.data),
+  disableHoliday: (region: string, holidayKey: string) => api.post<ApiResponse<unknown>>('/availability/regions/overrides', { region, kind: 'DISABLED', holidayKey }).then(r => r.data),
+  enableHoliday: (region: string, holidayKey: string) => api.delete<ApiResponse<void>>('/availability/regions/overrides', { params: { region, holidayKey } }).then(r => r.data),
+  addCompanyDay: (region: string, date: string, name: string) => api.post<ApiResponse<unknown>>('/availability/regions/overrides', { region, kind: 'ADDED', date, name }).then(r => r.data),
+  removeCompanyDay: (id: string) => api.delete<ApiResponse<void>>(`/availability/regions/overrides/${id}`).then(r => r.data),
 };

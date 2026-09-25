@@ -36,6 +36,7 @@ import {
   BellRing,
   Palette,
   AtSign,
+  CalendarOff,
 } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import GliderIcon from './icons/GliderIcon';
@@ -116,6 +117,7 @@ const menuItems: MenuItem[] = [
       { name: 'People & Access', icon: Users, heading: true },
       { name: 'Users', path: '/users', icon: Users },
       { name: 'Teams', path: '/teams', icon: UserCog },
+      { name: 'Availability', path: '/availability', icon: CalendarOff, feature: 'team_scheduling' },
       { name: 'Roles', path: '/roles', icon: Shield },
       { name: 'Password Policy', path: '/password-policy', icon: KeyRound },
       { name: 'SSO Config', path: '/sso-config', icon: Shield, feature: 'sso' },
@@ -528,6 +530,9 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
         return authorities.some((auth: string) =>
           auth === 'users:read:team' || auth === 'users:read:all'
         );
+
+      case 'availability':
+        return authorities.some((auth: string) => auth.startsWith('availability:'));
 
       case 'roles':
         return authorities.some((auth: string) =>
