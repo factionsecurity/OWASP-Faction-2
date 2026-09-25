@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Edit2, Trash2, Plus, Calendar, List, Download, Upload, Eye, Users } from 'lucide-react';
-import { assessmentsApi, applicationsApi, assessmentTypesApi, teamsApi, usersApi, vulnerabilitiesApi } from '../api';
+import { assessmentsApi, applicationsApi, assessmentTypesApi, availabilityApi, teamsApi, usersApi, vulnerabilitiesApi } from '../api';
 import type {
   Assessment,
   AssessmentMetrics,
@@ -77,6 +77,11 @@ export default function Engagements() {
   // past it widens it and refetches; kept in a ref so reloads never shrink it back.
   const calendarWindow = useRef(defaultCalendarWindow());
   const [metrics, setMetrics] = useState<AssessmentMetrics | null>(null);
+  // Unavailability bands for the By User timeline, fetched for the same window as the
+  // assessments. Guarded by a request counter: the window can widen quietly (ensureCalendarRange)
+  // while an earlier fetch is still in flight, and that stale response must not clobber a newer one.
+  const [timelineUnavailability, setTimelineUnavailability] = useState<Unavailability[]>([]);
+  const unavailabilityRequestId = useRef(0);
 
   // Reference data
   const [applications, setApplications] = useState<Application[]>([]);
@@ -294,6 +299,20 @@ export default function Engagements() {
 
       if (response.success && response.data) {
         setAssessments(response.data);
+      }
+
+      // Unavailability bands are only needed for the By User view, and only when the viewer can
+      // read users (the calendar endpoint requires users:read). A request counter guards against
+      // a stale response landing after a newer one — the window can widen quietly (see
+      // ensureCalendarRange) while an earlier fetch is still in flight.
+      const requestId = ++unavailabilityRequestId.current;
+      if (view === 'people' && hasTeamScheduling && permissions.canViewUsers) {
+        const { start, end } = calendarWindow.current;
+        availabilityApi.calendar(start, end)
+          .then((r) => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability(r.data ?? []); })
+          .catch(() => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability([]); });
+      } else {
+        setTimelineUnavailability([]);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load calendar data');
@@ -749,6 +768,7 @@ export default function Engagements() {
           loading={loading}
           onEventClick={handleEventClick}
           onRangeChange={ensureCalendarRange}
+          unavailability={timelineUnavailability}
         />
         </PaidFeature>
       ) : (
