@@ -262,6 +262,17 @@
   margin-bottom: 0 !important;
 }
 
+/* A Bootstrap column won't shrink below its content's intrinsic width by default, so a
+   long name or email pushes into the neighboring column instead of wrapping. */
+.stakeholder-list .row > [class*="col-"] {
+  min-width: 0;
+}
+
+.stakeholder-list .row .small {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* List Item Styling (for URLs and Stakeholders) */
 .create-assessment-page .form-panel .list-item {
   display: flex;
