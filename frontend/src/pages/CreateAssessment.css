@@ -157,14 +157,13 @@
   position: relative;
 }
 
+/* No card border/background/padding here on purpose: the calendar preview doesn't need to sit
+   in its own pane, and every pixel of padding this box used to take came straight off the
+   calendar's own width (and therefore its height, since FullCalendar derives day-cell height
+   from the available width). Dropping the pane makes it bigger for free. */
 .calendar-sticky {
   position: sticky;
   top: 2rem;
-  background-color: var(--secondary-bg, #ffffff);
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: var(--radius-lg, 0.5rem);
-  /* Every pixel here comes off the calendar's own width, and therefore off its height. */
-  padding: 1.25rem;
 }
 
 .preview-info {
