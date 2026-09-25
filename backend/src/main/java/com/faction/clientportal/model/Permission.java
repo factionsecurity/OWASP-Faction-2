@@ -178,7 +178,13 @@ public enum Permission {
     // Manager Dashboard Permission. A single org-wide grant, deliberately independent of
     // assessments:read:*/vulnerabilities:read:* — holding those does NOT expose the dashboard,
     // and holding this alone exposes every assessment/vulnerability through the dashboard.
-    MANAGER_DASHBOARD_READ_ALL("manager_dashboard:read:all", "Read manager dashboard", PermissionResource.MANAGER_DASHBOARD);
+    MANAGER_DASHBOARD_READ_ALL("manager_dashboard:read:all", "Read manager dashboard", PermissionResource.MANAGER_DASHBOARD),
+
+    // Availability (enterprise: team scheduling). Your own time off and holiday region need no
+    // permission; these cover managing other people's, scheduling blocks, and holiday calendars.
+    AVAILABILITY_MANAGE_TEAM("availability:manage:team", "Manage availability for team members", PermissionResource.AVAILABILITY),
+    AVAILABILITY_MANAGE_ALL("availability:manage:all", "Manage availability for everyone", PermissionResource.AVAILABILITY),
+    AVAILABILITY_CONFIGURE("availability:configure", "Configure holiday calendars", PermissionResource.AVAILABILITY);
 
     private final String permission;
     private final String description;

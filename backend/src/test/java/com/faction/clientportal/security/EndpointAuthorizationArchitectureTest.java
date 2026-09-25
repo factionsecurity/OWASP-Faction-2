@@ -86,7 +86,11 @@ class EndpointAuthorizationArchitectureTest {
      */
     private static final Set<String> ENTERPRISE_ONLY_PERMISSIONS = Set.of(
             "sso:config:read",
-            "sso:config:write");
+            "sso:config:write",
+            // Team scheduling: every availability endpoint is in the overlay.
+            "availability:manage:team",
+            "availability:manage:all",
+            "availability:configure");
 
     private static final Pattern AUTHORITY_STRING = Pattern.compile("'([^']+)'");
 
