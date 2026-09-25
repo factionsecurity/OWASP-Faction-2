@@ -42,6 +42,8 @@ import { useEdition } from '../context/EditionContext';
 import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
 import { unavailabilityLabel } from '../utils/unavailability';
+import { findUnavailability, UnavailabilityList } from '../components/UnavailabilityWarning';
+import type { Unavailability } from '../types';
 import './CreateAssessment.css';
 
 // Planned end date is picked as a duration from the start date; "custom" falls back to a
@@ -187,6 +189,7 @@ export default function CreateAssessment() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [unavailableWarning, setUnavailableWarning] = useState<{ entries: Unavailability[]; shouldClose: boolean } | null>(null);
   const [initialFormData, setInitialFormData] = useState<string>('');
   const [initialUrls, setInitialUrls] = useState<string>('');
   const [initialStakeholders, setInitialStakeholders] = useState<string>('');
@@ -1084,8 +1087,8 @@ export default function CreateAssessment() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent, shouldClose: boolean = true) => {
-    e.preventDefault();
+  const performSave = async (e: React.FormEvent | null, shouldClose: boolean = true) => {
+    e?.preventDefault();
     setLoading(true);
     setError('');
 
@@ -1203,6 +1206,20 @@ export default function CreateAssessment() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /** Checks the chosen assessors' availability first; an unavailable one asks before saving. */
+  const handleSubmit = async (e: React.FormEvent, shouldClose: boolean = true) => {
+    e.preventDefault();
+    if (formData.startDate && formData.plannedEndDate && formData.assessorIds.length > 0) {
+      const entries = await findUnavailability(
+        id || null, formData.assessorIds, toApiDate(formData.startDate), toApiDate(formData.plannedEndDate));
+      if (entries.length > 0) {
+        setUnavailableWarning({ entries, shouldClose });
+        return;
+      }
+    }
+    performSave(null, shouldClose);
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -2158,6 +2175,28 @@ export default function CreateAssessment() {
         confirmText="Delete"
         cancelText="Cancel"
         variant="danger"
+        isLoading={loading}
+      />
+
+      {/* Assessor Unavailability Warning */}
+      <ConfirmDialog
+        isOpen={!!unavailableWarning}
+        onClose={() => setUnavailableWarning(null)}
+        onConfirm={() => {
+          const shouldClose = unavailableWarning?.shouldClose ?? true;
+          setUnavailableWarning(null);
+          performSave(null, shouldClose);
+        }}
+        title="Assessors Unavailable"
+        message={unavailableWarning ? (
+          <UnavailabilityList
+            entries={unavailableWarning.entries}
+            names={Object.fromEntries(users.map((u) => [u.id, `${u.firstName} ${u.lastName}`]))}
+          />
+        ) : ''}
+        confirmText="Save Anyway"
+        cancelText="Cancel"
+        variant="warning"
         isLoading={loading}
       />
       </div>{/* end create-assessment-content */}

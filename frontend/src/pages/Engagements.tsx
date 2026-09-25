@@ -9,12 +9,14 @@ import type {
   AssessmentType,
   Team,
   TimelineSpan,
+  Unavailability,
   User,
   Vulnerability,
 } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import { Button, Badge, ConfirmDialog, IconButton, ActionButtons, FormLabel, Input } from '../components';
+import { findUnavailability, UnavailabilityList } from '../components/UnavailabilityWarning';
 import AssessmentCalendar from '../components/AssessmentCalendar';
 import { AssessorTimeline } from '@enterprise';
 import { PaidFeature } from '../components/PaidFeature';
@@ -191,6 +193,7 @@ export default function Engagements() {
     newStart: Date;
     newEnd: Date;
     revert: () => void;
+    unavailable: Unavailability[];
   } | null>(null);
 
   useEffect(() => {
@@ -419,6 +422,9 @@ export default function Engagements() {
       return;
     }
 
+    const unavailable = await findUnavailability(
+      assessmentId, assessment.assessorIds ?? [], toApiDate(newStart), toApiDate(newEnd));
+
     // Show confirmation dialog
     setPendingDateChange({
       assessmentId,
@@ -426,8 +432,15 @@ export default function Engagements() {
       newStart,
       newEnd,
       revert,
+      unavailable,
     });
     setShowDateChangeConfirm(true);
+  };
+
+  /** Names from the assessment itself: Engagements has no user directory in calendar view. */
+  const assessorNamesById = (assessmentId: string): Record<string, string> => {
+    const a = assessments.find((x) => x.id === assessmentId);
+    return Object.fromEntries((a?.assessorIds ?? []).map((id, i) => [id, a?.assessorNames?.[i] ?? 'Unknown user']));
   };
 
   const handleConfirmDateChange = async () => {
@@ -828,15 +841,20 @@ export default function Engagements() {
         isOpen={showDateChangeConfirm}
         onClose={handleCancelDateChange}
         onConfirm={handleConfirmDateChange}
-        title="Confirm Date Change"
+        title={pendingDateChange?.unavailable.length ? 'Assessors Unavailable' : 'Confirm Date Change'}
         message={
-          pendingDateChange
-            ? `Do you want to save the new dates for "${pendingDateChange.assessmentName}"?\n\nNew Start: ${pendingDateChange.newStart.toLocaleDateString()}\nNew End: ${pendingDateChange.newEnd.toLocaleDateString()}`
-            : ''
+          pendingDateChange ? (
+            <>
+              {`Save the new dates for "${pendingDateChange.assessmentName}"?\nNew Start: ${pendingDateChange.newStart.toLocaleDateString()}\nNew End: ${pendingDateChange.newEnd.toLocaleDateString()}`}
+              {pendingDateChange.unavailable.length > 0 && (
+                <UnavailabilityList entries={pendingDateChange.unavailable} names={assessorNamesById(pendingDateChange.assessmentId)} />
+              )}
+            </>
+          ) : ''
         }
-        confirmText="Save Changes"
+        confirmText={pendingDateChange?.unavailable.length ? 'Save Anyway' : 'Save Changes'}
         cancelText="Cancel"
-        variant="info"
+        variant={pendingDateChange?.unavailable.length ? 'warning' : 'info'}
       />
 
       <AssessmentImportModal
