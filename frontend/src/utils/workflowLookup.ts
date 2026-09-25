@@ -8,6 +8,14 @@ export function workflowFor(workflows: Workflow[], workflowId?: string | null): 
     ?? workflows.find((w) => w.id === DEFAULT_WORKFLOW_ID);
 }
 
+/**
+ * Whether a row sits in its own workflow's completed status — the backend's
+ * AssessmentWorkflows.isCompleted. Everything else, including a missing status, is active.
+ */
+export function isCompleted(workflows: Workflow[], workflowId: string | null | undefined, status: string | null | undefined): boolean {
+  return !!status && status === workflowFor(workflows, workflowId)?.completedStatus;
+}
+
 /** The colour this workflow paints this status, or undefined to let the caller's fallback apply. */
 export function colorFor(workflows: Workflow[], workflowId: string | null | undefined, status: string): string | undefined {
   return workflowFor(workflows, workflowId)?.statusColors?.[status];

@@ -176,6 +176,7 @@
 .create-assessment-page .calendar-panel .assessment-calendar {
   border: none;
   padding: 0;
+  margin-top: 0.75rem;
   background-color: transparent;
 }
 
@@ -186,11 +187,6 @@
 
 .create-assessment-page .calendar-panel .fc-toolbar-title {
   font-size: 1.0625rem;
-  /* The calendar is forced light by .calendar-frame while the app around it is dark, so the
-     title inherits a near-white theme colour and lands white-on-white — rgb(249,250,251) on
-     rgb(255,255,255). Everything else in the calendar carries its own light-mode colour;
-     only the month name falls through. */
-  color: #111827;
 }
 
 .create-assessment-page .calendar-panel .fc-button {
@@ -535,11 +531,6 @@
 
 .stakeholder-remove-btn:hover {
   color: #ef4444;
-}
-
-.calendar-frame {
-  background: #fff;
-  padding: 5px;
 }
 
 /* Scope section — expand rich text editor */

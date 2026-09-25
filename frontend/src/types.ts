@@ -982,6 +982,40 @@ export interface AssessmentPrefillActionProps {
   onPrefill: (prefill: AssessmentPrefill) => Promise<void>;
 }
 
+/** The By User timeline's range. */
+export type TimelineSpan = 'week' | 'month' | 'quarter';
+
+/**
+ * The Engagements "By User" timeline slot, filled by the paid overlay (feature
+ * `team_scheduling`). Core owns the data — assessments, the user directory, the fetched
+ * window — and the persisted filter state; the overlay owns the drawing.
+ */
+export interface AssessorTimelineProps {
+  assessments: Assessment[];
+  workflows?: Workflow[];
+  /**
+   * The user directory, so people with nothing booked still get a row. `null` when the viewer
+   * can't read users: rows then come only from the assessors on the loaded assessments.
+   */
+  users: User[] | null;
+  /** Teams for the filter; empty hides it (the teams list needs the same permission as users). */
+  teams: Team[];
+  teamId: string;
+  onTeamChange: (teamId: string) => void;
+  /**
+   * Hide assessments in their workflow's completed status, and with them every user who has no
+   * active assessment in the visible range — only people actually booked keep a row.
+   */
+  activeOnly: boolean;
+  onActiveOnlyChange: (activeOnly: boolean) => void;
+  span: TimelineSpan;
+  onSpanChange: (span: TimelineSpan) => void;
+  onEventClick?: (assessment: Assessment) => void;
+  /** Called with the visible [start, end] dates (inclusive, YYYY-MM-DD) so the parent can fetch them. */
+  onRangeChange?: (start: string, end: string) => void;
+  loading?: boolean;
+}
+
 /** A person who can be assigned to an assessment (the assessor picker's option shape). */
 export interface AssignableUser {
   id: string;
@@ -2308,7 +2342,8 @@ export type FeatureKey =
   | 'custom_roles'
   | 'report_sections'
   | 'custom_workflows'
-  | 'mcp_server';
+  | 'mcp_server'
+  | 'team_scheduling';
 
 /** Quota keys from the backend `Quota` enum. Capabilities that ship, but capped. */
 export type QuotaKey = 'ai_providers' | 'ai_prompts' | 'extensions';

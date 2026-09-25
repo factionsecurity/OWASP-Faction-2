@@ -1,0 +1,316 @@
+/* AssessmentCalendar — themed with the app, in the same look as the Engagements By User
+   timeline: tinted bars with a status-coloured left edge, a title with
+   round arrows on the left and a segmented Day/Week/Month on the right. */
+
+.assessment-calendar {
+  --fc-border-color: var(--border-color);
+  --fc-page-bg-color: var(--secondary-bg);
+  --fc-neutral-bg-color: var(--tertiary-bg);
+  --fc-today-bg-color: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  color: var(--text-primary);
+}
+
+.assessment-calendar .fc,
+.assessment-calendar .fc-view-harness,
+.assessment-calendar .fc-scrollgrid,
+.assessment-calendar .fc-daygrid-body,
+.assessment-calendar .fc-scrollgrid-sync-table,
+.assessment-calendar .fc-daygrid,
+.assessment-calendar .fc-scrollgrid:hover,
+.assessment-calendar .fc-daygrid-body:hover,
+.assessment-calendar .fc-scrollgrid-sync-table:hover,
+.assessment-calendar .fc-daygrid:hover,
+.assessment-calendar .fc-scrollgrid tbody,
+.assessment-calendar .fc-scrollgrid td,
+.assessment-calendar .fc-scrollgrid th {
+  background-color: transparent !important;
+}
+
+.assessment-calendar .fc-scrollgrid {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.assessment-calendar .fc-scrollgrid td.fc-day-sat,
+.assessment-calendar .fc-scrollgrid td.fc-day-sun {
+  background-color: color-mix(in srgb, var(--tertiary-bg) 60%, transparent) !important;
+}
+
+.assessment-calendar .fc-scrollgrid td.fc-day-today {
+  background-color: var(--fc-today-bg-color) !important;
+}
+
+.assessment-calendar .fc-daygrid-day:hover .fc-daygrid-day-frame {
+  background-color: var(--hover-bg) !important;
+}
+
+/* Header row and day numbers, in the timeline's small muted type. */
+.assessment-calendar .fc-col-header-cell-cushion {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.assessment-calendar .fc-daygrid-day-number,
+.assessment-calendar .fc-timegrid-axis-cushion,
+.assessment-calendar .fc-timegrid-slot-label-cushion {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.assessment-calendar .fc-day-other .fc-daygrid-day-number {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* Toolbar: title + round arrows + Today left, a segmented Day/Week/Month right. */
+.assessment-calendar .fc-header-toolbar.fc-toolbar {
+  margin-bottom: 0.75rem;
+}
+
+.assessment-calendar .fc-toolbar-chunk:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.assessment-calendar .fc-toolbar-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.assessment-calendar .fc-button {
+  background: transparent;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  box-shadow: none !important;
+  font-size: 0.8125rem;
+  text-transform: none;
+}
+
+.assessment-calendar .fc-button:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+.assessment-calendar .fc-button:disabled {
+  opacity: 0.5;
+}
+
+/* Previous / next render as a group; split them into the timeline's round buttons. */
+.assessment-calendar .fc-prev-button,
+.assessment-calendar .fc-next-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50% !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.assessment-calendar .fc-prev-button + .fc-next-button {
+  margin-left: 0.5rem !important;
+}
+
+.assessment-calendar .fc-today-button {
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-md);
+  background: var(--tertiary-bg);
+}
+
+.assessment-calendar .fc-toolbar-chunk:last-child .fc-button-group .fc-button {
+  padding: 0.3rem 0.75rem;
+  border-radius: 0;
+}
+
+.assessment-calendar .fc-toolbar-chunk:last-child .fc-button-group .fc-button:first-child {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.assessment-calendar .fc-toolbar-chunk:last-child .fc-button-group .fc-button:last-child {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.assessment-calendar .fc-button-primary:not(:disabled).fc-button-active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+/* Events: the timeline's bars — tinted fill, status-coloured left edge, red border past due. */
+.assessment-calendar .fc-event.tl-event {
+  background: color-mix(in srgb, var(--bar-color) 18%, var(--secondary-bg)) !important;
+  border: 1px solid color-mix(in srgb, var(--bar-color) 55%, transparent) !important;
+  border-left: 3px solid var(--bar-color) !important;
+  border-radius: var(--radius-sm);
+  margin-bottom: 2px;
+}
+
+.assessment-calendar .fc-event.tl-event:hover {
+  background: color-mix(in srgb, var(--bar-color) 30%, var(--secondary-bg)) !important;
+  opacity: 1;
+}
+
+.assessment-calendar .fc-event.tl-event.past-due {
+  border-color: var(--danger-color) !important;
+  border-left-color: var(--bar-color) !important;
+}
+
+.assessment-calendar .fc-event.tl-event .fc-event-main {
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.125rem 0.375rem;
+}
+
+.assessment-calendar .fc-event-resizer-start,
+.assessment-calendar .fc-event-resizer-end {
+  background: transparent;
+}
+
+.assessment-calendar .fc-event:hover .fc-event-resizer-start,
+.assessment-calendar .fc-event:hover .fc-event-resizer-end {
+  background: color-mix(in srgb, var(--bar-color) 45%, transparent);
+}
+
+.assessment-calendar .fc-daygrid-more-link {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* Legend: small tinted chips in the bar style, not solid badges. */
+.assessment-calendar .calendar-legend {
+  background: transparent;
+  padding: 0.75rem 0 0;
+  margin-top: 0;
+  gap: 0.5rem;
+}
+
+.assessment-calendar .calendar-legend .badge {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bar-color) 18%, var(--secondary-bg));
+  border: 1px solid color-mix(in srgb, var(--bar-color) 55%, transparent);
+  border-left: 3px solid var(--bar-color);
+  border-radius: var(--radius-sm);
+}
+
+.assessment-calendar .calendar-legend .badge.past-due {
+  border-color: var(--danger-color);
+  border-left-color: var(--bar-color);
+}
+
+.assessment-calendar .calendar-legend .badge {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Day and week grids have no rows of weeks to size them; give the single row some room. */
+.assessment-calendar .fc-dayGridWeek-view .fc-daygrid-day-frame,
+.assessment-calendar .fc-dayGridDay-view .fc-daygrid-day-frame {
+  min-height: 16rem;
+}
+
+/* The app's global table styles tint every <tr>; the calendar's grid rows are not table rows. */
+.assessment-calendar tr,
+.assessment-calendar tr:hover {
+  background-color: transparent !important;
+}
+
+.assessment-calendar .fc {
+  font-family: inherit;
+}
+
+.assessment-calendar .fc-event {
+  cursor: pointer;
+}
+
+.assessment-calendar .fc-daygrid-event {
+  white-space: normal;
+}
+
+/* The assessment being created or edited: a stronger fill so it stands out from the rest. */
+.assessment-calendar .fc-event.tl-event.current {
+  background: color-mix(in srgb, var(--bar-color) 40%, var(--secondary-bg)) !important;
+}
+
+/* Resize handles: always present, lit on hover. */
+.assessment-calendar .fc-event-resizer {
+  display: block !important;
+  position: absolute;
+  z-index: 4;
+  width: 10px;
+  height: 100%;
+  top: 0;
+}
+
+.assessment-calendar .fc-event-resizer-start {
+  left: 0;
+  cursor: w-resize;
+}
+
+.assessment-calendar .fc-event-resizer-end {
+  right: 0;
+  cursor: e-resize;
+}
+
+.assessment-calendar .fc-daygrid-event.fc-event-resizable {
+  cursor: move;
+}
+
+.assessment-calendar .calendar-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.assessment-calendar .calendar-legend .badge {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* Three columns with the title truly centered: FullCalendar's own space-between only centers it
+   when both sides happen to be the same width. */
+.assessment-calendar {
+  container-type: inline-size;
+}
+
+.assessment-calendar .fc-header-toolbar.fc-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.assessment-calendar .fc-toolbar-chunk:last-child {
+  justify-self: end;
+}
+
+/* Narrow panels (Create Assessment, Schedule Retest): the title takes its own row above. */
+@container (max-width: 560px) {
+  .assessment-calendar .fc-header-toolbar.fc-toolbar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .assessment-calendar .fc-toolbar-chunk:nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    text-align: center;
+  }
+}
+
+.assessment-calendar .fc-toolbar-title {
+  white-space: nowrap;
+}

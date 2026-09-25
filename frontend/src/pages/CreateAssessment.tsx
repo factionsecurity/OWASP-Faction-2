@@ -2095,16 +2095,14 @@ export default function CreateAssessment() {
                     {calendarPreview.plannedEndDate && new Date(calendarPreview.plannedEndDate).toLocaleDateString()}
                   </div>
                 </div>
-                <div className="calendar-frame">
-                  <AssessmentCalendar
-                    assessments={[calendarPreview, ...teamAssessments]}
-                    loading={false}
-                    onEventClick={() => {}}
-                    onEventDrop={handleCalendarDrop}
-                    onEventResize={handleCalendarDrop}
-                    currentAssessmentId={id || 'preview'}
-                  />
-                </div>
+                <AssessmentCalendar
+                  assessments={[calendarPreview, ...teamAssessments]}
+                  loading={false}
+                  onEventClick={() => {}}
+                  onEventDrop={handleCalendarDrop}
+                  onEventResize={handleCalendarDrop}
+                  currentAssessmentId={id || 'preview'}
+                />
                 <div className="mt-3 p-3 bg-info bg-opacity-10 rounded">
                   <small className="text-muted">
                     <strong>💡 Tip:</strong> Drag the calendar event to move it, or drag the edges to resize and adjust start/end dates. Changes update the form automatically.

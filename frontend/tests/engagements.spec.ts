@@ -94,6 +94,43 @@ test.describe('Engagements Page', () => {
     await expect(page.locator('.data-table')).not.toBeVisible();
   });
 
+  test('should show the By User timeline with a row per internal user', async ({ page }) => {
+    await page.locator('.eng-view-toggle button:has-text("By User")').click();
+    const timeline = page.locator('.assessor-timeline');
+    const locked = page.locator('.paid-lock:has-text("By User Timeline")');
+    await expect(timeline.or(locked)).toBeVisible({ timeout: TEST_CONFIG.timeout.medium });
+
+    // The timeline is paid (team_scheduling): the open source edition shows the locked panel.
+    if (await locked.isVisible()) {
+      await expect(locked).toContainText('Not included in this edition');
+      return;
+    }
+
+    await expect(timeline.locator('.tl-span-btn.active')).toHaveCount(1);
+
+    // Active only (the default) keeps just the people booked on an active assessment in range,
+    // so every user row it shows carries at least one bar.
+    const activeOnly = timeline.getByLabel('Only active assessments');
+    await expect(activeOnly).toBeChecked();
+    const bookedRows = timeline.locator('.tl-row:not(:has(.unassigned))');
+    const bookedCount = await bookedRows.count();
+    for (let i = 0; i < bookedCount; i++) {
+      await expect(bookedRows.nth(i).locator('.tl-bar').first()).toBeVisible();
+    }
+
+    // Unchecked, every internal user gets a row — the signed-in super admin among them.
+    await activeOnly.uncheck();
+    await expect(timeline.locator('.tl-row').first()).toBeVisible({ timeout: TEST_CONFIG.timeout.medium });
+    expect(await timeline.locator('.tl-row').count()).toBeGreaterThanOrEqual(bookedCount);
+    await activeOnly.check();
+
+    // Switching span keeps the grid and moves the title to the new range.
+    await timeline.locator('.tl-span-btn:has-text("Week")').click();
+    await expect(timeline.locator('.tl-day')).toHaveCount(7);
+    await timeline.locator('.tl-span-btn:has-text("Month")').click();
+    await expect(timeline.locator('.tl-title')).not.toContainText('–');
+  });
+
   test('should display filters in list view', async ({ page }) => {
     await switchToListView(page);
 
@@ -180,10 +217,8 @@ test.describe('Engagements Page', () => {
   test('should have proper page header actions', async ({ page }) => {
     await expect(page.locator('button:has-text("Export CSV")')).toBeVisible();
     await expect(page.locator('button:has-text("Create Assessment")')).toBeVisible();
-    // View toggle button exists (shows either "List View" or "Calendar View")
-    await expect(
-      page.locator('button:has-text("List View"), button:has-text("Calendar View")')
-    ).toBeVisible();
+    // The view switcher offers all three views
+    await expect(page.locator('.eng-view-toggle button')).toHaveText([/List View/, /Calendar View/, /By User/]);
   });
 
   test('should display loading state and eventually show metrics', async ({ page }) => {

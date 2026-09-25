@@ -10,7 +10,7 @@
  * feature is unavailable — so a stub that drew its own placeholder would be a second,
  * inconsistent version of that screen. Returning null keeps one upgrade experience.
  */
-import type { AssessmentPrefillActionProps } from '../types';
+import type { AssessmentPrefillActionProps, AssessorTimelineProps } from '../types';
 
 const Unavailable = () => null;
 
@@ -23,3 +23,5 @@ export const McpLogTab = Unavailable;
 export const McpConnectCard = Unavailable;
 /** No outside source to pre-fill the scheduling form from, so no button in its action bar. */
 export const AssessmentPrefillAction: (props: AssessmentPrefillActionProps) => null = () => null;
+/** Engagements' By User view; the call site shows the not-in-this-edition panel instead. */
+export const AssessorTimeline: (props: AssessorTimelineProps) => null = () => null;

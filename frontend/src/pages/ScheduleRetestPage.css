@@ -78,6 +78,13 @@
   top: 0;
 }
 
+/* The panel already frames the calendar; drop the calendar's own border and padding. */
+.calendar-panel .assessment-calendar {
+  border: none;
+  padding: 0;
+  background-color: transparent;
+}
+
 .vuln-retest-list {
   display: flex;
   flex-direction: column;
