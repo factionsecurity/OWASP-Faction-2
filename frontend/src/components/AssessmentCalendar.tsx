@@ -235,10 +235,14 @@ export default function AssessmentCalendar({
         displayEventTime={false}
       />
 
-      {/* Legend — driven by statuses present in the current event set */}
+      {/* Legend — driven by statuses present in the current event set. Every entry is a small
+          swatch plus a plain label, matching the By User timeline's own legend format (see
+          AssessorTimeline's .tl-away / .tl-legend-swatch) rather than the old solid "badge" chips
+          this used to mix in for statuses/current/past-due. */}
       <div className="calendar-legend">
         {currentAssessmentId && (
-          <span className="badge current" style={{ ['--bar-color' as string]: CURRENT_COLOR }}>
+          <span className="cal-legend-entry">
+            <i className="cal-legend-swatch cal-legend-swatch--solid" style={{ ['--legend-color' as string]: CURRENT_COLOR }} />
             Current (Editing)
           </span>
         )}
@@ -252,16 +256,14 @@ export default function AssessmentCalendar({
             if (!entries.has(key)) entries.set(key, { status: a.status, workflowId: a.workflowId, color });
           }
           return Array.from(entries.values()).map((entry) => (
-            <span
-              key={`${entry.status}::${entry.color}`}
-              className="badge"
-              style={{ ['--bar-color' as string]: entry.color }}
-            >
+            <span key={`${entry.status}::${entry.color}`} className="cal-legend-entry">
+              <i className="cal-legend-swatch cal-legend-swatch--solid" style={{ ['--legend-color' as string]: entry.color }} />
               {statusLabel(workflows ?? [], entry.workflowId, entry.status)}
             </span>
           ));
         })()}
-        <span className="badge past-due" style={{ ['--bar-color' as string]: '#6c757d' }}>
+        <span className="cal-legend-entry">
+          <i className="cal-legend-swatch cal-legend-swatch--past-due" />
           Past Due (Red Border)
         </span>
         {orgHolidayEvents.length > 0 && (
