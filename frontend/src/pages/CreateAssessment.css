@@ -112,15 +112,13 @@
 /* Split View Layout */
 .create-assessment-page .split-view {
   display: grid;
-  /* Both columns are fr, so the calendar keeps a real share of whatever width there is
-     rather than a fixed pixel budget. It gets slightly more than the form because
-     FullCalendar runs height="auto" with aspectRatio 1.8 — the width is also what sets the
-     day-cell height, and at the old flat 500px (440px of calendar once the panel padding
-     came out) the rows landed around 40px tall, which is what read as cramped.
+  /* Both columns are fr, so each keeps a real share of whatever width there is rather than a
+     fixed pixel budget. Equal fr fractions split the available width 50/50 between the form
+     and the calendar preview.
 
      The minmax floors are what stop this crushing either side on the way down to the
      1200px breakpoint where the two panels stack. */
-  grid-template-columns: minmax(460px, 0.9fr) minmax(560px, 1.35fr);
+  grid-template-columns: minmax(460px, 1fr) minmax(560px, 1fr);
   gap: 2rem;
   align-items: start;
 }
