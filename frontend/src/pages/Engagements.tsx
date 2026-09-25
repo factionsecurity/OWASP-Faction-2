@@ -12,6 +12,8 @@ import type {
   Unavailability,
   User,
   Vulnerability,
+  HolidayEntry,
+  ScheduleBlock,
 } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
@@ -82,6 +84,10 @@ export default function Engagements() {
   // while an earlier fetch is still in flight, and that stale response must not clobber a newer one.
   const [timelineUnavailability, setTimelineUnavailability] = useState<Unavailability[]>([]);
   const unavailabilityRequestId = useRef(0);
+  // The main Calendar view's org-wide overlay: default-region holidays and scheduling blocks
+  // (never personal time off — that's per-user and stays on the By User timeline only).
+  const [calendarOrgHolidays, setCalendarOrgHolidays] = useState<HolidayEntry[]>([]);
+  const [calendarBlocks, setCalendarBlocks] = useState<ScheduleBlock[]>([]);
 
   // Reference data
   const [applications, setApplications] = useState<Application[]>([]);
@@ -313,6 +319,21 @@ export default function Engagements() {
           .catch(() => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability([]); });
       } else {
         setTimelineUnavailability([]);
+      }
+
+      // The main Calendar view's org-wide overlay. Unlike /calendar (users:read-gated), both
+      // /org-calendar and /blocks are @AuthenticatedOnly, so no permissions.canViewUsers check.
+      if (view === 'calendar' && hasTeamScheduling) {
+        const { start, end } = calendarWindow.current;
+        availabilityApi.orgCalendar(start, end)
+          .then((r) => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays(r.data ?? []); })
+          .catch(() => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays([]); });
+        availabilityApi.blocks()
+          .then((r) => { if (requestId === unavailabilityRequestId.current) setCalendarBlocks(r.data ?? []); })
+          .catch(() => { if (requestId === unavailabilityRequestId.current) setCalendarBlocks([]); });
+      } else {
+        setCalendarOrgHolidays([]);
+        setCalendarBlocks([]);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load calendar data');
@@ -747,6 +768,8 @@ export default function Engagements() {
           onEventDrop={handleEventDrop}
           onEventResize={handleEventDrop}
           onRangeChange={ensureCalendarRange}
+          orgHolidays={calendarOrgHolidays}
+          blocks={calendarBlocks}
         />
       ) : view === 'people' ? (
         <PaidFeature

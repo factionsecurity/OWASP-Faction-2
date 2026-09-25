@@ -314,3 +314,39 @@
 .assessment-calendar .fc-toolbar-title {
   white-space: nowrap;
 }
+
+/* Org calendar: default-region holidays and scheduling blocks, drawn as day-tinted background
+   events. Legend swatches match the By User timeline's own "away band" recipe exactly (see
+   AssessorTimeline.css .tl-away / .tl-legend .tl-away) — same tokens, same diagonal stripe, so
+   the two legends read as one visual language even though they live in separate stylesheets. */
+.assessment-calendar .calendar-legend .cal-legend-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.assessment-calendar .calendar-legend .cal-legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  opacity: 0.6;
+}
+
+.cal-legend-swatch--holiday { background: repeating-linear-gradient(135deg, var(--info-color) 0 4px, transparent 4px 8px); }
+.cal-legend-swatch--block { background: repeating-linear-gradient(135deg, var(--danger-color) 0 4px, transparent 4px 8px); }
+
+/* The actual day-cell background events (FullCalendar renders these as .fc-bg-event plus the
+   classNames given to the event), at the timeline's own 0.35 band opacity rather than the
+   legend's 0.6 — matching .tl-away exactly. */
+.assessment-calendar .fc-bg-event.cal-org-event {
+  opacity: 0.35;
+}
+
+.assessment-calendar .fc-bg-event.cal-org-event--holiday {
+  background: repeating-linear-gradient(135deg, var(--info-color) 0 4px, transparent 4px 8px);
+}
+
+.assessment-calendar .fc-bg-event.cal-org-event--block {
+  background: repeating-linear-gradient(135deg, var(--danger-color) 0 4px, transparent 4px 8px);
+}

@@ -1,7 +1,7 @@
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { Assessment, Workflow } from '../types';
+import { Assessment, Workflow, HolidayEntry, ScheduleBlock } from '../types';
 import { colorFor, isCompleted, statusLabel } from '../utils/workflowLookup';
 import './AssessmentCalendar.css';
 
@@ -21,6 +21,11 @@ interface AssessmentCalendarProps {
   initialDate?: string; // ISO date string to navigate to on mount
   /** Called with the visible [start, end] dates (inclusive, YYYY-MM-DD) whenever the view moves. */
   onRangeChange?: (start: string, end: string) => void;
+  // Org-wide calendar: the default holiday region's holidays and manager-defined scheduling
+  // blocks, drawn as day-tinted background events (not per-user personal time off — that stays
+  // on the By User timeline only).
+  orgHolidays?: HolidayEntry[];
+  blocks?: ScheduleBlock[];
 }
 
 /**
@@ -74,6 +79,8 @@ export default function AssessmentCalendar({
   workflows,
   initialDate,
   onRangeChange,
+  orgHolidays,
+  blocks,
 }: AssessmentCalendarProps) {
   const events = assessments
     .filter((a) => a.startDate && a.plannedEndDate)
@@ -113,6 +120,29 @@ export default function AssessmentCalendar({
         },
       };
     });
+
+  // Org-wide holidays and scheduling blocks: background events so they tint the day cells
+  // without competing with assessment bars for event rows. FullCalendar gives these no native
+  // tooltip, so eventDidMount below sets a title attribute instead.
+  const orgHolidayEvents = (orgHolidays ?? []).map((holiday) => ({
+    start: holiday.date,
+    end: shiftDays(holiday.date, 1),
+    allDay: true,
+    display: 'background' as const,
+    classNames: ['cal-org-event', 'cal-org-event--holiday'],
+    title: holiday.name,
+  }));
+
+  const blockEvents = (blocks ?? []).map((block) => ({
+    start: block.startDate,
+    end: shiftDays(block.endDate, 1),
+    allDay: true,
+    display: 'background' as const,
+    classNames: ['cal-org-event', 'cal-org-event--block'],
+    title: block.note ? `${block.title} — ${block.note}` : block.title,
+  }));
+
+  const allEvents = [...events, ...orgHolidayEvents, ...blockEvents];
 
   const handleEventClick = (info: any) => {
     if (onEventClick) {
@@ -163,7 +193,13 @@ export default function AssessmentCalendar({
         plugins={[dayGridPlugin, interactionPlugin]}
         initialView="dayGridMonth"
         initialDate={initialDate}
-        eventDidMount={(info) => info.el.style.setProperty('--bar-color', info.event.extendedProps.color)}
+        eventDidMount={(info) => {
+          if (info.event.display === 'background') {
+            info.el.setAttribute('title', info.event.title);
+            return;
+          }
+          info.el.style.setProperty('--bar-color', info.event.extendedProps.color);
+        }}
         buttonText={{ today: 'Today', month: 'Month', week: 'Week', day: 'Day' }}
         headerToolbar={{
           // The arrows sit in their own fixed-width chunk (see AssessmentCalendar.css), so they never
@@ -173,7 +209,7 @@ export default function AssessmentCalendar({
           // Assessments are all-day, so an hour-by-hour time grid is empty space: day grids instead.
           right: 'dayGridDay,dayGridWeek,dayGridMonth',
         }}
-        events={events}
+        events={allEvents}
         eventClick={handleEventClick}
         eventDrop={handleEventDrop}
         eventResize={handleEventResize}
@@ -220,6 +256,16 @@ export default function AssessmentCalendar({
         <span className="badge past-due" style={{ ['--bar-color' as string]: '#6c757d' }}>
           Past Due (Red Border)
         </span>
+        {orgHolidayEvents.length > 0 && (
+          <span className="cal-legend-entry">
+            <i className="cal-legend-swatch cal-legend-swatch--holiday" /> Holiday
+          </span>
+        )}
+        {blockEvents.length > 0 && (
+          <span className="cal-legend-entry">
+            <i className="cal-legend-swatch cal-legend-swatch--block" /> Block
+          </span>
+        )}
       </div>
     </div>
   );

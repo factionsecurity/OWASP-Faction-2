@@ -15,6 +15,7 @@ import type { MentionableUser, AssessorAvailability, RetestCompletionLog, Retest
   ScheduleBlockRequest,
   RegionHolidays,
   Unavailability,
+  HolidayEntry,
 } from './types';
 
 const api = axios.create({
@@ -2388,6 +2389,7 @@ export const availabilityApi = {
   updateBlock: (id: string, b: ScheduleBlockRequest) => api.put<ApiResponse<ScheduleBlock>>(`/availability/blocks/${id}`, b).then(r => r.data),
   deleteBlock: (id: string) => api.delete<ApiResponse<void>>(`/availability/blocks/${id}`).then(r => r.data),
   calendar: (start: string, end: string) => api.get<ApiResponse<Unavailability[]>>('/availability/calendar', { params: { start, end } }).then(r => r.data),
+  orgCalendar: (start: string, end: string) => api.get<ApiResponse<HolidayEntry[]>>('/availability/org-calendar', { params: { start, end } }).then(r => r.data),
   config: () => api.get<ApiResponse<{ defaultHolidayRegion: string | null }>>('/availability/config').then(r => r.data),
   setConfig: (defaultHolidayRegion: string | null) => api.put<ApiResponse<{ defaultHolidayRegion: string | null }>>('/availability/config', { defaultHolidayRegion }).then(r => r.data),
   regionHolidays: (region: string, year: number) => api.get<ApiResponse<RegionHolidays>>('/availability/regions/holidays', { params: { region, year } }).then(r => r.data),
