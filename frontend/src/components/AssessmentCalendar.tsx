@@ -2,7 +2,7 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { Assessment, Workflow } from '../types';
-import { colorFor, statusLabel } from '../utils/workflowLookup';
+import { colorFor, isCompleted, statusLabel } from '../utils/workflowLookup';
 import './AssessmentCalendar.css';
 
 interface AssessmentCalendarProps {
@@ -35,6 +35,10 @@ const getStatusColor = (
   workflowId: string | null | undefined,
   status: string
 ): string => {
+  // Completed always renders green, regardless of what a workflow author configured for its
+  // terminal status: the point of a calendar is to see who's still booked vs. done at a glance,
+  // and a workflow that colours its completed status, say, blue would otherwise hide that signal.
+  if (workflows && isCompleted(workflows, workflowId, status)) return '#10b981';
   const workflowColor = workflows && workflows.length > 0 ? colorFor(workflows, workflowId, status) : undefined;
   return workflowColor ?? statusColors?.[status] ?? '#6c757d';
 };
