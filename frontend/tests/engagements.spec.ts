@@ -108,9 +108,9 @@ test.describe('Engagements Page', () => {
 
     await expect(timeline.locator('.tl-span-btn.active')).toHaveCount(1);
 
-    // Active only (the default) keeps just the people booked on an active assessment in range,
-    // so every user row it shows carries at least one bar.
-    const activeOnly = timeline.getByLabel('Only active assessments');
+    // Active only (the default) keeps just the people with any assessment assigned in range
+    // (any status), so every user row it shows carries at least one bar.
+    const activeOnly = timeline.getByLabel('Only assigned users');
     await expect(activeOnly).toBeChecked();
     const bookedRows = timeline.locator('.tl-row:not(:has(.unassigned))');
     const bookedCount = await bookedRows.count();

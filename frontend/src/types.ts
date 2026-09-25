@@ -1090,8 +1090,10 @@ export interface AssessorTimelineProps {
   teamId: string;
   onTeamChange: (teamId: string) => void;
   /**
-   * Hide assessments in their workflow's completed status, and with them every user who has no
-   * active assessment in the visible range — only people actually booked keep a row.
+   * Hide every user who has no assessment assigned to them in the visible range, regardless of
+   * status — a completed assessment still counts as "booked." Off shows every internal user
+   * whether or not they have anything assigned. Assessment bars themselves are never filtered
+   * by status; this only controls which user rows appear.
    */
   activeOnly: boolean;
   onActiveOnlyChange: (activeOnly: boolean) => void;
