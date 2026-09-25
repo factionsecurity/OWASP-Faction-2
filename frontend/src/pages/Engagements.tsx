@@ -78,10 +78,15 @@ export default function Engagements() {
   // The date window the calendar views have fetched, as inclusive YYYY-MM-DD bounds. Navigating
   // past it widens it and refetches; kept in a ref so reloads never shrink it back.
   const calendarWindow = useRef(defaultCalendarWindow());
+  // The calendar's currently VISIBLE range (unpadded), as last reported by onRangeChange. Unlike
+  // calendarWindow above, this never accumulates — it just tracks what's on screen right now, so
+  // availability overlays (padded a month either side of it) stay well under the API's 366-day
+  // range cap no matter how far the cumulative assessment window has grown.
+  const visibleRange = useRef(defaultCalendarWindow());
   const [metrics, setMetrics] = useState<AssessmentMetrics | null>(null);
-  // Unavailability bands for the By User timeline, fetched for the same window as the
-  // assessments. Guarded by a request counter: the window can widen quietly (ensureCalendarRange)
-  // while an earlier fetch is still in flight, and that stale response must not clobber a newer one.
+  // Unavailability bands for the By User timeline, fetched for the visible range (padded, see
+  // above). Guarded by a request counter: the visible range can change quietly while an earlier
+  // fetch is still in flight, and that stale response must not clobber a newer one.
   const [timelineUnavailability, setTimelineUnavailability] = useState<Unavailability[]>([]);
   const unavailabilityRequestId = useRef(0);
   // The main Calendar view's org-wide overlay: default-region holidays and scheduling blocks
@@ -295,6 +300,59 @@ export default function Engagements() {
     }
   };
 
+  /** An inclusive YYYY-MM-DD range, padded a whole calendar month either side. */
+  const padMonths = (start: string, end: string): { start: string; end: string } => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const [sy, sm] = start.split('-').map(Number);
+    const [ey, em] = end.split('-').map(Number);
+    return {
+      start: iso(new Date(sy, sm - 2, 1)),
+      end: iso(new Date(ey, em + 1, 0)),
+    };
+  };
+
+  /**
+   * Availability overlays — org holidays, scheduling blocks, and By User unavailability — fetched
+   * for the currently visible range (padded a month either side), not the cumulative
+   * calendarWindow. calendarWindow only grows, and once it passes 366 days the /org-calendar and
+   * /calendar endpoints reject the request outright, silently blanking every overlay. The visible
+   * range stays roughly one screen wide no matter how far the user has paginated, so the padded
+   * range stays well under that cap.
+   */
+  const loadAvailabilityOverlays = () => {
+    const { start, end } = padMonths(visibleRange.current.start, visibleRange.current.end);
+
+    // Unavailability bands are only needed for the By User view, and only when the viewer can
+    // read users (the calendar endpoint requires users:read). A request counter guards against
+    // a stale response landing after a newer one — the visible range can change quietly while an
+    // earlier fetch is still in flight.
+    const requestId = ++unavailabilityRequestId.current;
+    if (view === 'people' && hasTeamScheduling && permissions.canViewUsers) {
+      availabilityApi.calendar(start, end)
+        .then((r) => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability(r.data ?? []); })
+        .catch(() => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability([]); });
+    } else {
+      setTimelineUnavailability([]);
+    }
+
+    // The main Calendar view's org-wide overlay. Unlike /calendar (users:read-gated), both
+    // /org-calendar and /blocks are @AuthenticatedOnly, so no permissions.canViewUsers check.
+    // /blocks itself takes no date range (it always returns every not-yet-ended block), so it
+    // never risks the 366-day cap and doesn't need the padded range.
+    if (view === 'calendar' && hasTeamScheduling) {
+      availabilityApi.orgCalendar(start, end)
+        .then((r) => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays(r.data ?? []); })
+        .catch(() => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays([]); });
+      availabilityApi.blocks()
+        .then((r) => { if (requestId === unavailabilityRequestId.current) setCalendarBlocks(r.data ?? []); })
+        .catch(() => { if (requestId === unavailabilityRequestId.current) setCalendarBlocks([]); });
+    } else {
+      setCalendarOrgHolidays([]);
+      setCalendarBlocks([]);
+    }
+  };
+
   /** `quiet` refetches in place, without the spinner that would reset the calendar's position. */
   const loadCalendarData = async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -307,34 +365,7 @@ export default function Engagements() {
         setAssessments(response.data);
       }
 
-      // Unavailability bands are only needed for the By User view, and only when the viewer can
-      // read users (the calendar endpoint requires users:read). A request counter guards against
-      // a stale response landing after a newer one — the window can widen quietly (see
-      // ensureCalendarRange) while an earlier fetch is still in flight.
-      const requestId = ++unavailabilityRequestId.current;
-      if (view === 'people' && hasTeamScheduling && permissions.canViewUsers) {
-        const { start, end } = calendarWindow.current;
-        availabilityApi.calendar(start, end)
-          .then((r) => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability(r.data ?? []); })
-          .catch(() => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability([]); });
-      } else {
-        setTimelineUnavailability([]);
-      }
-
-      // The main Calendar view's org-wide overlay. Unlike /calendar (users:read-gated), both
-      // /org-calendar and /blocks are @AuthenticatedOnly, so no permissions.canViewUsers check.
-      if (view === 'calendar' && hasTeamScheduling) {
-        const { start, end } = calendarWindow.current;
-        availabilityApi.orgCalendar(start, end)
-          .then((r) => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays(r.data ?? []); })
-          .catch(() => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays([]); });
-        availabilityApi.blocks()
-          .then((r) => { if (requestId === unavailabilityRequestId.current) setCalendarBlocks(r.data ?? []); })
-          .catch(() => { if (requestId === unavailabilityRequestId.current) setCalendarBlocks([]); });
-      } else {
-        setCalendarOrgHolidays([]);
-        setCalendarBlocks([]);
-      }
+      loadAvailabilityOverlays();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load calendar data');
     } finally {
@@ -342,8 +373,15 @@ export default function Engagements() {
     }
   };
 
-  /** Widen the fetched window to cover a newly visible range, a month either side, and refetch. */
+  /**
+   * Widen the fetched assessment window to cover a newly visible range, a month either side, and
+   * refetch — and always record the visible range and refresh the (separately windowed)
+   * availability overlays, even when the assessment window itself didn't need to grow.
+   */
   const ensureCalendarRange = (start: string, end: string) => {
+    visibleRange.current = { start, end };
+    loadAvailabilityOverlays();
+
     const current = calendarWindow.current;
     if (start >= current.start && end <= current.end) return;
     const pad = (n: number) => String(n).padStart(2, '0');

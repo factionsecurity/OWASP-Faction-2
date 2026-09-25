@@ -145,6 +145,10 @@ export default function AssessmentCalendar({
   const allEvents = [...events, ...orgHolidayEvents, ...blockEvents];
 
   const handleEventClick = (info: any) => {
+    // Holiday/block background events carry no `assessment` in their extendedProps — FullCalendar
+    // fires eventClick for them same as any other event, and forwarding undefined on to the
+    // caller's edit navigation throws.
+    if (info.event.display === 'background') return;
     if (onEventClick) {
       const assessment = info.event.extendedProps.assessment;
       onEventClick(assessment);
@@ -164,6 +168,9 @@ export default function AssessmentCalendar({
   };
 
   const handleEventDrop = (info: any) => {
+    // Background events are never editable (see `editable` below), but guard defensively anyway —
+    // a background event has no assessment id to update.
+    if (info.event.display === 'background') return;
     if (onEventDrop) {
       const { start, end } = draggedRange(info);
       onEventDrop(info.event.id, start, end, () => info.revert());
@@ -171,6 +178,7 @@ export default function AssessmentCalendar({
   };
 
   const handleEventResize = (info: any) => {
+    if (info.event.display === 'background') return;
     if (onEventResize) {
       const { start, end } = draggedRange(info);
       onEventResize(info.event.id, start, end, () => info.revert());
