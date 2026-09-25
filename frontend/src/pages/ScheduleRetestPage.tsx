@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { SeverityBadge, IconButton } from '../components';
 import VulnerabilityDetailDrawer from '../components/VulnerabilityDetailDrawer';
@@ -114,6 +114,9 @@ export default function ScheduleRetestPage() {
   // be free or busy across.
   const [assessorAvailability, setAssessorAvailability] = useState<Record<string, AssessorAvailability>>({});
   const [unavailableWarning, setUnavailableWarning] = useState<{ entries: Unavailability[] } | null>(null);
+  // True only for the pre-save availability round trip — folded into the submit button's
+  // disabled state so a rapid double-click/double-Enter can't fire two saves while it's in flight.
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   const internalUsers = users.filter(u => u.isInternal);
 
@@ -233,7 +236,13 @@ export default function ScheduleRetestPage() {
     }
   };
 
-  /** Checks the chosen assessors' availability first; an unavailable one asks before saving. */
+  /**
+   * Checks the chosen assessors' availability first; an unavailable one asks before saving.
+   * The availability round trip runs before `performSave` sets `submitting`, so a synchronous
+   * ref guard (rather than state, which updates a render late) closes the double-click window
+   * a rapid double-submit would otherwise slip through.
+   */
+  const submitInFlightRef = useRef(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!startDate || !endDate) {
@@ -253,14 +262,22 @@ export default function ScheduleRetestPage() {
       return;
     }
 
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setCheckingAvailability(true);
     setError('');
-    // Pass null as the assessment id: a retest is not an assessment booking.
-    const entries = await findUnavailability(null, assessorIds, toApiDate(startDate), toApiDate(endDate));
-    if (entries.length > 0) {
-      setUnavailableWarning({ entries });
-      return;
+    try {
+      // Pass null as the assessment id: a retest is not an assessment booking.
+      const entries = await findUnavailability(null, assessorIds, toApiDate(startDate), toApiDate(endDate));
+      if (entries.length > 0) {
+        setUnavailableWarning({ entries });
+        return;
+      }
+      await performSave();
+    } finally {
+      submitInFlightRef.current = false;
+      setCheckingAvailability(false);
     }
-    performSave();
   };
 
   const performSave = async () => {
@@ -515,7 +532,7 @@ export default function ScheduleRetestPage() {
               <button
                 type="submit"
                 className="schedule-retest-submit-btn"
-                disabled={submitting || !startDate || !endDate || assessorIds.length === 0
+                disabled={submitting || checkingAvailability || !startDate || !endDate || assessorIds.length === 0
                   || (!isEditMode && blockingRetests.length > 0)}
               >
                 {submitting

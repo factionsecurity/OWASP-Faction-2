@@ -190,6 +190,9 @@ export default function CreateAssessment() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [unavailableWarning, setUnavailableWarning] = useState<{ entries: Unavailability[]; shouldClose: boolean } | null>(null);
+  // True only for the pre-save availability round trip — folded into the Save buttons'
+  // disabled state so a rapid double-click can't fire two saves while it's in flight.
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [initialFormData, setInitialFormData] = useState<string>('');
   const [initialUrls, setInitialUrls] = useState<string>('');
   const [initialStakeholders, setInitialStakeholders] = useState<string>('');
@@ -1208,18 +1211,32 @@ export default function CreateAssessment() {
     }
   };
 
-  /** Checks the chosen assessors' availability first; an unavailable one asks before saving. */
+  /**
+   * Checks the chosen assessors' availability first; an unavailable one asks before saving.
+   * The availability round trip runs before `performSave` sets `loading`, so a synchronous
+   * ref guard (rather than state, which updates a render late) closes the double-click window
+   * a rapid double-submit would otherwise slip through.
+   */
+  const submitInFlightRef = useRef(false);
   const handleSubmit = async (e: React.FormEvent, shouldClose: boolean = true) => {
     e.preventDefault();
-    if (formData.startDate && formData.plannedEndDate && formData.assessorIds.length > 0) {
-      const entries = await findUnavailability(
-        id || null, formData.assessorIds, toApiDate(formData.startDate), toApiDate(formData.plannedEndDate));
-      if (entries.length > 0) {
-        setUnavailableWarning({ entries, shouldClose });
-        return;
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setCheckingAvailability(true);
+    try {
+      if (formData.startDate && formData.plannedEndDate && formData.assessorIds.length > 0) {
+        const entries = await findUnavailability(
+          id || null, formData.assessorIds, toApiDate(formData.startDate), toApiDate(formData.plannedEndDate));
+        if (entries.length > 0) {
+          setUnavailableWarning({ entries, shouldClose });
+          return;
+        }
       }
+      await performSave(null, shouldClose);
+    } finally {
+      submitInFlightRef.current = false;
+      setCheckingAvailability(false);
     }
-    performSave(null, shouldClose);
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -2092,11 +2109,11 @@ export default function CreateAssessment() {
                   Cancel
                 </Button>
                 {mode === 'edit' && (
-                  <Button type="button" variant="primary" onClick={handleSave} disabled={loading}>
+                  <Button type="button" variant="primary" onClick={handleSave} disabled={loading || checkingAvailability}>
                     {loading ? 'Saving...' : 'Save'}
                   </Button>
                 )}
-                <Button type="button" variant="primary" onClick={handleSaveAndClose} disabled={loading}>
+                <Button type="button" variant="primary" onClick={handleSaveAndClose} disabled={loading || checkingAvailability}>
                   {loading ? 'Saving...' : 'Save & Close'}
                 </Button>
               </div>
