@@ -2393,6 +2393,6 @@ export const availabilityApi = {
   regionHolidays: (region: string, year: number) => api.get<ApiResponse<RegionHolidays>>('/availability/regions/holidays', { params: { region, year } }).then(r => r.data),
   disableHoliday: (region: string, holidayKey: string) => api.post<ApiResponse<unknown>>('/availability/regions/overrides', { region, kind: 'DISABLED', holidayKey }).then(r => r.data),
   enableHoliday: (region: string, holidayKey: string) => api.delete<ApiResponse<void>>('/availability/regions/overrides', { params: { region, holidayKey } }).then(r => r.data),
-  addCompanyDay: (region: string, date: string, name: string) => api.post<ApiResponse<unknown>>('/availability/regions/overrides', { region, kind: 'ADDED', date, name }).then(r => r.data),
+  addCompanyDay: (region: string, startDate: string, endDate: string, name: string) => api.post<ApiResponse<unknown>>('/availability/regions/overrides', { region, kind: 'ADDED', date: startDate, endDate, name }).then(r => r.data),
   removeCompanyDay: (id: string) => api.delete<ApiResponse<void>>(`/availability/regions/overrides/${id}`).then(r => r.data),
 };

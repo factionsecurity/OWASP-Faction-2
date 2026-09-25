@@ -928,6 +928,7 @@ export interface ScheduleBlockRequest {
 export interface HolidayOverrideEntry {
   id: string;
   date: string;
+  endDate: string;
   name: string;
 }
 
