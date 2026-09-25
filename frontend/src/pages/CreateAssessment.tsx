@@ -834,10 +834,11 @@ export default function CreateAssessment() {
       );
 
       if (response.success && response.data) {
-        // Filter out the current assessment being edited
-        const otherAssessments = id
-          ? response.data.filter((a) => a.id !== id)
-          : response.data;
+        // Filter out the current assessment being edited, and anything with nobody
+        // assigned yet — an unassigned assessment isn't a scheduling conflict for anyone.
+        const otherAssessments = response.data
+          .filter((a) => a.id !== id)
+          .filter((a) => a.assessorIds?.length);
         setTeamAssessments(otherAssessments);
       }
     } catch (err) {
