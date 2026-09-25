@@ -68,6 +68,7 @@ public class AssessmentService {
     private final SlaService slaService;
     private final WorkflowCatalogService workflowCatalogService;
     private final AssessmentWorkflowMoveService workflowMoveService;
+    private final UnavailabilitySource unavailabilitySource;
 
     /**
      * Create a new assessment from a report template.
@@ -1617,14 +1618,22 @@ public class AssessmentService {
             }
         }
 
+        Map<String, List<UnavailabilityDto>> unavailableByUser = unavailabilitySource
+            .find(assessorIds, startDate.toLocalDate(), endDate.toLocalDate())
+            .stream()
+            .collect(Collectors.groupingBy(UnavailabilityDto::userId));
+
         return assessorIds.stream()
             .map(userId -> {
                 List<AssessorAvailabilityDto.ConflictingAssessment> clashes =
                     byAssessor.getOrDefault(userId, Collections.emptyList());
+                List<UnavailabilityDto> unavailable =
+                    unavailableByUser.getOrDefault(userId, Collections.emptyList());
                 return AssessorAvailabilityDto.builder()
                     .userId(userId)
-                    .busy(!clashes.isEmpty())
+                    .busy(!clashes.isEmpty() || !unavailable.isEmpty())
                     .conflicts(clashes)
+                    .unavailable(unavailable)
                     .build();
             })
             .collect(Collectors.toList());

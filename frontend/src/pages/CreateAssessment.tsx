@@ -41,6 +41,7 @@ import { PaidBadge } from '../components/PaidFeature';
 import { useEdition } from '../context/EditionContext';
 import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { unavailabilityLabel } from '../utils/unavailability';
 import './CreateAssessment.css';
 
 // Planned end date is picked as a duration from the start date; "custom" falls back to a
@@ -1306,16 +1307,20 @@ export default function CreateAssessment() {
       return <Badge variant="success" size="sm">Free</Badge>;
     }
 
-    const clashes = availability.conflicts;
     // The names go in a title rather than the badge: the picker is a narrow column, and
     // "why" is a follow-up question, not the thing being scanned for.
-    const summary = clashes
-      .map((c) => `${c.name} (${new Date(c.startDate).toLocaleDateString()} – ${new Date(c.plannedEndDate).toLocaleDateString()})`)
-      .join('\n');
+    const clashes = availability.conflicts;
+    const away = availability.unavailable ?? [];
+    const fmt = (d: string) => new Date(d).toLocaleDateString();
+    const lines = [
+      ...clashes.map((c) => `${c.name} (${fmt(c.startDate)} – ${fmt(c.plannedEndDate)})`),
+      ...away.map((u) => `${unavailabilityLabel(u)} (${u.start === u.end ? u.start : `${u.start} – ${u.end}`})`),
+    ];
+    const count = clashes.length + away.length;
     return (
-      <span title={`Already booked:\n${summary}`}>
-        <Badge variant="danger" size="sm">
-          Busy{clashes.length > 1 ? ` (${clashes.length})` : ''}
+      <span title={`Unavailable:\n${lines.join('\n')}`}>
+        <Badge variant={clashes.length > 0 ? 'danger' : 'warning'} size="sm">
+          {clashes.length > 0 ? 'Busy' : 'Away'}{count > 1 ? ` (${count})` : ''}
         </Badge>
       </span>
     );

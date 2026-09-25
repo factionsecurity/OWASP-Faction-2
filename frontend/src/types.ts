@@ -859,6 +859,17 @@ export interface VulnerabilitySummary {
   unsectioned?: number;
 }
 
+export type UnavailabilityKind = 'TIME_OFF' | 'HOLIDAY' | 'BLOCK';
+
+export interface Unavailability {
+  userId: string;
+  start: string;
+  end: string;
+  kind: UnavailabilityKind;
+  label: string;
+  sourceId?: string;
+}
+
 /**
  * Whether one candidate assessor is already booked across a proposed assessment window.
  * Asked about everyone who could be assigned, so the picker can show availability before
@@ -873,6 +884,7 @@ export interface AssessorAvailability {
     startDate: string;
     plannedEndDate: string;
   }[];
+  unavailable: Unavailability[];
 }
 
 export interface Assessment {

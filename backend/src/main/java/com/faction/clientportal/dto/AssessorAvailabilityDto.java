@@ -22,10 +22,17 @@ public class AssessorAvailabilityDto {
 
     private String userId;
 
-    /** True when {@link #conflicts} is non-empty; sent explicitly so the client need not infer it. */
+    /** True when {@link #conflicts} or {@link #unavailable} is non-empty. */
     private boolean busy;
 
     private List<ConflictingAssessment> conflicts;
+
+    /**
+     * Time off, holidays and blocks overlapping the window (team scheduling). Always empty in the
+     * open source edition.
+     */
+    @Builder.Default
+    private List<UnavailabilityDto> unavailable = new java.util.ArrayList<>();
 
     /**
      * The overlapping assessment, trimmed to what a tooltip needs. Deliberately not an
