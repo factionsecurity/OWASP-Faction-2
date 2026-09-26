@@ -63,8 +63,10 @@ public enum Feature {
     MCP_SERVER("mcp_server", "MCP Server"),
 
     /**
-     * Team scheduling: the Engagements "By User" timeline, one row per person with their
-     * assessments laid across the days. The single-calendar views stay open source.
+     * Team scheduling: the Engagements "By User" timeline (one row per person with their
+     * assessments laid across the days) plus team availability — time off, scheduling blocks,
+     * regional holiday calendars, and the unavailability warnings shown when scheduling an
+     * assessor. The single-calendar views and assessment-clash detection stay open source.
      */
     TEAM_SCHEDULING("team_scheduling", "Team Scheduling");
 

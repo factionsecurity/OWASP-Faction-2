@@ -951,6 +951,20 @@ class AssessmentServiceTest {
         // "a-1" is the assessment being edited: it never conflicts with itself.
         assertThat(availability.get(0).isBusy()).isFalse();
         assertThat(availability.get(0).getUnavailable()).isEmpty();
+
+        // A real clash with another assessment still makes them busy, with nothing unavailable.
+        when(assessmentRepository.findConflictingByAssessors(anyString(), eq(start), eq(end)))
+                .thenReturn(List.of(booking("a-1", "Acme Q3 Retest", start, List.of("alice")),
+                        booking("a-2", "Globex Pentest", start, List.of("alice"))));
+
+        List<AssessorAvailabilityDto> clashing = assessmentService.getAssessorAvailability(
+                "a-1", List.of("alice"), start, end);
+
+        assertThat(clashing.get(0).isBusy()).isTrue();
+        assertThat(clashing.get(0).getConflicts())
+                .extracting(AssessorAvailabilityDto.ConflictingAssessment::getName)
+                .containsExactly("Globex Pentest");
+        assertThat(clashing.get(0).getUnavailable()).isEmpty();
     }
 
     @Test

@@ -989,6 +989,37 @@ class AssessmentControllerTest extends TestContainersConfig {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void assessorAvailability_isReachableByARetestScheduler() throws Exception {
+        // The Schedule Retest page is open to anyone with vulnerabilities:create:* (a
+        // Remediation or Pentester role) and asks this for its assessor warnings; without
+        // assessments:create:* they must still get an answer, not a swallowed 403.
+        LocalDateTime start = LocalDateTime.now().plusDays(1);
+        LocalDateTime end = start.plusDays(7);
+        booking("Acme Q3", start.plusDays(2), start.plusDays(4), List.of("busy-user"));
+
+        for (String permission : List.of("vulnerabilities:create:team", "vulnerabilities:create:all",
+                "vulnerabilities:create:assessment")) {
+            String retestToken = jwtService.generateToken(
+                    testUser.getUsername(), List.of(new SimpleGrantedAuthority(permission)));
+            mockMvc.perform(post("/api/v1/assessments/assessor-availability")
+                            .header("Authorization", "Bearer " + retestToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(availabilityRequest(null, List.of("busy-user"), start, end)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data[0].busy").value(true));
+        }
+
+        // Someone who can neither create assessments nor schedule retests still can't.
+        String readOnlyToken = jwtService.generateToken(
+                testUser.getUsername(), List.of(new SimpleGrantedAuthority("vulnerabilities:read:all")));
+        mockMvc.perform(post("/api/v1/assessments/assessor-availability")
+                        .header("Authorization", "Bearer " + readOnlyToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(availabilityRequest(null, List.of("busy-user"), start, end)))
+                .andExpect(status().isForbidden());
+    }
+
     private Assessment createTestAssessment(String name, String status) {
         Assessment assessment = Assessment.builder()
                 .name(name)
