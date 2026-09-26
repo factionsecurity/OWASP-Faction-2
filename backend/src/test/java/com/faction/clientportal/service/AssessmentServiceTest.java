@@ -16,6 +16,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -107,6 +108,9 @@ class AssessmentServiceTest {
 
     @Mock
     private com.faction.clientportal.service.email.EventNotificationEmailSender eventEmailSender;
+
+    @Mock
+    private com.faction.clientportal.service.UnavailabilitySource unavailabilitySource;
 
     @InjectMocks
     private AssessmentService assessmentService;
@@ -910,6 +914,57 @@ class AssessmentServiceTest {
         assertThat(assessmentService.getAssessorAvailability(null, null, start, start.plusDays(1))).isEmpty();
 
         verify(assessmentRepository, never()).findConflictingByAssessors(anyString(), any(), any());
+    }
+
+    @Test
+    void availability_marksACandidateBusyWhenUnavailable() {
+        LocalDateTime start = LocalDateTime.of(2026, 12, 21, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 12, 28, 0, 0);
+        when(assessmentRepository.findConflictingByAssessors(anyString(), eq(start), eq(end)))
+                .thenReturn(List.of());
+        when(unavailabilitySource.find(List.of("alice", "bob"), start.toLocalDate(), end.toLocalDate()))
+                .thenReturn(List.of(new UnavailabilityDto("alice", LocalDate.of(2026, 12, 25),
+                        LocalDate.of(2026, 12, 25), UnavailabilityDto.Kind.HOLIDAY, "Christmas Day", null)));
+
+        List<AssessorAvailabilityDto> availability = assessmentService.getAssessorAvailability(
+                null, List.of("alice", "bob"), start, end);
+
+        assertThat(availability.get(0).isBusy()).isTrue();
+        assertThat(availability.get(0).getConflicts()).isEmpty();
+        assertThat(availability.get(0).getUnavailable())
+                .extracting(UnavailabilityDto::label).containsExactly("Christmas Day");
+        assertThat(availability.get(1).isBusy()).isFalse();
+        assertThat(availability.get(1).getUnavailable()).isEmpty();
+    }
+
+    @Test
+    void availability_withNoUnavailabilitySourceDataIsUnchanged() {
+        // The open source edition's source returns nothing; busy must mean exactly what it did.
+        LocalDateTime start = LocalDateTime.now();
+        LocalDateTime end = start.plusDays(7);
+        when(assessmentRepository.findConflictingByAssessors(anyString(), eq(start), eq(end)))
+                .thenReturn(List.of(booking("a-1", "Acme Q3 Retest", start, List.of("alice"))));
+
+        List<AssessorAvailabilityDto> availability = assessmentService.getAssessorAvailability(
+                "a-1", List.of("alice"), start, end);
+
+        // "a-1" is the assessment being edited: it never conflicts with itself.
+        assertThat(availability.get(0).isBusy()).isFalse();
+        assertThat(availability.get(0).getUnavailable()).isEmpty();
+
+        // A real clash with another assessment still makes them busy, with nothing unavailable.
+        when(assessmentRepository.findConflictingByAssessors(anyString(), eq(start), eq(end)))
+                .thenReturn(List.of(booking("a-1", "Acme Q3 Retest", start, List.of("alice")),
+                        booking("a-2", "Globex Pentest", start, List.of("alice"))));
+
+        List<AssessorAvailabilityDto> clashing = assessmentService.getAssessorAvailability(
+                "a-1", List.of("alice"), start, end);
+
+        assertThat(clashing.get(0).isBusy()).isTrue();
+        assertThat(clashing.get(0).getConflicts())
+                .extracting(AssessorAvailabilityDto.ConflictingAssessment::getName)
+                .containsExactly("Globex Pentest");
+        assertThat(clashing.get(0).getUnavailable()).isEmpty();
     }
 
     @Test

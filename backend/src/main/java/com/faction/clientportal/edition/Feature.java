@@ -60,7 +60,15 @@ public enum Feature {
      * The built-in MCP server: AI clients (Claude Code, Cursor, VS Code…) connect to
      * {@code /api/mcp} with a personal API key and act as that user.
      */
-    MCP_SERVER("mcp_server", "MCP Server");
+    MCP_SERVER("mcp_server", "MCP Server"),
+
+    /**
+     * Team scheduling: the Engagements "By User" timeline (one row per person with their
+     * assessments laid across the days) plus team availability — time off, scheduling blocks,
+     * regional holiday calendars, and the unavailability warnings shown when scheduling an
+     * assessor. The single-calendar views and assessment-clash detection stay open source.
+     */
+    TEAM_SCHEDULING("team_scheduling", "Team Scheduling");
 
     private final String key;
     private final String displayName;

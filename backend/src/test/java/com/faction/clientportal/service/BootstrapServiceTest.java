@@ -377,6 +377,22 @@ class BootstrapServiceTest extends TestContainersConfig {
     @Test
 
     @EnterpriseOnly
+    void schedulingRolesCanManageAvailability() {
+        ApplicationArguments args = mock(ApplicationArguments.class);
+
+        bootstrapService.run(args);
+
+        assertThat(roleRepository.findByName("Scheduling").orElseThrow().getPermissions())
+                .contains("availability:manage:all")
+                .doesNotContain("availability:manage:team", "availability:configure");
+        assertThat(roleRepository.findByName("Scheduling-Team").orElseThrow().getPermissions())
+                .contains("availability:manage:team")
+                .doesNotContain("availability:manage:all", "availability:configure");
+    }
+
+    @Test
+
+    @EnterpriseOnly
     void run_SeedsScopedPentesterRolesOnAnExistingInstall() {
         ApplicationArguments args = mock(ApplicationArguments.class);
         // An install that predates the scoped roles: users and the default roles already exist,

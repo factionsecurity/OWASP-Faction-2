@@ -22,6 +22,7 @@
  * />
  * ```
  */
+import type { ReactNode } from 'react';
 import Modal from './Modal';
 import { Button } from './Button';
 import { AlertTriangle, Info, AlertCircle } from 'lucide-react';
@@ -31,7 +32,7 @@ export interface ConfirmDialogProps {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  message: string;
+  message: ReactNode;
   confirmText?: string;
   cancelText?: string;
   variant?: 'danger' | 'warning' | 'info';
@@ -95,9 +96,9 @@ export default function ConfirmDialog({
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '1rem 0' }}>
         {getIcon()}
-        <p style={{ textAlign: 'center', margin: 0, color: 'var(--text-secondary)' }}>
+        <div style={{ textAlign: 'center', margin: 0, color: 'var(--text-secondary)', whiteSpace: 'pre-line' }}>
           {message}
-        </p>
+        </div>
       </div>
     </Modal>
   );

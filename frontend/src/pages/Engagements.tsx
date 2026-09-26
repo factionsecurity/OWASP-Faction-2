@@ -1,18 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Edit2, Trash2, Plus, Calendar, List, Download, Upload, Eye } from 'lucide-react';
-import { assessmentsApi, applicationsApi, assessmentTypesApi, vulnerabilitiesApi } from '../api';
+import { Edit2, Trash2, Plus, Calendar, List, Download, Upload, Eye, Users } from 'lucide-react';
+import { assessmentsApi, applicationsApi, assessmentTypesApi, availabilityApi, teamsApi, usersApi, vulnerabilitiesApi } from '../api';
 import type {
   Assessment,
   AssessmentMetrics,
   Application,
   AssessmentType,
+  Team,
+  TimelineSpan,
+  Unavailability,
+  User,
   Vulnerability,
+  HolidayEntry,
+  ScheduleBlock,
 } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam, FilterChip } from '../components/DataTable';
 import SearchableSelect, { MultiSelect, SelectOption } from '../components/SearchableSelect';
 import { Button, Badge, ConfirmDialog, IconButton, ActionButtons, FormLabel, Input } from '../components';
+import { findUnavailability, UnavailabilityList } from '../components/UnavailabilityWarning';
 import AssessmentCalendar from '../components/AssessmentCalendar';
+import { AssessorTimeline } from '@enterprise';
+import { PaidFeature } from '../components/PaidFeature';
+import DiamondIcon from '../components/DiamondIcon';
+import { useEdition } from '../context/EditionContext';
 import AssessmentImportModal from '../components/AssessmentImportModal';
 import Page from '../components/Page';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -27,6 +38,17 @@ const toApiDate = (dt: Date): string => {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T00:00:00`;
 };
 
+/** The calendar views' initial fetch: last month through the end of next month. */
+const defaultCalendarWindow = (): { start: string; end: string } => {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return {
+    start: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+    end: iso(new Date(now.getFullYear(), now.getMonth() + 2, 0)),
+  };
+};
+
 // localStorage key for the list view's saved search, filters, sort and paging.
 const TABLE_KEY = 'scheduling';
 
@@ -36,14 +58,45 @@ export default function Engagements() {
   // scheduling access alone does not imply it.
   const { permissions } = usePermissions();
   const { workflows } = useWorkflowsContext();
+  // The By User timeline is paid; the open source build keeps the button and shows why it's locked.
+  const { hasFeature, status: editionStatus } = useEdition();
+  const hasTeamScheduling = hasFeature('team_scheduling');
+  // hasFeature is optimistic (true until /edition answers), which is right for showing a button
+  // but wrong for firing requests: a hard reload into Calendar or By User would call paid
+  // endpoints on the open source edition. Proactive availability fetches wait for proof.
+  const teamSchedulingProven = editionStatus?.features?.team_scheduling === true;
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [view, setView] = useState<'calendar' | 'list'>(() => {
+  const [view, setView] = useState<'calendar' | 'list' | 'people'>(() => {
     const saved = localStorage.getItem('engagements-view');
-    return (saved === 'list' || saved === 'calendar') ? saved : 'list';
+    return (saved === 'list' || saved === 'calendar' || saved === 'people') ? saved : 'list';
   });
+  // The By User timeline's range and team filter survive leaving the page, like the view itself.
+  const [timelineSpan, setTimelineSpan] = usePersistedState<TimelineSpan>('engagements-timeline', 'span', 'month');
+  const [timelineTeamId, setTimelineTeamId] = usePersistedState<string>('engagements-timeline', 'teamId', '');
+  const [timelineActiveOnly, setTimelineActiveOnly] = usePersistedState<boolean>('engagements-timeline', 'activeAssessmentsOnly', true);
+  // The timeline's rows: the user directory and teams, when the viewer may read them.
+  const [timelineUsers, setTimelineUsers] = useState<User[] | null>(null);
+  const [timelineTeams, setTimelineTeams] = useState<Team[]>([]);
+  // The date window the calendar views have fetched, as inclusive YYYY-MM-DD bounds. Navigating
+  // past it widens it and refetches; kept in a ref so reloads never shrink it back.
+  const calendarWindow = useRef(defaultCalendarWindow());
+  // The calendar's currently VISIBLE range (unpadded), as last reported by onRangeChange. Unlike
+  // calendarWindow above, this never accumulates — it just tracks what's on screen right now, so
+  // availability overlays (padded a month either side of it) stay well under the API's 366-day
+  // range cap no matter how far the cumulative assessment window has grown.
+  const visibleRange = useRef(defaultCalendarWindow());
   const [metrics, setMetrics] = useState<AssessmentMetrics | null>(null);
+  // Unavailability bands for the By User timeline, fetched for the visible range (padded, see
+  // above). Guarded by a request counter: the visible range can change quietly while an earlier
+  // fetch is still in flight, and that stale response must not clobber a newer one.
+  const [timelineUnavailability, setTimelineUnavailability] = useState<Unavailability[]>([]);
+  const unavailabilityRequestId = useRef(0);
+  // The main Calendar view's org-wide overlay: default-region holidays and scheduling blocks
+  // (never personal time off — that's per-user and stays on the By User timeline only).
+  const [calendarOrgHolidays, setCalendarOrgHolidays] = useState<HolidayEntry[]>([]);
+  const [calendarBlocks, setCalendarBlocks] = useState<ScheduleBlock[]>([]);
 
   // Reference data
   const [applications, setApplications] = useState<Application[]>([]);
@@ -160,6 +213,7 @@ export default function Engagements() {
     newStart: Date;
     newEnd: Date;
     revert: () => void;
+    unavailable: Unavailability[];
   } | null>(null);
 
   useEffect(() => {
@@ -180,10 +234,10 @@ export default function Engagements() {
   }, [view]);
 
   useEffect(() => {
-    if (view === 'calendar') {
-      loadCalendarData();
-    } else {
+    if (view === 'list') {
       loadAssessments();
+    } else {
+      loadCalendarData();
     }
   }, [view, pagination.page, pagination.pageSize, filters, sort]);
 
@@ -203,10 +257,10 @@ export default function Engagements() {
   }, [assessments]);
 
   const loadData = () => {
-    if (view === 'calendar') {
-      loadCalendarData();
-    } else {
+    if (view === 'list') {
       loadAssessments();
+    } else {
+      loadCalendarData();
     }
   };
 
@@ -250,30 +304,118 @@ export default function Engagements() {
     }
   };
 
-  const loadCalendarData = async () => {
-    setLoading(true);
+  /** An inclusive YYYY-MM-DD range, padded a whole calendar month either side. */
+  const padMonths = (start: string, end: string): { start: string; end: string } => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const [sy, sm] = start.split('-').map(Number);
+    const [ey, em] = end.split('-').map(Number);
+    return {
+      start: iso(new Date(sy, sm - 2, 1)),
+      end: iso(new Date(ey, em + 1, 0)),
+    };
+  };
+
+  /**
+   * Availability overlays — org holidays, scheduling blocks, and By User unavailability — fetched
+   * for the currently visible range (padded a month either side), not the cumulative
+   * calendarWindow. calendarWindow only grows, and once it passes 366 days the /org-calendar and
+   * /calendar endpoints reject the request outright, silently blanking every overlay. The visible
+   * range stays roughly one screen wide no matter how far the user has paginated, so the padded
+   * range stays well under that cap.
+   */
+  const loadAvailabilityOverlays = () => {
+    const { start, end } = padMonths(visibleRange.current.start, visibleRange.current.end);
+
+    // Unavailability bands are only needed for the By User view, and only when the viewer can
+    // read users (the calendar endpoint requires users:read). A request counter guards against
+    // a stale response landing after a newer one — the visible range can change quietly while an
+    // earlier fetch is still in flight.
+    const requestId = ++unavailabilityRequestId.current;
+    if (view === 'people' && teamSchedulingProven && permissions.canViewUsers) {
+      availabilityApi.calendar(start, end)
+        .then((r) => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability(r.data ?? []); })
+        .catch(() => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability([]); });
+    } else {
+      setTimelineUnavailability([]);
+    }
+
+    // The main Calendar view's org-wide overlay. Unlike /calendar (users:read-gated), both
+    // /org-calendar and /blocks are @AuthenticatedOnly, so no permissions.canViewUsers check.
+    // /blocks itself takes no date range (it always returns every not-yet-ended block), so it
+    // never risks the 366-day cap and doesn't need the padded range.
+    if (view === 'calendar' && teamSchedulingProven) {
+      availabilityApi.orgCalendar(start, end)
+        .then((r) => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays(r.data ?? []); })
+        .catch(() => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays([]); });
+      availabilityApi.blocks()
+        .then((r) => { if (requestId === unavailabilityRequestId.current) setCalendarBlocks(r.data ?? []); })
+        .catch(() => { if (requestId === unavailabilityRequestId.current) setCalendarBlocks([]); });
+    } else {
+      setCalendarOrgHolidays([]);
+      setCalendarBlocks([]);
+    }
+  };
+
+  /** `quiet` refetches in place, without the spinner that would reset the calendar's position. */
+  const loadCalendarData = async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError('');
     try {
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0);
-
-      const response = await assessmentsApi.getCalendarView(
-        startOfMonth.toISOString(),
-        endOfMonth.toISOString(),
-        0,
-        1000
-      );
+      const { start, end } = calendarWindow.current;
+      const response = await assessmentsApi.getCalendarView(start, end, 0, 1000);
 
       if (response.success && response.data) {
         setAssessments(response.data);
       }
+
+      loadAvailabilityOverlays();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load calendar data');
     } finally {
       setLoading(false);
     }
   };
+
+  /**
+   * Widen the fetched assessment window to cover a newly visible range, a month either side, and
+   * refetch — and always record the visible range and refresh the (separately windowed)
+   * availability overlays, even when the assessment window itself didn't need to grow.
+   */
+  const ensureCalendarRange = (start: string, end: string) => {
+    visibleRange.current = { start, end };
+    loadAvailabilityOverlays();
+
+    const current = calendarWindow.current;
+    if (start >= current.start && end <= current.end) return;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const [sy, sm] = start.split('-').map(Number);
+    const [ey, em] = end.split('-').map(Number);
+    calendarWindow.current = {
+      start: start < current.start ? iso(new Date(sy, sm - 2, 1)) : current.start,
+      end: end > current.end ? iso(new Date(ey, em + 1, 0)) : current.end,
+    };
+    loadCalendarData(true);
+  };
+
+  // The By User rows and team filter read the user directory, so load them only for viewers who
+  // may browse it; everyone else gets rows built from the assessments' own assessors.
+  useEffect(() => {
+    if (view !== 'people' || !teamSchedulingProven || !permissions.canViewUsers || timelineUsers) return;
+    Promise.all([
+      usersApi.getAll(0, 1000, '', '', { type: 'INTERNAL' }).catch(() => null),
+      teamsApi.getAll(0, 1000).catch(() => null),
+    ]).then(([usersResponse, teamsResponse]) => {
+      if (usersResponse?.success && usersResponse.data) setTimelineUsers(usersResponse.data);
+      if (teamsResponse?.success && teamsResponse.data) setTimelineTeams(teamsResponse.data);
+    });
+  }, [view, teamSchedulingProven]);
+
+  // The overlays skipped above while the edition was unknown: fetch them once it's proven.
+  useEffect(() => {
+    if (teamSchedulingProven && view !== 'list') loadAvailabilityOverlays();
+  }, [teamSchedulingProven]);
 
   const loadReferenceData = async () => {
     try {
@@ -367,6 +509,9 @@ export default function Engagements() {
       return;
     }
 
+    const unavailable = await findUnavailability(
+      assessmentId, assessment.assessorIds ?? [], toApiDate(newStart), toApiDate(newEnd));
+
     // Show confirmation dialog
     setPendingDateChange({
       assessmentId,
@@ -374,8 +519,15 @@ export default function Engagements() {
       newStart,
       newEnd,
       revert,
+      unavailable,
     });
     setShowDateChangeConfirm(true);
+  };
+
+  /** Names from the assessment itself: Engagements has no user directory in calendar view. */
+  const assessorNamesById = (assessmentId: string): Record<string, string> => {
+    const a = assessments.find((x) => x.id === assessmentId);
+    return Object.fromEntries((a?.assessorIds ?? []).map((id, i) => [id, a?.assessorNames?.[i] ?? 'Unknown user']));
   };
 
   const handleConfirmDateChange = async () => {
@@ -560,6 +712,15 @@ export default function Engagements() {
     },
   ];
 
+  // The calendar fetch takes only a date range, so the toolbar's type filter applies here
+  // alongside status and past-due, keeping both calendar views in step with the pills above them.
+  const calendarAssessments = assessments.filter(a => {
+    if (filters.assessmentTypeIds.length > 0 && !filters.assessmentTypeIds.includes(a.assessmentTypeId)) return false;
+    if (filters.pastDue && !a.isPastDue) return false;
+    if (filters.statuses.length > 0) return filters.statuses.includes(a.status);
+    return true;
+  });
+
   return (
     <Page className="engagements-page">
       <div className="eng-toolbar">
@@ -613,10 +774,20 @@ export default function Engagements() {
           })}
         </div>
         <div className="eng-toolbar-actions">
-          <Button variant="secondary" onClick={() => setView(view === 'calendar' ? 'list' : 'calendar')}>
-            {view === 'calendar' ? <List size={18} /> : <Calendar size={18} />}
-            {view === 'calendar' ? 'List View' : 'Calendar View'}
-          </Button>
+          <div className="eng-view-toggle" role="group" aria-label="View">
+            <button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>
+              <List size={16} /> List View
+            </button>
+            <button className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}>
+              <Calendar size={16} /> Calendar View
+            </button>
+            <button className={view === 'people' ? 'active' : ''} onClick={() => setView('people')}>
+              <Users size={16} /> By User
+              {!hasTeamScheduling && (
+                <span className="paid-badge" title="Not in this edition"><DiamondIcon className="paid-badge__diamond" /></span>
+              )}
+            </button>
+          </div>
           {permissions.canImportAssessments && (
             <Button variant="secondary" onClick={() => setShowImport(true)}>
               <Upload size={18} /> Import CSV
@@ -637,20 +808,39 @@ export default function Engagements() {
 
       {view === 'calendar' ? (
         <AssessmentCalendar
-          assessments={assessments.filter(a => {
-            // The calendar fetch takes only a date range, so the toolbar's type filter applies here
-            // alongside status and past-due, keeping the calendar in step with the pills above it.
-            if (filters.assessmentTypeIds.length > 0 && !filters.assessmentTypeIds.includes(a.assessmentTypeId)) return false;
-            if (filters.pastDue && !a.isPastDue) return false;
-            if (filters.statuses.length > 0) return filters.statuses.includes(a.status);
-            return true;
-          })}
+          assessments={calendarAssessments}
           workflows={workflows}
           loading={loading}
           onEventClick={handleEventClick}
           onEventDrop={handleEventDrop}
           onEventResize={handleEventDrop}
+          onRangeChange={ensureCalendarRange}
+          orgHolidays={calendarOrgHolidays}
+          blocks={calendarBlocks}
         />
+      ) : view === 'people' ? (
+        <PaidFeature
+          feature="team_scheduling"
+          title="By User Timeline"
+          description="One row per person with their assessments laid across the days, to see who is booked and who is free."
+        >
+        <AssessorTimeline
+          assessments={calendarAssessments}
+          workflows={workflows}
+          users={timelineUsers}
+          teams={timelineTeams}
+          teamId={timelineTeamId}
+          onTeamChange={setTimelineTeamId}
+          activeOnly={timelineActiveOnly}
+          onActiveOnlyChange={setTimelineActiveOnly}
+          span={timelineSpan}
+          onSpanChange={setTimelineSpan}
+          loading={loading}
+          onEventClick={handleEventClick}
+          onRangeChange={ensureCalendarRange}
+          unavailability={timelineUnavailability}
+        />
+        </PaidFeature>
       ) : (
         <>
           <DataTable
@@ -741,15 +931,20 @@ export default function Engagements() {
         isOpen={showDateChangeConfirm}
         onClose={handleCancelDateChange}
         onConfirm={handleConfirmDateChange}
-        title="Confirm Date Change"
+        title={pendingDateChange?.unavailable.length ? 'Assessors Unavailable' : 'Confirm Date Change'}
         message={
-          pendingDateChange
-            ? `Do you want to save the new dates for "${pendingDateChange.assessmentName}"?\n\nNew Start: ${pendingDateChange.newStart.toLocaleDateString()}\nNew End: ${pendingDateChange.newEnd.toLocaleDateString()}`
-            : ''
+          pendingDateChange ? (
+            <>
+              {`Save the new dates for "${pendingDateChange.assessmentName}"?\nNew Start: ${pendingDateChange.newStart.toLocaleDateString()}\nNew End: ${pendingDateChange.newEnd.toLocaleDateString()}`}
+              {pendingDateChange.unavailable.length > 0 && (
+                <UnavailabilityList entries={pendingDateChange.unavailable} names={assessorNamesById(pendingDateChange.assessmentId)} />
+              )}
+            </>
+          ) : ''
         }
-        confirmText="Save Changes"
+        confirmText={pendingDateChange?.unavailable.length ? 'Save Anyway' : 'Save Changes'}
         cancelText="Cancel"
-        variant="info"
+        variant={pendingDateChange?.unavailable.length ? 'warning' : 'info'}
       />
 
       <AssessmentImportModal

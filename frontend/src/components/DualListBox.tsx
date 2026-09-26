@@ -168,8 +168,8 @@ export default function DualListBox({
                   <div className="dual-list-box-item-content">
                     <div className="dual-list-box-item-name">
                       <span className="dual-list-box-item-label">{item.name}</span>
-                      {item.badge}
                     </div>
+                    {item.badge && <div className="dual-list-box-item-badges">{item.badge}</div>}
                     {secondaryText && <div className="dual-list-box-item-email">{secondaryText}</div>}
                   </div>
                 </label>
@@ -217,8 +217,8 @@ export default function DualListBox({
                   <div className="dual-list-box-item-content">
                     <div className="dual-list-box-item-name">
                       <span className="dual-list-box-item-label">{item.name}</span>
-                      {item.badge}
                     </div>
+                    {item.badge && <div className="dual-list-box-item-badges">{item.badge}</div>}
                     {secondaryText && <div className="dual-list-box-item-email">{secondaryText}</div>}
                   </div>
                 </label>

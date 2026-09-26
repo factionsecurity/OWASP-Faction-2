@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { SeverityBadge, IconButton } from '../components';
 import VulnerabilityDetailDrawer from '../components/VulnerabilityDetailDrawer';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { usePageTitle } from '../context/PageTitleContext';
 import { retestApi, usersApi, assessmentsApi, vulnerabilitiesApi } from '../api';
-import type { Assessment, Retest, User, Vulnerability } from '../types';
-import { FormLabel, Input, DualListBox } from '../components';
+import type { Assessment, AssessorAvailability, Retest, Unavailability, User, Vulnerability } from '../types';
+import { FormLabel, Input, DualListBox, ConfirmDialog } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import AssessmentCalendar from '../components/AssessmentCalendar';
 import Page from '../components/Page';
+import { AvailabilityBadge } from '../components/AvailabilityBadge';
+import { findUnavailability, UnavailabilityList } from '../components/UnavailabilityWarning';
+import { isSchedulableDate } from '../utils/unavailability';
 import './ScheduleRetestPage.css';
 
 /** Mirrors RetestService.OPEN_STATUSES — a finding may carry only one retest in these. */
@@ -108,6 +111,15 @@ export default function ScheduleRetestPage() {
   const [teamAssessments, setTeamAssessments] = useState<Assessment[]>([]);
   const [calendarRetests, setCalendarRetests] = useState<Retest[]>([]);
   const [conflicts, setConflicts] = useState<Assessment[]>([]);
+  // Keyed by user id. Empty until both dates are set — with no window there is nothing to
+  // be free or busy across.
+  const [assessorAvailability, setAssessorAvailability] = useState<Record<string, AssessorAvailability>>({});
+  const [unavailableWarning, setUnavailableWarning] = useState<{ entries: Unavailability[] } | null>(null);
+  // True only for the pre-save availability round trip — folded into the submit button's
+  // disabled state so a rapid double-click/double-Enter can't fire two saves while it's in flight.
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+
+  const internalUsers = users.filter(u => u.isInternal);
 
   useEffect(() => {
     // Pre-populate form when editing an existing retest
@@ -129,6 +141,34 @@ export default function ScheduleRetestPage() {
       setConflicts([]);
     }
   }, [assessorIds, startDate, endDate]);
+
+  // Availability of everyone who *could* be assigned, refreshed on every date change.
+  // Keyed on the candidate ids rather than the array, which is rebuilt each render.
+  const assessorCandidateKey = internalUsers.map(u => u.id).join(',');
+
+  useEffect(() => {
+    const candidateIds = assessorCandidateKey ? assessorCandidateKey.split(',') : [];
+    if (!isSchedulableDate(startDate) || !isSchedulableDate(endDate) || candidateIds.length === 0) {
+      setAssessorAvailability({});
+      return;
+    }
+
+    // Dates change faster than the request completes — without this a slow early response
+    // can land last and paint stale badges.
+    let cancelled = false;
+    assessmentsApi
+      .getAssessorAvailability(null, candidateIds, toApiDate(startDate), toApiDate(endDate))
+      .then((res) => {
+        if (cancelled || !res.success || !res.data) return;
+        setAssessorAvailability(Object.fromEntries(res.data.map((a) => [a.userId, a])));
+      })
+      .catch(() => {
+        // A failed lookup must not claim everyone is free; show no annotation instead.
+        if (!cancelled) setAssessorAvailability({});
+      });
+
+    return () => { cancelled = true; };
+  }, [assessorCandidateKey, startDate, endDate]);
 
   const loadData = async () => {
     const calStart = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
@@ -197,6 +237,13 @@ export default function ScheduleRetestPage() {
     }
   };
 
+  /**
+   * Checks the chosen assessors' availability first; an unavailable one asks before saving.
+   * The availability round trip runs before `performSave` sets `submitting`, so a synchronous
+   * ref guard (rather than state, which updates a render late) closes the double-click window
+   * a rapid double-submit would otherwise slip through.
+   */
+  const submitInFlightRef = useRef(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!startDate || !endDate) {
@@ -216,6 +263,25 @@ export default function ScheduleRetestPage() {
       return;
     }
 
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setCheckingAvailability(true);
+    setError('');
+    try {
+      // Pass null as the assessment id: a retest is not an assessment booking.
+      const entries = await findUnavailability(null, assessorIds, toApiDate(startDate), toApiDate(endDate));
+      if (entries.length > 0) {
+        setUnavailableWarning({ entries });
+        return;
+      }
+      await performSave();
+    } finally {
+      submitInFlightRef.current = false;
+      setCheckingAvailability(false);
+    }
+  };
+
+  const performSave = async () => {
     setSubmitting(true);
     setError('');
 
@@ -265,6 +331,18 @@ export default function ScheduleRetestPage() {
     }
   };
 
+  /**
+   * Free/busy mark for one candidate. Nothing until both dates are set: with no window
+   * chosen, an "Available" badge would be an answer to a question nobody asked.
+   */
+  const assessorBadge = (userId: string) => (
+    <AvailabilityBadge
+      availability={assessorAvailability[userId]}
+      windowStart={startDate}
+      windowEnd={endDate}
+    />
+  );
+
   // Build calendar preview assessment
   const calendarPreview: Assessment | null = startDate && endDate ? {
     id: 'retest-preview',
@@ -283,8 +361,6 @@ export default function ScheduleRetestPage() {
     assessorIds: assessorIds,
     completed: false,
   } as unknown as Assessment : null;
-
-  const internalUsers = users.filter(u => u.isInternal);
 
   return (
     <Page fill className="schedule-retest-page">
@@ -392,6 +468,7 @@ export default function ScheduleRetestPage() {
                       id: u.id,
                       name: `${u.firstName} ${u.lastName}`,
                       email: u.email,
+                      badge: assessorBadge(u.id),
                     }))}
                     selectedIds={assessorIds}
                     onChange={setAssessorIds}
@@ -436,7 +513,7 @@ export default function ScheduleRetestPage() {
               <button
                 type="submit"
                 className="schedule-retest-submit-btn"
-                disabled={submitting || !startDate || !endDate || assessorIds.length === 0
+                disabled={submitting || checkingAvailability || !startDate || !endDate || assessorIds.length === 0
                   || (!isEditMode && blockingRetests.length > 0)}
               >
                 {submitting
@@ -489,6 +566,27 @@ export default function ScheduleRetestPage() {
         vulnerability={previewVuln}
         assessment={assessment}
         onClose={() => setPreviewVuln(null)}
+      />
+
+      {/* Assessor Unavailability Warning */}
+      <ConfirmDialog
+        isOpen={!!unavailableWarning}
+        onClose={() => setUnavailableWarning(null)}
+        onConfirm={() => {
+          setUnavailableWarning(null);
+          performSave();
+        }}
+        title="Assessors Unavailable"
+        message={unavailableWarning ? (
+          <UnavailabilityList
+            entries={unavailableWarning.entries}
+            names={Object.fromEntries(users.map((u) => [u.id, `${u.firstName} ${u.lastName}`]))}
+          />
+        ) : ''}
+        confirmText="Save Anyway"
+        cancelText="Cancel"
+        variant="warning"
+        isLoading={submitting}
       />
     </Page>
   );

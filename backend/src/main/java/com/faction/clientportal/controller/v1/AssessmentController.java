@@ -571,7 +571,11 @@ public class AssessmentController {
     }
 
     @PostMapping("/assessor-availability")
-    @RequiresPermission({Permission.ASSESSMENTS_CREATE_ALL, Permission.ASSESSMENTS_CREATE_TEAM})
+    // Also retest schedulers: the Schedule Retest page is gated on vulnerabilities:create:*
+    // (permissions.canScheduleRetests) and asks this for its assessor warnings.
+    @RequiresPermission({Permission.ASSESSMENTS_CREATE_ALL, Permission.ASSESSMENTS_CREATE_TEAM,
+            Permission.VULNERABILITIES_CREATE_ALL, Permission.VULNERABILITIES_CREATE_TEAM,
+            Permission.VULNERABILITIES_CREATE_ASSESSMENT})
     @Operation(
         summary = "Check which candidate assessors are free",
         description = "Given a proposed window and a set of candidate assessors, reports which of "

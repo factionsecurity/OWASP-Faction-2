@@ -112,15 +112,13 @@
 /* Split View Layout */
 .create-assessment-page .split-view {
   display: grid;
-  /* Both columns are fr, so the calendar keeps a real share of whatever width there is
-     rather than a fixed pixel budget. It gets slightly more than the form because
-     FullCalendar runs height="auto" with aspectRatio 1.8 — the width is also what sets the
-     day-cell height, and at the old flat 500px (440px of calendar once the panel padding
-     came out) the rows landed around 40px tall, which is what read as cramped.
+  /* Both columns are fr, so each keeps a real share of whatever width there is rather than a
+     fixed pixel budget. Equal fr fractions split the available width 50/50 between the form
+     and the calendar preview.
 
      The minmax floors are what stop this crushing either side on the way down to the
      1200px breakpoint where the two panels stack. */
-  grid-template-columns: minmax(460px, 0.9fr) minmax(560px, 1.35fr);
+  grid-template-columns: minmax(460px, 1fr) minmax(560px, 1fr);
   gap: 2rem;
   align-items: start;
 }
@@ -157,14 +155,13 @@
   position: relative;
 }
 
+/* No card border/background/padding here on purpose: the calendar preview doesn't need to sit
+   in its own pane, and every pixel of padding this box used to take came straight off the
+   calendar's own width (and therefore its height, since FullCalendar derives day-cell height
+   from the available width). Dropping the pane makes it bigger for free. */
 .calendar-sticky {
   position: sticky;
   top: 2rem;
-  background-color: var(--secondary-bg, #ffffff);
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: var(--radius-lg, 0.5rem);
-  /* Every pixel here comes off the calendar's own width, and therefore off its height. */
-  padding: 1.25rem;
 }
 
 .preview-info {
@@ -176,6 +173,7 @@
 .create-assessment-page .calendar-panel .assessment-calendar {
   border: none;
   padding: 0;
+  margin-top: 0.75rem;
   background-color: transparent;
 }
 
@@ -186,11 +184,6 @@
 
 .create-assessment-page .calendar-panel .fc-toolbar-title {
   font-size: 1.0625rem;
-  /* The calendar is forced light by .calendar-frame while the app around it is dark, so the
-     title inherits a near-white theme colour and lands white-on-white — rgb(249,250,251) on
-     rgb(255,255,255). Everything else in the calendar carries its own light-mode colour;
-     only the month name falls through. */
-  color: #111827;
 }
 
 .create-assessment-page .calendar-panel .fc-button {
@@ -266,6 +259,17 @@
   margin-bottom: 0 !important;
 }
 
+/* A Bootstrap column won't shrink below its content's intrinsic width by default, so a
+   long name or email pushes into the neighboring column instead of wrapping. */
+.stakeholder-list .row > [class*="col-"] {
+  min-width: 0;
+}
+
+.stakeholder-list .row .small {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* List Item Styling (for URLs and Stakeholders) */
 .create-assessment-page .form-panel .list-item {
   display: flex;
@@ -315,10 +319,6 @@
   }
 
   .create-assessment-page .form-panel {
-    padding: 1rem;
-  }
-
-  .calendar-sticky {
     padding: 1rem;
   }
 
@@ -535,11 +535,6 @@
 
 .stakeholder-remove-btn:hover {
   color: #ef4444;
-}
-
-.calendar-frame {
-  background: #fff;
-  padding: 5px;
 }
 
 /* Scope section — expand rich text editor */

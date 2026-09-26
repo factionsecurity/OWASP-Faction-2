@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
-import { Edit2, Trash2, Plus, X, Search, Mail, Check, UserX, UserCheck } from 'lucide-react';
+import { usePermissions } from '../utils/permissions';
+import { Edit2, Trash2, Plus, X, Search, Mail, Check, UserX, UserCheck, CalendarOff } from 'lucide-react';
 import { usersApi, rolesApi, teamsApi, organizationsApi, subOrganizationsApi, applicationsApi, azureUsersApi } from '../api';
 import type { User, Role, Team, Organization, SubOrganization, Application, CreateUserRequest, UpdateUserRequest, AzureDirectoryUser } from '../types';
+import { AvailabilityProfileCard } from '@enterprise';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
 import { usePersistedState } from '../hooks/usePersistedState';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
@@ -31,7 +33,10 @@ const TABLE_KEY = 'users';
 
 export default function Users() {
   const { organizationLower, organizationPlural, organizationSingular } = useTerminology();
-  const hasExternalOwners = useEdition().hasFeature('external_owners');
+  const { hasFeature } = useEdition();
+  const hasExternalOwners = hasFeature('external_owners');
+  const { permissions } = usePermissions();
+  const [availabilityUserId, setAvailabilityUserId] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -653,6 +658,17 @@ export default function Users() {
               onClick={() => setConfirmToggleUser(user)}
             />
           )}
+          {/* Availability is for live staff: external and deleted accounts have none to manage
+              (the API answers 404 for them). A team manager may still see it on an out-of-team
+              row — the signed-in user's teams aren't loaded here — and gets the API's 404. */}
+          {permissions.canManageAvailability && hasFeature('team_scheduling') && user.isInternal && !user.deletedAt && (
+            <IconButton
+              icon={CalendarOff}
+              variant="edit"
+              title="Availability"
+              onClick={() => setAvailabilityUserId(user.id)}
+            />
+          )}
           <IconButton
             icon={Trash2}
             variant="delete"
@@ -1160,6 +1176,10 @@ export default function Users() {
         variant="danger"
         isLoading={deletingUser}
       />
+
+      <Modal isOpen={!!availabilityUserId} onClose={() => setAvailabilityUserId(null)} title="Availability" size="md">
+        {availabilityUserId && <AvailabilityProfileCard userId={availabilityUserId} />}
+      </Modal>
     </Page>
   );
 }

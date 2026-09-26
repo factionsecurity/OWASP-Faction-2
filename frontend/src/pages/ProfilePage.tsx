@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2, KeyRound } from 'lucide-react';
 import { usePageTitle } from '../context/PageTitleContext';
+import { useEdition } from '../context/EditionContext';
+import { usePermissions } from '../utils/permissions';
 import { profileApi } from '../api';
 import type { User } from '../types';
+import { AvailabilityProfileCard } from '@enterprise';
 import {
   Button,
   ConfirmDialog,
@@ -21,6 +24,9 @@ import './ProfilePage.css';
 
 export default function ProfilePage() {
   const { setPageTitle } = usePageTitle();
+  const { hasFeature } = useEdition();
+  // The availability API is for staff (super_admin excepted); an external account would get a 403.
+  const { isInternal, isSuperAdmin } = usePermissions();
   const [user, setUser] = useState<User | null>(null);
   const [loadError, setLoadError] = useState('');
   const [toast, setToast] = useState<string | null>(null);
@@ -237,6 +243,8 @@ export default function ProfilePage() {
       />
 
       <NotificationPreferencesSection />
+
+      {hasFeature('team_scheduling') && (isInternal || isSuperAdmin) && <AvailabilityProfileCard />}
 
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </Page>

@@ -859,6 +859,94 @@ export interface VulnerabilitySummary {
   unsectioned?: number;
 }
 
+export type UnavailabilityKind = 'TIME_OFF' | 'HOLIDAY' | 'BLOCK';
+
+export interface Unavailability {
+  userId: string;
+  start: string;
+  end: string;
+  kind: UnavailabilityKind;
+  label: string;
+  sourceId?: string;
+}
+
+export interface HolidayEntry {
+  date: string;
+  key?: string | null;
+  name: string;
+  added: boolean;
+}
+
+export interface HolidayRegion {
+  code: string;
+  name: string;
+  subdivisions: HolidayRegion[];
+}
+
+export interface TimeOffEntry {
+  id: string;
+  userId: string;
+  startDate: string;
+  endDate: string;
+  note?: string | null;
+}
+
+export interface UserAvailability {
+  userId: string;
+  holidayRegion?: string | null;
+  effectiveRegion?: string | null;
+  defaultRegion?: string | null;
+  upcomingHolidays: HolidayEntry[];
+  timeOff: TimeOffEntry[];
+}
+
+export type ScheduleBlockScope = 'EVERYONE' | 'TEAM' | 'USERS';
+
+export interface ScheduleBlock {
+  id: string;
+  title: string;
+  note?: string | null;
+  startDate: string;
+  endDate: string;
+  scope: ScheduleBlockScope;
+  teamId?: string | null;
+  teamName?: string | null;
+  userIds: string[];
+  createdBy?: string;
+}
+
+export interface ScheduleBlockRequest {
+  title: string;
+  note?: string;
+  startDate: string;
+  endDate: string;
+  scope: ScheduleBlockScope;
+  teamId?: string;
+  userIds?: string[];
+}
+
+export interface HolidayOverrideEntry {
+  id: string;
+  date: string;
+  endDate: string;
+  name: string;
+}
+
+export interface RegionHolidays {
+  region: string;
+  year: number;
+  library: HolidayEntry[];
+  disabledKeys: string[];
+  added: HolidayOverrideEntry[];
+  /** Off on the region's country (a subdivision inherits them); toggled only at the country level. */
+  inheritedDisabledKeys?: string[];
+}
+
+/** Props for the overlay's availability card; `userId` set means a manager editing someone else. */
+export interface AvailabilityProfileCardProps {
+  userId?: string;
+}
+
 /**
  * Whether one candidate assessor is already booked across a proposed assessment window.
  * Asked about everyone who could be assigned, so the picker can show availability before
@@ -873,6 +961,7 @@ export interface AssessorAvailability {
     startDate: string;
     plannedEndDate: string;
   }[];
+  unavailable: Unavailability[];
 }
 
 export interface Assessment {
@@ -980,6 +1069,43 @@ export interface AssessmentPrefill {
 export interface AssessmentPrefillActionProps {
   /** Applies the values. The form itself tells the user about anything it couldn't place. */
   onPrefill: (prefill: AssessmentPrefill) => Promise<void>;
+}
+
+/** The By User timeline's range. */
+export type TimelineSpan = 'week' | 'month' | 'quarter';
+
+/**
+ * The Engagements "By User" timeline slot, filled by the paid overlay (feature
+ * `team_scheduling`). Core owns the data — assessments, the user directory, the fetched
+ * window — and the persisted filter state; the overlay owns the drawing.
+ */
+export interface AssessorTimelineProps {
+  assessments: Assessment[];
+  workflows?: Workflow[];
+  /**
+   * The user directory, so people with nothing booked still get a row. `null` when the viewer
+   * can't read users: rows then come only from the assessors on the loaded assessments.
+   */
+  users: User[] | null;
+  /** Teams for the filter; empty hides it (the teams list needs the same permission as users). */
+  teams: Team[];
+  teamId: string;
+  onTeamChange: (teamId: string) => void;
+  /**
+   * Hide every user who has no assessment assigned to them in the visible range, regardless of
+   * status — a completed assessment still counts as "booked." Off shows every internal user
+   * whether or not they have anything assigned. Assessment bars themselves are never filtered
+   * by status; this only controls which user rows appear.
+   */
+  activeOnly: boolean;
+  onActiveOnlyChange: (activeOnly: boolean) => void;
+  span: TimelineSpan;
+  onSpanChange: (span: TimelineSpan) => void;
+  onEventClick?: (assessment: Assessment) => void;
+  /** Called with the visible [start, end] dates (inclusive, YYYY-MM-DD) so the parent can fetch them. */
+  onRangeChange?: (start: string, end: string) => void;
+  loading?: boolean;
+  unavailability?: Unavailability[];
 }
 
 /** A person who can be assigned to an assessment (the assessor picker's option shape). */
@@ -2308,7 +2434,8 @@ export type FeatureKey =
   | 'custom_roles'
   | 'report_sections'
   | 'custom_workflows'
-  | 'mcp_server';
+  | 'mcp_server'
+  | 'team_scheduling';
 
 /** Quota keys from the backend `Quota` enum. Capabilities that ship, but capped. */
 export type QuotaKey = 'ai_providers' | 'ai_prompts' | 'extensions';

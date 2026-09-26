@@ -18,7 +18,8 @@ public enum PermissionResource {
     API_KEYS("API Keys", "API key management permissions"),
     SYSTEM_CONFIG("System Config", "System configuration permissions"),
     CAMPAIGNS("Campaigns", "Campaign management permissions"),
-    MANAGER_DASHBOARD("Manager Dashboard", "Manager dashboard read access");
+    MANAGER_DASHBOARD("Manager Dashboard", "Manager dashboard read access"),
+    AVAILABILITY("Availability", "Time off, scheduling blocks and holiday calendars");
 
     private final String displayName;
     private final String description;

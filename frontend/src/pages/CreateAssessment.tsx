@@ -41,6 +41,10 @@ import { PaidBadge } from '../components/PaidFeature';
 import { useEdition } from '../context/EditionContext';
 import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
+import { AvailabilityBadge } from '../components/AvailabilityBadge';
+import { findUnavailability, UnavailabilityList } from '../components/UnavailabilityWarning';
+import { isSchedulableDate } from '../utils/unavailability';
+import type { Unavailability } from '../types';
 import './CreateAssessment.css';
 
 // Planned end date is picked as a duration from the start date; "custom" falls back to a
@@ -186,6 +190,10 @@ export default function CreateAssessment() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [unavailableWarning, setUnavailableWarning] = useState<{ entries: Unavailability[]; shouldClose: boolean } | null>(null);
+  // True only for the pre-save availability round trip — folded into the Save buttons'
+  // disabled state so a rapid double-click can't fire two saves while it's in flight.
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [initialFormData, setInitialFormData] = useState<string>('');
   const [initialUrls, setInitialUrls] = useState<string>('');
   const [initialStakeholders, setInitialStakeholders] = useState<string>('');
@@ -626,7 +634,7 @@ export default function CreateAssessment() {
 
   useEffect(() => {
     const candidateIds = assessorCandidateKey ? assessorCandidateKey.split(',') : [];
-    if (!formData.startDate || !formData.plannedEndDate || candidateIds.length === 0) {
+    if (!isSchedulableDate(formData.startDate) || !isSchedulableDate(formData.plannedEndDate) || candidateIds.length === 0) {
       setAssessorAvailability({});
       return;
     }
@@ -827,10 +835,11 @@ export default function CreateAssessment() {
       );
 
       if (response.success && response.data) {
-        // Filter out the current assessment being edited
-        const otherAssessments = id
-          ? response.data.filter((a) => a.id !== id)
-          : response.data;
+        // Filter out the current assessment being edited, and anything with nobody
+        // assigned yet — an unassigned assessment isn't a scheduling conflict for anyone.
+        const otherAssessments = response.data
+          .filter((a) => a.id !== id)
+          .filter((a) => a.assessorIds?.length);
         setTeamAssessments(otherAssessments);
       }
     } catch (err) {
@@ -1083,8 +1092,8 @@ export default function CreateAssessment() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent, shouldClose: boolean = true) => {
-    e.preventDefault();
+  const performSave = async (e: React.FormEvent | null, shouldClose: boolean = true) => {
+    e?.preventDefault();
     setLoading(true);
     setError('');
 
@@ -1204,6 +1213,34 @@ export default function CreateAssessment() {
     }
   };
 
+  /**
+   * Checks the chosen assessors' availability first; an unavailable one asks before saving.
+   * The availability round trip runs before `performSave` sets `loading`, so a synchronous
+   * ref guard (rather than state, which updates a render late) closes the double-click window
+   * a rapid double-submit would otherwise slip through.
+   */
+  const submitInFlightRef = useRef(false);
+  const handleSubmit = async (e: React.FormEvent, shouldClose: boolean = true) => {
+    e.preventDefault();
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setCheckingAvailability(true);
+    try {
+      if (formData.startDate && formData.plannedEndDate && formData.assessorIds.length > 0) {
+        const entries = await findUnavailability(
+          id || null, formData.assessorIds, toApiDate(formData.startDate), toApiDate(formData.plannedEndDate));
+        if (entries.length > 0) {
+          setUnavailableWarning({ entries, shouldClose });
+          return;
+        }
+      }
+      await performSave(null, shouldClose);
+    } finally {
+      submitInFlightRef.current = false;
+      setCheckingAvailability(false);
+    }
+  };
+
   const handleSave = (e: React.FormEvent) => {
     handleSubmit(e, false);
   };
@@ -1297,29 +1334,13 @@ export default function CreateAssessment() {
    * Free/busy mark for one candidate. Nothing until both dates are set: with no window
    * chosen, an "Available" badge would be an answer to a question nobody asked.
    */
-  const assessorBadge = (userId: string) => {
-    if (!formData.startDate || !formData.plannedEndDate) return null;
-    const availability = assessorAvailability[userId];
-    if (!availability) return null;
-
-    if (!availability.busy) {
-      return <Badge variant="success" size="sm">Free</Badge>;
-    }
-
-    const clashes = availability.conflicts;
-    // The names go in a title rather than the badge: the picker is a narrow column, and
-    // "why" is a follow-up question, not the thing being scanned for.
-    const summary = clashes
-      .map((c) => `${c.name} (${new Date(c.startDate).toLocaleDateString()} – ${new Date(c.plannedEndDate).toLocaleDateString()})`)
-      .join('\n');
-    return (
-      <span title={`Already booked:\n${summary}`}>
-        <Badge variant="danger" size="sm">
-          Busy{clashes.length > 1 ? ` (${clashes.length})` : ''}
-        </Badge>
-      </span>
-    );
-  };
+  const assessorBadge = (userId: string) => (
+    <AvailabilityBadge
+      availability={assessorAvailability[userId]}
+      windowStart={formData.startDate}
+      windowEnd={formData.plannedEndDate}
+    />
+  );
 
   return (
     <Page variant="flush" fill className="create-assessment-page">
@@ -2070,11 +2091,11 @@ export default function CreateAssessment() {
                   Cancel
                 </Button>
                 {mode === 'edit' && (
-                  <Button type="button" variant="primary" onClick={handleSave} disabled={loading}>
+                  <Button type="button" variant="primary" onClick={handleSave} disabled={loading || checkingAvailability}>
                     {loading ? 'Saving...' : 'Save'}
                   </Button>
                 )}
-                <Button type="button" variant="primary" onClick={handleSaveAndClose} disabled={loading}>
+                <Button type="button" variant="primary" onClick={handleSaveAndClose} disabled={loading || checkingAvailability}>
                   {loading ? 'Saving...' : 'Save & Close'}
                 </Button>
               </div>
@@ -2095,16 +2116,14 @@ export default function CreateAssessment() {
                     {calendarPreview.plannedEndDate && new Date(calendarPreview.plannedEndDate).toLocaleDateString()}
                   </div>
                 </div>
-                <div className="calendar-frame">
-                  <AssessmentCalendar
-                    assessments={[calendarPreview, ...teamAssessments]}
-                    loading={false}
-                    onEventClick={() => {}}
-                    onEventDrop={handleCalendarDrop}
-                    onEventResize={handleCalendarDrop}
-                    currentAssessmentId={id || 'preview'}
-                  />
-                </div>
+                <AssessmentCalendar
+                  assessments={[calendarPreview, ...teamAssessments]}
+                  loading={false}
+                  onEventClick={() => {}}
+                  onEventDrop={handleCalendarDrop}
+                  onEventResize={handleCalendarDrop}
+                  currentAssessmentId={id || 'preview'}
+                />
                 <div className="mt-3 p-3 bg-info bg-opacity-10 rounded">
                   <small className="text-muted">
                     <strong>💡 Tip:</strong> Drag the calendar event to move it, or drag the edges to resize and adjust start/end dates. Changes update the form automatically.
@@ -2155,6 +2174,28 @@ export default function CreateAssessment() {
         confirmText="Delete"
         cancelText="Cancel"
         variant="danger"
+        isLoading={loading}
+      />
+
+      {/* Assessor Unavailability Warning */}
+      <ConfirmDialog
+        isOpen={!!unavailableWarning}
+        onClose={() => setUnavailableWarning(null)}
+        onConfirm={() => {
+          const shouldClose = unavailableWarning?.shouldClose ?? true;
+          setUnavailableWarning(null);
+          performSave(null, shouldClose);
+        }}
+        title="Assessors Unavailable"
+        message={unavailableWarning ? (
+          <UnavailabilityList
+            entries={unavailableWarning.entries}
+            names={Object.fromEntries(users.map((u) => [u.id, `${u.firstName} ${u.lastName}`]))}
+          />
+        ) : ''}
+        confirmText="Save Anyway"
+        cancelText="Cancel"
+        variant="warning"
         isLoading={loading}
       />
       </div>{/* end create-assessment-content */}
