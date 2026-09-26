@@ -59,8 +59,12 @@ export default function Engagements() {
   const { permissions } = usePermissions();
   const { workflows } = useWorkflowsContext();
   // The By User timeline is paid; the open source build keeps the button and shows why it's locked.
-  const { hasFeature } = useEdition();
+  const { hasFeature, status: editionStatus } = useEdition();
   const hasTeamScheduling = hasFeature('team_scheduling');
+  // hasFeature is optimistic (true until /edition answers), which is right for showing a button
+  // but wrong for firing requests: a hard reload into Calendar or By User would call paid
+  // endpoints on the open source edition. Proactive availability fetches wait for proof.
+  const teamSchedulingProven = editionStatus?.features?.team_scheduling === true;
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -328,7 +332,7 @@ export default function Engagements() {
     // a stale response landing after a newer one — the visible range can change quietly while an
     // earlier fetch is still in flight.
     const requestId = ++unavailabilityRequestId.current;
-    if (view === 'people' && hasTeamScheduling && permissions.canViewUsers) {
+    if (view === 'people' && teamSchedulingProven && permissions.canViewUsers) {
       availabilityApi.calendar(start, end)
         .then((r) => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability(r.data ?? []); })
         .catch(() => { if (requestId === unavailabilityRequestId.current) setTimelineUnavailability([]); });
@@ -340,7 +344,7 @@ export default function Engagements() {
     // /org-calendar and /blocks are @AuthenticatedOnly, so no permissions.canViewUsers check.
     // /blocks itself takes no date range (it always returns every not-yet-ended block), so it
     // never risks the 366-day cap and doesn't need the padded range.
-    if (view === 'calendar' && hasTeamScheduling) {
+    if (view === 'calendar' && teamSchedulingProven) {
       availabilityApi.orgCalendar(start, end)
         .then((r) => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays(r.data ?? []); })
         .catch(() => { if (requestId === unavailabilityRequestId.current) setCalendarOrgHolidays([]); });
@@ -398,7 +402,7 @@ export default function Engagements() {
   // The By User rows and team filter read the user directory, so load them only for viewers who
   // may browse it; everyone else gets rows built from the assessments' own assessors.
   useEffect(() => {
-    if (view !== 'people' || !hasTeamScheduling || !permissions.canViewUsers || timelineUsers) return;
+    if (view !== 'people' || !teamSchedulingProven || !permissions.canViewUsers || timelineUsers) return;
     Promise.all([
       usersApi.getAll(0, 1000, '', '', { type: 'INTERNAL' }).catch(() => null),
       teamsApi.getAll(0, 1000).catch(() => null),
@@ -406,7 +410,12 @@ export default function Engagements() {
       if (usersResponse?.success && usersResponse.data) setTimelineUsers(usersResponse.data);
       if (teamsResponse?.success && teamsResponse.data) setTimelineTeams(teamsResponse.data);
     });
-  }, [view]);
+  }, [view, teamSchedulingProven]);
+
+  // The overlays skipped above while the edition was unknown: fetch them once it's proven.
+  useEffect(() => {
+    if (teamSchedulingProven && view !== 'list') loadAvailabilityOverlays();
+  }, [teamSchedulingProven]);
 
   const loadReferenceData = async () => {
     try {

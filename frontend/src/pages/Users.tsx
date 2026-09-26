@@ -658,7 +658,10 @@ export default function Users() {
               onClick={() => setConfirmToggleUser(user)}
             />
           )}
-          {permissions.canManageAvailability && hasFeature('team_scheduling') && (
+          {/* Availability is for live staff: external and deleted accounts have none to manage
+              (the API answers 404 for them). A team manager may still see it on an out-of-team
+              row — the signed-in user's teams aren't loaded here — and gets the API's 404. */}
+          {permissions.canManageAvailability && hasFeature('team_scheduling') && user.isInternal && !user.deletedAt && (
             <IconButton
               icon={CalendarOff}
               variant="edit"

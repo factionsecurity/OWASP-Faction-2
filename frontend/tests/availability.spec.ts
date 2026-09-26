@@ -118,9 +118,55 @@ test.describe.serial('Team availability - org default holiday region', () => {
       await expect(row).toContainText('Jun 15');
       await expect(row).toContainText('Jun 17');
 
+      // Removing a company day asks first.
       await row.getByTitle('Remove').click();
+      const confirm = page.locator('.modal:has(.modal-title:has-text("Remove Company Day"))');
+      await expect(confirm).toContainText(name);
+      await confirm.getByRole('button', { name: 'Remove' }).click();
       await expect(row).toHaveCount(0);
     } finally {
+      await page.request.put(`${TEST_CONFIG.apiURL}/availability/config`, { headers, data: { defaultHolidayRegion: previousDefault } });
+    }
+  });
+
+  test('admin holiday calendars: a holiday can be switched off and back on', async ({ page }) => {
+    const headers = await authHeaders(page);
+    const configRes = await page.request.get(`${TEST_CONFIG.apiURL}/availability/config`, { headers });
+    if (configRes.status() === 402) { test.skip(true, 'team_scheduling not in this edition'); return; }
+    const previousDefault: string | null = (await configRes.json()).data?.defaultHolidayRegion ?? null;
+    // Whether Christmas was already off for us before this test, so it's put back exactly.
+    const year = new Date().getFullYear() + 2;
+    const before = await page.request.get(`${TEST_CONFIG.apiURL}/availability/regions/holidays?region=us&year=${year}`, { headers });
+    const wasDisabled: boolean = ((await before.json()).data?.disabledKeys ?? []).includes('CHRISTMAS');
+
+    try {
+      await page.request.put(`${TEST_CONFIG.apiURL}/availability/config`, { headers, data: { defaultHolidayRegion: 'us' } });
+      if (wasDisabled) {
+        await page.request.delete(`${TEST_CONFIG.apiURL}/availability/regions/overrides?region=us&holidayKey=CHRISTMAS`, { headers });
+      }
+
+      await page.goto(`${TEST_CONFIG.baseURL}/availability`);
+      const tabs = page.locator('.availability-tabs');
+      await expect(tabs).toBeVisible({ timeout: TEST_CONFIG.timeout.medium });
+      await tabs.getByRole('button', { name: 'Holiday calendars' }).click();
+      await expect(page.locator('.availability-form')).toBeVisible({ timeout: TEST_CONFIG.timeout.medium });
+      await page.locator('.availability-browse-controls select').selectOption(String(year));
+
+      const christmas = page.locator('.availability-list li', { hasText: /— Christmas$/ }).locator('input[type="checkbox"]');
+      await expect(christmas).toBeChecked({ timeout: TEST_CONFIG.timeout.medium });
+      await christmas.click();
+      await expect(christmas).not.toBeChecked({ timeout: TEST_CONFIG.timeout.medium });
+      await expect(christmas).toBeEnabled({ timeout: TEST_CONFIG.timeout.medium });
+      await christmas.click();
+      await expect(christmas).toBeChecked({ timeout: TEST_CONFIG.timeout.medium });
+    } finally {
+      // Back to exactly how it was: the override present only if it was before.
+      await page.request.delete(`${TEST_CONFIG.apiURL}/availability/regions/overrides?region=us&holidayKey=CHRISTMAS`, { headers });
+      if (wasDisabled) {
+        await page.request.post(`${TEST_CONFIG.apiURL}/availability/regions/overrides`, {
+          headers, data: { region: 'us', kind: 'DISABLED', holidayKey: 'CHRISTMAS' },
+        });
+      }
       await page.request.put(`${TEST_CONFIG.apiURL}/availability/config`, { headers, data: { defaultHolidayRegion: previousDefault } });
     }
   });
@@ -153,6 +199,61 @@ test.describe.serial('Team availability - org default holiday region', () => {
       await expect(page.locator('.calendar-legend')).toContainText('Holiday', { timeout: TEST_CONFIG.timeout.medium });
     } finally {
       await page.request.put(`${TEST_CONFIG.apiURL}/availability/config`, { headers, data: { defaultHolidayRegion: previousDefault } });
+    }
+  });
+});
+
+test.describe('Team availability - scheduling warnings', () => {
+  test.beforeEach(async ({ page }) => { await loginAsSuperAdmin(page); });
+
+  test('create assessment: a block badges the picker and warns before saving', async ({ page }) => {
+    const headers = await authHeaders(page);
+    const probe = await page.request.get(`${TEST_CONFIG.apiURL}/availability/blocks`, { headers });
+    if (probe.status() !== 200) { test.skip(true, 'team_scheduling not in this edition'); return; }
+
+    // A far-future week, clear of US holidays, so nothing else explains the warning.
+    const title = `E2E Freeze ${Date.now()}`;
+    const created = await page.request.post(`${TEST_CONFIG.apiURL}/availability/blocks`, {
+      headers, data: { title, startDate: '2031-02-04', endDate: '2031-02-06', scope: 'EVERYONE' },
+    });
+    expect(created.status()).toBe(201);
+    const blockId: string = (await created.json()).data.id;
+
+    try {
+      await page.goto(`${TEST_CONFIG.baseURL}/scheduling/create`);
+      await page.waitForURL('**/scheduling/create', { timeout: TEST_CONFIG.timeout.medium });
+
+      await page.locator('input[placeholder="Assessment name"]').fill(`E2E availability ${Date.now()}`);
+      const typeSelect = page.locator('select:has(option:has-text("Select type..."))');
+      await expect(typeSelect.locator('option').nth(1)).toBeAttached({ timeout: TEST_CONFIG.timeout.medium });
+      await typeSelect.selectOption({ index: 1 });
+
+      await page.locator('label:has-text("Start Date") ~ input[type="date"]').fill('2031-02-03');
+      await page.locator('select:has(option[value="custom"])').selectOption('custom');
+      await page.locator('label:has-text("Planned End Date") ~ input[type="date"]').fill('2031-02-07');
+
+      // Everyone internal is covered by the block, so the candidates show "Away" for its days.
+      const away = page.locator('.dual-list-box-item', { has: page.locator('.dual-list-box-item-badges', { hasText: 'Away' }) }).first();
+      await expect(away).toBeVisible({ timeout: TEST_CONFIG.timeout.medium });
+      await expect(away.locator('.dual-list-box-item-badges')).toContainText('Feb 4');
+      const assessorName = (await away.locator('.dual-list-box-item-label').textContent())?.trim() ?? '';
+      // click, not check: the item moves to the Selected panel, so its checkbox never reads checked here.
+      await away.locator('input[type="checkbox"]').click();
+      await expect(page.locator('.dual-list-box-panel').nth(1).locator('.dual-list-box-item-label', { hasText: assessorName }).first())
+        .toBeVisible();
+
+      await page.locator('button:has-text("Save & Close")').click();
+      const dialog = page.locator('.modal:has(.modal-title:has-text("Assessors Unavailable"))');
+      await expect(dialog).toBeVisible({ timeout: TEST_CONFIG.timeout.medium });
+      await expect(dialog).toContainText(title);
+      await expect(dialog.getByRole('button', { name: 'Save Anyway' })).toBeVisible();
+
+      // Cancel: this test never creates an assessment.
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(page).toHaveURL(/\/scheduling\/create/);
+    } finally {
+      await page.request.delete(`${TEST_CONFIG.apiURL}/availability/blocks/${blockId}`, { headers });
     }
   });
 });

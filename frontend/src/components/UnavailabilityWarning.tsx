@@ -1,6 +1,6 @@
 import { assessmentsApi } from '../api';
 import type { Unavailability } from '../types';
-import { unavailabilityLabel } from '../utils/unavailability';
+import { formatDayRange, unavailabilityLabel } from '../utils/unavailability';
 
 /**
  * Time off, holidays and blocks for the chosen assessors across a window, for the warning shown
@@ -22,7 +22,8 @@ export async function findUnavailability(
   }
 }
 
-const range = (u: Unavailability) => (u.start === u.end ? u.start : `${u.start} – ${u.end}`);
+/** Local, compact dates like the picker badges: "Nov 26", "Nov 23–25"; the year only when it isn't this one. */
+const range = (u: Unavailability) => formatDayRange({ start: u.start, end: u.end }, new Date().getFullYear());
 
 /** One line per conflict: who, why, when. */
 export function UnavailabilityList({ entries, names }: { entries: Unavailability[]; names: Record<string, string> }) {

@@ -12,6 +12,7 @@ import AssessmentCalendar from '../components/AssessmentCalendar';
 import Page from '../components/Page';
 import { AvailabilityBadge } from '../components/AvailabilityBadge';
 import { findUnavailability, UnavailabilityList } from '../components/UnavailabilityWarning';
+import { isSchedulableDate } from '../utils/unavailability';
 import './ScheduleRetestPage.css';
 
 /** Mirrors RetestService.OPEN_STATUSES — a finding may carry only one retest in these. */
@@ -147,7 +148,7 @@ export default function ScheduleRetestPage() {
 
   useEffect(() => {
     const candidateIds = assessorCandidateKey ? assessorCandidateKey.split(',') : [];
-    if (!startDate || !endDate || candidateIds.length === 0) {
+    if (!isSchedulableDate(startDate) || !isSchedulableDate(endDate) || candidateIds.length === 0) {
       setAssessorAvailability({});
       return;
     }

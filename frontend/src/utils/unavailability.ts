@@ -10,6 +10,19 @@ export function unavailabilityLabel(u: Unavailability): string {
 }
 
 /**
+ * Whether a date input's value is worth asking the availability endpoint about. A date input
+ * reports every intermediate state while a year is typed (`0002-…`, `0020-…`), so anything
+ * outside 1900–2200 is a half-typed value, not a date anyone is scheduling for.
+ */
+export function isSchedulableDate(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const match = /^(\d{4,6})-/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  return year >= 1900 && year <= 2200;
+}
+
+/**
  * Parse a `YYYY-MM-DD` string as a LOCAL date (never `new Date('YYYY-MM-DD')`, which
  * parses as UTC midnight and can shift a day backwards in negative-UTC-offset zones).
  */

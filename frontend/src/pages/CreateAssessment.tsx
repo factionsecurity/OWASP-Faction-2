@@ -43,6 +43,7 @@ import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
 import { AvailabilityBadge } from '../components/AvailabilityBadge';
 import { findUnavailability, UnavailabilityList } from '../components/UnavailabilityWarning';
+import { isSchedulableDate } from '../utils/unavailability';
 import type { Unavailability } from '../types';
 import './CreateAssessment.css';
 
@@ -633,7 +634,7 @@ export default function CreateAssessment() {
 
   useEffect(() => {
     const candidateIds = assessorCandidateKey ? assessorCandidateKey.split(',') : [];
-    if (!formData.startDate || !formData.plannedEndDate || candidateIds.length === 0) {
+    if (!isSchedulableDate(formData.startDate) || !isSchedulableDate(formData.plannedEndDate) || candidateIds.length === 0) {
       setAssessorAvailability({});
       return;
     }

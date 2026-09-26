@@ -938,6 +938,8 @@ export interface RegionHolidays {
   library: HolidayEntry[];
   disabledKeys: string[];
   added: HolidayOverrideEntry[];
+  /** Off on the region's country (a subdivision inherits them); toggled only at the country level. */
+  inheritedDisabledKeys?: string[];
 }
 
 /** Props for the overlay's availability card; `userId` set means a manager editing someone else. */

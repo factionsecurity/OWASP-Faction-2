@@ -42,7 +42,7 @@ const getStatusColor = (
 ): string => {
   // Completed always renders green, regardless of what a workflow author configured for its
   // terminal status: the point of a calendar is to see who's still booked vs. done at a glance,
-  // and a workflow that colours its completed status, say, blue would otherwise hide that signal.
+  // and a workflow that colors its completed status, say, blue would otherwise hide that signal.
   if (workflows && isCompleted(workflows, workflowId, status)) return '#10b981';
   const workflowColor = workflows && workflows.length > 0 ? colorFor(workflows, workflowId, status) : undefined;
   return workflowColor ?? statusColors?.[status] ?? '#6c757d';
@@ -103,8 +103,8 @@ export default function AssessmentCalendar({
         start: dateOnly(assessment.startDate!),
         end: shiftDays(dateOnly(assessment.plannedEndDate!), 1),
         // Bars are painted in CSS from --bar-color (set in eventDidMount) — a tinted fill with a
-        // status-coloured edge, matching the Engagements By User timeline — not FullCalendar's
-        // solid inline colours.
+        // status-colored edge, matching the Engagements By User timeline — not FullCalendar's
+        // solid inline colors.
         backgroundColor: 'transparent',
         borderColor: 'transparent',
         classNames: [
@@ -264,7 +264,7 @@ export default function AssessmentCalendar({
         })()}
         <span className="cal-legend-entry">
           <i className="cal-legend-swatch cal-legend-swatch--past-due" />
-          Past Due (Red Border)
+          Past due (red border)
         </span>
         {orgHolidayEvents.length > 0 && (
           <span className="cal-legend-entry">
