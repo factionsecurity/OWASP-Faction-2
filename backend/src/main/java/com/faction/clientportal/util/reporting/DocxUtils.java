@@ -450,6 +450,7 @@ public class DocxUtils {
                 widths = setWidths(tc, "desc",    widths);
                 widths = setWidths(tc, "rec",     widths);
                 widths = setWidths(tc, "details", widths);
+                widths = setWidths(tc, "retestEvidence", widths);
             }
 
             String tableVariable = sectionTag(variable, section);
@@ -518,6 +519,13 @@ public class DocxUtils {
                     Date closed = toDate(v.getClosedAt());
                     nxml = nxml.replaceAll("\\$\\{closedAt\\}",
                             closed != null ? formatter.format(closed) : "");
+                    Date retested = toDate(v.getRetestDate());
+                    nxml = nxml.replaceAll("\\$\\{retestDate\\}",
+                            Matcher.quoteReplacement(retested != null ? formatter.format(retested) : ""));
+                    nxml = nxml.replaceAll("\\$\\{retestResult\\}",
+                            Matcher.quoteReplacement(CData(v.getRetestResult() == null ? "" : v.getRetestResult())));
+                    nxml = nxml.replaceAll("\\$\\{retestedBy\\}",
+                            Matcher.quoteReplacement(CData(v.getRetestedBy() == null ? "" : v.getRetestedBy())));
                     Date devClosed = toDate(v.getClosedInDevAt());
                     nxml = nxml.replaceAll("\\$\\{closedInDevAt\\}",
                             devClosed != null ? formatter.format(devClosed) : "");
@@ -598,6 +606,12 @@ public class DocxUtils {
                         details = replaceVulnUdfsInHtml(details, v);
                         details = replaceFigureVariables(details, count);
                         map2.put("${details}", wrapHTML(details, customCSS, "details"));
+                    }
+                    if (xml.contains("${retestEvidence}")) {
+                        String evidence = v.getRetestEvidence() != null ? v.getRetestEvidence() : "";
+                        evidence = replaceVulnUdfsInHtml(evidence, v);
+                        evidence = replaceFigureVariables(evidence, count);
+                        map2.put("${retestEvidence}", wrapHTML(evidence, customCSS, "retestEvidence"));
                     }
 
                     // rich-text UDF fields
@@ -853,6 +867,13 @@ public class DocxUtils {
                 Date closed = toDate(v.getClosedAt());
                 nxml = nxml.replaceAll("\\$\\{closedAt\\}",
                         closed != null ? formatter.format(closed) : "");
+                Date retested = toDate(v.getRetestDate());
+                nxml = nxml.replaceAll("\\$\\{retestDate\\}",
+                        Matcher.quoteReplacement(retested != null ? formatter.format(retested) : ""));
+                nxml = nxml.replaceAll("\\$\\{retestResult\\}",
+                        Matcher.quoteReplacement(CData(v.getRetestResult() == null ? "" : v.getRetestResult())));
+                nxml = nxml.replaceAll("\\$\\{retestedBy\\}",
+                        Matcher.quoteReplacement(CData(v.getRetestedBy() == null ? "" : v.getRetestedBy())));
                 Date devClosed = toDate(v.getClosedInDevAt());
                 nxml = nxml.replaceAll("\\$\\{closedInDevAt\\}",
                         devClosed != null ? formatter.format(devClosed) : "");
@@ -939,6 +960,11 @@ public class DocxUtils {
             details = replaceVulnUdfsInHtml(details, v);
             details = replaceFigureVariables(details, count);
             map2.put("${details}", wrapHTML(details, customCSS, "details"));
+
+            String evidence = v.getRetestEvidence() != null ? v.getRetestEvidence() : "";
+            evidence = replaceVulnUdfsInHtml(evidence, v);
+            evidence = replaceFigureVariables(evidence, count);
+            map2.put("${retestEvidence}", wrapHTML(evidence, customCSS, "retestEvidence"));
 
             // rich-text UDF placeholders in the findings block
             if (v.getFieldTypes() != null) {

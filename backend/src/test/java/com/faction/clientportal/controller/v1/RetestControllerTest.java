@@ -1165,6 +1165,37 @@ class RetestControllerTest extends TestContainersConfig {
     }
 
     @Test
+    void readyForReport_listsTheAssessmentOnceItsRetestIsCompleted() throws Exception {
+        String response = mockMvc.perform(post("/api/v1/assessments/{aid}/retests", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildCreateRequest())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String retestId = objectMapper.readTree(response).path("data").path("id").asText();
+
+        // Still open: nothing to report yet
+        mockMvc.perform(get("/api/v1/retests/ready-for-report")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        mockMvc.perform(post("/api/v1/retests/{id}/complete", retestId)
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("result", "PASS"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/retests/ready-for-report")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].assessmentId").value(testAssessment.getId()))
+                .andExpect(jsonPath("$.data[0].passedCount").value(1))
+                .andExpect(jsonPath("$.data[0].failedCount").value(0));
+    }
+
+    @Test
     void getRetestsAssignedToMe_returnsOnlyMine() throws Exception {
         // Create user2
         User user2 = userRepository.save(User.builder()
@@ -1266,5 +1297,95 @@ class RetestControllerTest extends TestContainersConfig {
         assertThat(reRated.getSeverity()).isEqualTo(VulnerabilitySeverity.MEDIUM);
         assertThat(reRated.getDueAt()).isEqualTo(LocalDateTime.of(2100, 1, 1, 9, 0));
         assertThat(reRated.getWarningAt()).isEqualTo(LocalDateTime.of(2099, 3, 7, 9, 0));
+    }
+
+    // ── Evidence write scope ─────────────────────────────────────────────────
+
+    /** A pentester scoped to assigned assessments, who is on neither this assessment nor the retest. */
+    private User scopedUser(String username) {
+        return userRepository.save(User.builder()
+                .username(username).firstName("Scoped").lastName("User").email(username + "@test.com")
+                .password(passwordEncoder.encode("password")).loginOption(LoginOption.NATIVE)
+                .isInternal(true).createdAt(LocalDateTime.now()).failedLoginAttempts(0).build());
+    }
+
+    private String scopedToken(User user) {
+        return jwtService.generateToken(user.getUsername(), List.of(
+                new SimpleGrantedAuthority("vulnerabilities:edit:assessment"),
+                new SimpleGrantedAuthority("assessments:edit:assigned"),
+                new SimpleGrantedAuthority("assessments:read:assigned")));
+    }
+
+    private Retest retestAssignedTo(List<String> assessorIds) {
+        return retestRepository.save(Retest.builder()
+                .vulnerabilityId(testVuln.getId()).assessmentId(testAssessment.getId())
+                .applicationId("app-retest-1").status("IN_PROGRESS")
+                .assignedAssessorIds(new java.util.ArrayList<>(assessorIds))
+                .scheduledStartDate(LocalDateTime.now()).scheduledEndDate(LocalDateTime.now().plusDays(1))
+                .evidence("<p>original</p>")
+                .createdBy("system").lastUpdatedBy("system")
+                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())
+                .build());
+    }
+
+    @Test
+    void evidencePatch_byAnOutOfScopeUnassignedUser_returns403() throws Exception {
+        User outsider = scopedUser("outsider");
+        Retest retest = retestAssignedTo(List.of(userId));
+
+        mockMvc.perform(patch("/api/v1/retests/{id}", retest.getId())
+                        .header("Authorization", "Bearer " + scopedToken(outsider))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("evidence", "<p>forged</p>"))))
+                .andExpect(status().isForbidden());
+
+        assertThat(retestRepository.findById(retest.getId()).orElseThrow().getEvidence())
+                .isEqualTo("<p>original</p>");
+    }
+
+    @Test
+    void completeWithEvidence_byAnOutOfScopeUnassignedUser_returns403() throws Exception {
+        User outsider = scopedUser("outsider");
+        Retest retest = retestAssignedTo(List.of(userId));
+
+        mockMvc.perform(post("/api/v1/retests/{id}/complete", retest.getId())
+                        .header("Authorization", "Bearer " + scopedToken(outsider))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("result", "PASS", "evidence", "<p>forged</p>"))))
+                .andExpect(status().isForbidden());
+
+        Retest after = retestRepository.findById(retest.getId()).orElseThrow();
+        assertThat(after.getEvidence()).isEqualTo("<p>original</p>");
+        assertThat(after.getStatus()).isEqualTo("IN_PROGRESS");
+    }
+
+    @Test
+    void evidencePatch_byTheRetestsAssignedAssessor_isAllowedWithoutAssessmentScope() throws Exception {
+        User assignee = scopedUser("assignee");
+        Retest retest = retestAssignedTo(List.of(assignee.getId()));
+
+        mockMvc.perform(patch("/api/v1/retests/{id}", retest.getId())
+                        .header("Authorization", "Bearer " + scopedToken(assignee))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("evidence", "<p>still vulnerable</p>"))))
+                .andExpect(status().isOk());
+
+        assertThat(retestRepository.findById(retest.getId()).orElseThrow().getEvidence())
+                .isEqualTo("<p>still vulnerable</p>");
+    }
+
+    @Test
+    void commentPatch_byAnOutOfScopeUnassignedUser_behavesAsBefore() throws Exception {
+        User outsider = scopedUser("outsider");
+        Retest retest = retestAssignedTo(List.of(userId));
+
+        mockMvc.perform(patch("/api/v1/retests/{id}", retest.getId())
+                        .header("Authorization", "Bearer " + scopedToken(outsider))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("comment", "Checked again today"))))
+                .andExpect(status().isOk());
+
+        assertThat(retestRepository.findById(retest.getId()).orElseThrow().getComment())
+                .isEqualTo("Checked again today");
     }
 }

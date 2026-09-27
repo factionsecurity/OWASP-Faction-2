@@ -75,6 +75,8 @@ public class DocxReportGenerationService implements ReportGenerationService {
     private final ReportEncryptor               reportEncryptor;
     private final com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
     private final TerminologyConfigService      terminologyConfigService;
+    private final RetestReportService           retestReportService;
+    private final NotificationService           notificationService;
 
     /**
      * The order findings appear in a report: the assessment's display order, exactly as the
@@ -108,15 +110,57 @@ public class DocxReportGenerationService implements ReportGenerationService {
 
         // The snapshot on the assessment can be older than the template it came from, so
         // re-read the live styling before anything reads it — see applyLiveTemplateStyling.
-        applyLiveTemplateStyling(assessment, assessment.getReportTemplateId() != null
-                ? reportTemplateRepository.findById(assessment.getReportTemplateId()).orElse(null)
-                : null);
+        applyLiveTemplateStyling(assessment,
+                ReportTemplateResolution.forReport(reportTemplateRepository, assessment).orElse(null));
 
         if (assessment.getTemplateFileId() == null) {
             throw new BusinessRuleException(
                     "The report template has no DOCX file attached. "
                     + "Upload a DOCX template in the report designer first.");
         }
+
+        // 2–10. Download the template and fill it
+        byte[] reportBytes = renderDocx(assessment, assessment.getTemplateFileId(), Map.of());
+
+        // 11. Upload to MinIO
+        long   runTimestamp = System.currentTimeMillis();
+        String reportKey    = buildReportKey(assessmentId, runTimestamp, "docx");
+        storageService.uploadBytes(reportKey, reportBytes, REPORT_CONTENT_TYPE);
+        log.info("Uploaded report for assessment {} to key: {}", assessmentId, reportKey);
+
+        // 12. Update assessment with report metadata
+        assessment.setGeneratedReportFileId(reportKey);
+        assessment.setReportGeneratedAt(LocalDateTime.now());
+        assessment.setLastUpdatedBy(userId);
+        assessment.setUpdatedAt(LocalDateTime.now());
+        assessmentRepository.save(assessment);
+
+        // DOCX is ready — mark it downloadable before the slower PDF stages run
+        reportDocumentService.markCompleted(assessmentId, ReportDocumentType.DOCX, reportKey);
+
+        // 13. Convert to PDF, then produce the password-protected variant
+        generatePdfVariants(assessment, reportBytes, runTimestamp, false);
+
+        log.info("Report generation complete for assessment {}", assessmentId);
+
+        // Return a minimal DTO with just the updated report fields
+        return AssessmentDto.builder()
+                .id(assessment.getId())
+                .generatedReportFileId(reportKey)
+                .reportGeneratedAt(assessment.getReportGeneratedAt())
+                .build();
+    }
+
+    /**
+     * Loads everything the report shows about the assessment and fills the DOCX template stored
+     * at {@code templateFileId} with it, returning the populated DOCX. Shared by the main and the
+     * retest report.
+     *
+     * @param retests vulnerability id to the retest whose result fills that finding's
+     *                {@code ${retest*}} variables; empty for the main report
+     */
+    private byte[] renderDocx(Assessment assessment, String templateFileId, Map<String, Retest> retests) {
+        String assessmentId = assessment.getId();
 
         // 2. Load vulnerabilities, most severe first
         List<Vulnerability> vulns = vulnerabilityRepository
@@ -148,12 +192,13 @@ public class DocxReportGenerationService implements ReportGenerationService {
         loadInlineImages(assessmentId, imageBytes, imageContentTypes);
 
         // 8. Download template DOCX from MinIO
-        byte[] templateBytes = storageService.downloadBytes(assessment.getTemplateFileId());
+        byte[] templateBytes = storageService.downloadBytes(templateFileId);
 
         // 9. Build ReportData
         ReportData reportData = buildReportData(
                 assessment, assessors, remediationManager, assessmentTypeName,
                 vulns, categoryNames, imageBytes, imageContentTypes);
+        applyRetests(reportData, retests);
 
         // 9b. Let ReportManager extensions rewrite the report's rich text, and get a
         //     resolver for the placeholders they own inside the DOCX template itself
@@ -161,37 +206,38 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 applyReportExtensions(assessment, vulns, reportData);
 
         // 10. Generate the populated DOCX
-        byte[] reportBytes = generateDocxBytes(templateBytes, reportData,
+        return generateDocxBytes(templateBytes, reportData,
                 assessment.getTemplateCss() == null ? "" : assessment.getTemplateCss(),
                 assessment.getTemplateFont(), extensionTokens);
+    }
 
-        // 11. Upload to MinIO
-        long   runTimestamp = System.currentTimeMillis();
-        String reportKey    = buildReportKey(assessmentId, runTimestamp, "docx");
-        storageService.uploadBytes(reportKey, reportBytes, REPORT_CONTENT_TYPE);
-        log.info("Uploaded report for assessment {} to key: {}", assessmentId, reportKey);
+    /**
+     * Fills each finding's {@code ${retestEvidence}}, {@code ${retestResult}},
+     * {@code ${retestDate}} and {@code ${retestedBy}} from its retest in {@code retests}.
+     * A finding with none keeps them blank.
+     */
+    private void applyRetests(ReportData reportData, Map<String, Retest> retests) {
+        if (retests.isEmpty() || reportData.getVulnerabilities() == null) return;
+        Map<String, String> displayNames = new HashMap<>();
+        for (ReportData.ReportVulnerability vuln : reportData.getVulnerabilities()) {
+            Retest retest = retests.get(vuln.getId());
+            if (retest == null) continue;
+            vuln.setRetestEvidence(retest.getEvidence());
+            vuln.setRetestResult("PASSED".equals(retest.getStatus()) ? "Passed" : "Failed");
+            vuln.setRetestDate(retest.getClosedDate());
+            String tester = retest.getCompletedBy();
+            vuln.setRetestedBy(tester == null ? null
+                    : displayNames.computeIfAbsent(tester, this::displayName));
+        }
+    }
 
-        // 12. Update assessment with report metadata
-        assessment.setGeneratedReportFileId(reportKey);
-        assessment.setReportGeneratedAt(LocalDateTime.now());
-        assessment.setLastUpdatedBy(userId);
-        assessment.setUpdatedAt(LocalDateTime.now());
-        assessmentRepository.save(assessment);
-
-        // DOCX is ready — mark it downloadable before the slower PDF stages run
-        reportDocumentService.markCompleted(assessmentId, ReportDocumentType.DOCX, reportKey);
-
-        // 13. Convert to PDF, then produce the password-protected variant
-        generatePdfVariants(assessment, reportBytes, runTimestamp);
-
-        log.info("Report generation complete for assessment {}", assessmentId);
-
-        // Return a minimal DTO with just the updated report fields
-        return AssessmentDto.builder()
-                .id(assessment.getId())
-                .generatedReportFileId(reportKey)
-                .reportGeneratedAt(assessment.getReportGeneratedAt())
-                .build();
+    /** A user's full name, or the username itself when the user is gone or has no name. */
+    private String displayName(String username) {
+        return userRepository.findByUsername(username)
+                .map(u -> ((u.getFirstName() == null ? "" : u.getFirstName())
+                        + " " + (u.getLastName() == null ? "" : u.getLastName())).trim())
+                .filter(name -> !name.isEmpty())
+                .orElse(username);
     }
 
     /**
@@ -200,27 +246,31 @@ public class DocxReportGenerationService implements ReportGenerationService {
      * per-document state; a PDF failure also fails the encrypted variant since
      * it can't be produced without the plain PDF.
      */
-    private void generatePdfVariants(Assessment assessment, byte[] docxBytes, long runTimestamp) {
+    private void generatePdfVariants(Assessment assessment, byte[] docxBytes, long runTimestamp,
+                                     boolean retest) {
         String assessmentId = assessment.getId();
+        ReportDocumentType pdfType = retest ? ReportDocumentType.RETEST_PDF : ReportDocumentType.PDF;
+        ReportDocumentType encryptedType =
+                retest ? ReportDocumentType.RETEST_ENCRYPTED_PDF : ReportDocumentType.ENCRYPTED_PDF;
 
         byte[] pdfBytes;
         try {
             pdfBytes = libreOfficeConverter.convertToPdf(docxBytes);
-            String pdfKey = buildReportKey(assessmentId, runTimestamp, "pdf");
+            String pdfKey = buildReportKey(assessmentId, runTimestamp, "pdf", retest);
             storageService.uploadBytes(pdfKey, pdfBytes, PDF_CONTENT_TYPE);
-            reportDocumentService.markCompleted(assessmentId, ReportDocumentType.PDF, pdfKey);
+            reportDocumentService.markCompleted(assessmentId, pdfType, pdfKey);
             log.info("Uploaded PDF report for assessment {} to key: {}", assessmentId, pdfKey);
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             log.error("PDF conversion failed for assessment {}: {}", assessmentId, e.getMessage(), e);
-            reportDocumentService.markFailed(assessmentId, ReportDocumentType.PDF,
+            reportDocumentService.markFailed(assessmentId, pdfType,
                     "PDF conversion failed: " + e.getMessage());
-            reportDocumentService.markFailed(assessmentId, ReportDocumentType.ENCRYPTED_PDF,
+            reportDocumentService.markFailed(assessmentId, encryptedType,
                     "Skipped — PDF conversion failed");
             return;
         }
 
-        encryptAndStorePdf(assessment, pdfBytes, runTimestamp);
+        encryptAndStorePdf(assessment, pdfBytes, runTimestamp, retest);
     }
 
     /**
@@ -228,8 +278,11 @@ public class DocxReportGenerationService implements ReportGenerationService {
      * variant. Shared by the DOCX-driven generation flow and by a direct
      * PDF upload, which skips straight to this step.
      */
-    private void encryptAndStorePdf(Assessment assessment, byte[] pdfBytes, long runTimestamp) {
+    private void encryptAndStorePdf(Assessment assessment, byte[] pdfBytes, long runTimestamp,
+                                    boolean retest) {
         String assessmentId = assessment.getId();
+        ReportDocumentType encryptedType =
+                retest ? ReportDocumentType.RETEST_ENCRYPTED_PDF : ReportDocumentType.ENCRYPTED_PDF;
 
         // Skipped outright in the open source edition rather than left to fail. The DOCX
         // and plain PDF are the deliverable there, and marking the encrypted variant
@@ -241,15 +294,15 @@ public class DocxReportGenerationService implements ReportGenerationService {
         try {
             String password  = reportDocumentService.ensureReportPassword(assessment);
             byte[] encrypted = reportEncryptor.encrypt(pdfBytes, password);
-            String encryptedKey = String.format("reports/%s/report-%d-encrypted.pdf",
-                    assessmentId, runTimestamp);
+            String encryptedKey = String.format("reports/%s/%s-%d-encrypted.pdf",
+                    assessmentId, retest ? "retest" : "report", runTimestamp);
             storageService.uploadBytes(encryptedKey, encrypted, PDF_CONTENT_TYPE);
-            reportDocumentService.markCompleted(assessmentId, ReportDocumentType.ENCRYPTED_PDF, encryptedKey);
+            reportDocumentService.markCompleted(assessmentId, encryptedType, encryptedKey);
             log.info("Uploaded encrypted PDF report for assessment {} to key: {}", assessmentId, encryptedKey);
         } catch (Exception e) {
             log.error("Encrypted PDF generation failed for assessment {}: {}",
                     assessmentId, e.getMessage(), e);
-            reportDocumentService.markFailed(assessmentId, ReportDocumentType.ENCRYPTED_PDF,
+            reportDocumentService.markFailed(assessmentId, encryptedType,
                     "Encrypted PDF generation failed: " + e.getMessage());
         }
     }
@@ -278,6 +331,60 @@ public class DocxReportGenerationService implements ReportGenerationService {
             // Copied, not shared: the template entity is managed, and handing its palette to the
             // assessment would let a later edit on either mutate the other.
             assessment.setTemplatePalette(template.getReportPalette().copy());
+        }
+    }
+
+    // ── ReportGenerationService — retest report ──────────────────────────────
+
+    @Override
+    public void generateRetestReport(String assessmentId, String userId) {
+        // Taken before anything is read: a retest that finishes while this runs is not in this
+        // report, so it must still count as new against the stamp recorded below.
+        LocalDateTime startedAt = LocalDateTime.now();
+        log.info("Starting retest report generation for assessment {} by user {}", assessmentId, userId);
+
+        Assessment assessment = assessmentRepository.findByIdAndDeletedAtIsNull(assessmentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Assessment not found: " + assessmentId));
+        ReportTemplate template =
+                ReportTemplateResolution.forReport(reportTemplateRepository, assessment).orElse(null);
+        applyLiveTemplateStyling(assessment, template);
+        if (template == null || template.getRetestTemplateFileId() == null) {
+            throw new BusinessRuleException("The report template has no retest template attached. "
+                    + "Upload a retest template in the report designer first.");
+        }
+
+        Map<String, Retest> retests = retestReportService.latestCompletedByVulnerability(assessmentId);
+        byte[] reportBytes = renderDocx(assessment, template.getRetestTemplateFileId(), retests);
+
+        // The main report's generatedReportFileId / reportGeneratedAt are deliberately left alone
+        long   runTimestamp = System.currentTimeMillis();
+        String reportKey    = buildReportKey(assessmentId, runTimestamp, "docx", true);
+        storageService.uploadBytes(reportKey, reportBytes, REPORT_CONTENT_TYPE);
+        reportDocumentService.markCompleted(assessmentId, ReportDocumentType.RETEST_DOCX, reportKey);
+        log.info("Uploaded retest report for assessment {} to key: {}", assessmentId, reportKey);
+
+        retestReportService.recordGeneration(assessmentId, startedAt,
+                retests.values().stream().map(Retest::getId).collect(Collectors.toSet()));
+        // recordGeneration saved its own copy. Mirror the stamp onto this in-memory entity too:
+        // the encrypted-PDF step's ensureReportPassword saves it when it mints the first report
+        // password, and a stale null stamp there would revert the one just recorded.
+        assessment.setRetestReportGeneratedAt(startedAt);
+
+        generatePdfVariants(assessment, reportBytes, runTimestamp, true);
+        notifyRetestReportReady(assessment, userId);
+        log.info("Retest report generation complete for assessment {}", assessmentId);
+    }
+
+    /** Tells the user who asked for the retest report that it can be downloaded. Never fails the run. */
+    private void notifyRetestReportReady(Assessment assessment, String userId) {
+        try {
+            notificationService.send(userId, "Retest report ready",
+                    "The retest report for " + assessment.getName() + " is ready to download.",
+                    "RETEST_REPORT", "/assessments/" + assessment.getId());
+        } catch (Exception e) {
+            log.warn("Could not notify {} that the retest report for assessment {} is ready: {}",
+                    userId, assessment.getId(), e.getMessage());
         }
     }
 
@@ -319,7 +426,7 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 reportDocumentService.markCompleted(assessmentId, ReportDocumentType.DOCX, docxKey);
                 log.info("Uploaded DOCX report for assessment {} to key: {}", assessmentId, docxKey);
 
-                generatePdfVariants(assessment, fileBytes, runTimestamp);
+                generatePdfVariants(assessment, fileBytes, runTimestamp, false);
             }
             case PDF -> {
                 assessmentRepository.save(assessment);
@@ -329,7 +436,7 @@ public class DocxReportGenerationService implements ReportGenerationService {
                 reportDocumentService.markCompleted(assessmentId, ReportDocumentType.PDF, pdfKey);
                 log.info("Uploaded PDF report for assessment {} to key: {}", assessmentId, pdfKey);
 
-                encryptAndStorePdf(assessment, fileBytes, runTimestamp);
+                encryptAndStorePdf(assessment, fileBytes, runTimestamp, false);
             }
             default -> throw new IllegalArgumentException("Unsupported uploaded report type: " + uploadedType);
         }
@@ -716,6 +823,11 @@ public class DocxReportGenerationService implements ReportGenerationService {
     }
 
     private String buildReportKey(String assessmentId, long timestamp, String extension) {
-        return String.format("reports/%s/report-%d.%s", assessmentId, timestamp, extension);
+        return buildReportKey(assessmentId, timestamp, extension, false);
+    }
+
+    private String buildReportKey(String assessmentId, long timestamp, String extension, boolean retest) {
+        return String.format("reports/%s/%s-%d.%s", assessmentId, retest ? "retest" : "report",
+                timestamp, extension);
     }
 }

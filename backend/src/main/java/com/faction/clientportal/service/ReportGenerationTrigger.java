@@ -28,7 +28,7 @@ public class ReportGenerationTrigger {
         } catch (Exception e) {
             log.error("Async report generation failed for assessment {}: {}",
                     assessmentId, e.getMessage(), e);
-            reportDocumentService.failStuckDocuments(assessmentId,
+            reportDocumentService.failStuckDocuments(assessmentId, ReportDocumentType.MAIN,
                     "Report generation failed: " + e.getMessage());
         }
     }
@@ -41,8 +41,20 @@ public class ReportGenerationTrigger {
         } catch (Exception e) {
             log.error("Async report upload processing failed for assessment {}: {}",
                     assessmentId, e.getMessage(), e);
-            reportDocumentService.failStuckDocuments(assessmentId,
+            reportDocumentService.failStuckDocuments(assessmentId, ReportDocumentType.MAIN,
                     "Report upload processing failed: " + e.getMessage());
+        }
+    }
+
+    @Async("reportGenerationExecutor")
+    public void triggerRetest(String assessmentId, String userId) {
+        try {
+            reportGenerationService.generateRetestReport(assessmentId, userId);
+        } catch (Exception e) {
+            log.error("Async retest report generation failed for assessment {}: {}",
+                    assessmentId, e.getMessage(), e);
+            reportDocumentService.failStuckDocuments(assessmentId, ReportDocumentType.RETEST,
+                    "Retest report generation failed: " + e.getMessage());
         }
     }
 }

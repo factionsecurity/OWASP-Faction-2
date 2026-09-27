@@ -107,6 +107,7 @@ public class WorkflowAdminService {
                         ? new ArrayList<>() : new ArrayList<>(source.getVulnerabilityStatuses()))
                 .remediationStages(stages)
                 .allowSelfPeerReview(source.isAllowSelfPeerReview())
+                .allowRetestEvidenceEditAfterReport(source.isAllowRetestEvidenceEditAfterReport())
                 .createdAt(now)
                 .updatedAt(now)
                 .build());
@@ -215,6 +216,7 @@ public class WorkflowAdminService {
                 .builtInVulnerabilityStatuses(AssessmentWorkflows.BUILT_IN_VULNERABILITY_STATUSES)
                 .remediationStages(AssessmentWorkflows.stages(workflow))
                 .allowSelfPeerReview(workflow.isAllowSelfPeerReview())
+                .allowRetestEvidenceEditAfterReport(workflow.isAllowRetestEvidenceEditAfterReport())
                 .createdAt(workflow.getCreatedAt())
                 .updatedAt(workflow.getUpdatedAt())
                 .renamesInProgress(running.stream()

@@ -66,6 +66,20 @@ public class Retest {
     @Column(columnDefinition = "TEXT")
     private String scope;
 
+    /**
+     * What the tester found, as HTML from the rich text editor. One per retest, so a vulnerability
+     * retested over several rounds keeps each round's evidence; retest reports use the latest
+     * completed one.
+     */
+    @Column(columnDefinition = "TEXT")
+    private String evidence;
+
+    /** Last time {@link #evidence} changed; lets an edit after a report re-trigger "ready". */
+    private LocalDateTime evidenceUpdatedAt;
+
+    /** Set when a retest report included this retest's evidence; null while it is still a draft. */
+    private LocalDateTime evidenceLockedAt;
+
     private String createdBy;
     private String lastUpdatedBy;
     private LocalDateTime createdAt;

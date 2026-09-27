@@ -11,6 +11,7 @@ import com.faction.clientportal.repository.AssessmentRepository;
 import com.faction.clientportal.service.AssessmentWorkflows;
 import com.faction.clientportal.service.ReportDocumentService;
 import com.faction.clientportal.service.ReportGenerationTrigger;
+import com.faction.clientportal.service.RetestReportService;
 import com.faction.clientportal.service.StorageService;
 import com.faction.clientportal.service.WorkflowCatalogService;
 import com.faction.clientportal.util.FileStreamResponse;
@@ -55,6 +56,7 @@ public class ReportController {
     private final LibreOfficeConverter    libreOfficeConverter;
     private final ReportDocumentService   reportDocumentService;
     private final WorkflowCatalogService  workflowCatalogService;
+    private final RetestReportService     retestReportService;
 
     /**
      * A completed assessment's report is the deliverable of record — regenerating or replacing it
@@ -105,6 +107,39 @@ public class ReportController {
                         (Void) null));
     }
 
+    /**
+     * Retest reports are generated on finalized assessments, since that is where retests happen,
+     * so unlike the main report this deliberately does not call requireOpen.
+     */
+    @PostMapping("/{assessmentId}/retest/generate")
+    @RequiresPermission({Permission.REPORTING_CREATE, Permission.ASSESSMENTS_EDIT_ALL, Permission.ASSESSMENTS_EDIT_TEAM, Permission.ASSESSMENTS_EDIT_ASSIGNED})
+    @Operation(summary = "Trigger background retest report generation for an assessment",
+        description = "Generates the retest report from the report template's retest DOCX. Returns 202 "
+                + "immediately; poll GET /{assessmentId}/documents (retestDocuments) for progress.",
+        responses = {
+            @ApiResponse(responseCode = "202", description = "Retest report generation started"),
+            @ApiResponse(responseCode = "400", description = "The report template has no retest DOCX"),
+            @ApiResponse(responseCode = "404", description = "Assessment not found"),
+        })
+    public ResponseEntity<JsonApiResponse<Void>> generateRetestReport(@PathVariable String assessmentId,
+                                                                      Authentication authentication) {
+        var assessment = assessmentRepository.findByIdAndDeletedAtIsNull(assessmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Assessment not found: " + assessmentId));
+        // Generating locks retest evidence and replaces the retest documents, so read scope is not
+        // enough: edit scope on the assessment, or a hand in one of its retests.
+        if (!accessScopeService.resolveAssessmentEditScope(authentication).permits(assessment)
+                && !retestReportService.isRetestParticipant(assessmentId, authentication)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied");
+        }
+        if (!retestReportService.hasRetestTemplate(assessment)) {
+            throw new IllegalArgumentException("No retest template uploaded for this assessment's report template.");
+        }
+        reportDocumentService.startGeneration(assessmentId, ReportDocumentType.RETEST);
+        reportGenerationTrigger.triggerRetest(assessmentId, authentication.getName());
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(JsonApiResponse.success("Retest report generation started.", (Void) null));
+    }
+
     @PostMapping("/{assessmentId}/upload")
     @RequiresPermission({Permission.REPORTING_CREATE, Permission.ASSESSMENTS_EDIT_ALL, Permission.ASSESSMENTS_EDIT_TEAM, Permission.ASSESSMENTS_EDIT_ASSIGNED})
     @Operation(
@@ -142,7 +177,7 @@ public class ReportController {
         Set<ReportDocumentType> markGenerating;
         if (DOCX_CONTENT_TYPE.equals(contentType)) {
             uploadedType   = ReportDocumentType.DOCX;
-            markGenerating = EnumSet.allOf(ReportDocumentType.class);
+            markGenerating = ReportDocumentType.MAIN;
         } else if (MediaType.APPLICATION_PDF_VALUE.equals(contentType)) {
             uploadedType   = ReportDocumentType.PDF;
             markGenerating = EnumSet.of(ReportDocumentType.PDF, ReportDocumentType.ENCRYPTED_PDF);
@@ -210,9 +245,13 @@ public class ReportController {
     private static String reportFileName(String assessmentName, ReportDocumentType docType) {
         String base = (assessmentName == null || assessmentName.isBlank()) ? "report" : assessmentName;
         String safe = base.replaceAll("[^A-Za-z0-9._-]+", "-").replaceAll("^-+|-+$", "");
-        String suffix = docType == ReportDocumentType.DOCX ? ".docx" : ".pdf";
+        String suffix = (docType == ReportDocumentType.DOCX || docType == ReportDocumentType.RETEST_DOCX)
+                ? ".docx" : ".pdf";
+        boolean encrypted = docType == ReportDocumentType.ENCRYPTED_PDF
+                || docType == ReportDocumentType.RETEST_ENCRYPTED_PDF;
         return (safe.isEmpty() ? "report" : safe)
-                + (docType == ReportDocumentType.ENCRYPTED_PDF ? "-encrypted" : "")
+                + (docType.isRetest() ? "-retest" : "")
+                + (encrypted ? "-encrypted" : "")
                 + suffix;
     }
 
@@ -222,7 +261,10 @@ public class ReportController {
         summary = "Get per-document generation status for an assessment's report",
         description = "Returns the status, last-generated timestamp, and availability of each "
                 + "report artifact (DOCX, PDF, encrypted PDF), plus the password for the "
-                + "encrypted PDF once provisioned.",
+                + "encrypted PDF once provisioned. retestDocuments carries the same for the "
+                + "retest report (RETEST_DOCX, RETEST_PDF, RETEST_ENCRYPTED_PDF), and "
+                + "retestTemplateAvailable says whether the assessment's report template has a "
+                + "retest DOCX, i.e. whether POST /{assessmentId}/retest/generate can run.",
         responses = {
             @ApiResponse(responseCode = "200", description = "Document statuses returned"),
             @ApiResponse(responseCode = "404", description = "Assessment not found"),
@@ -237,8 +279,9 @@ public class ReportController {
                         "Assessment not found: " + assessmentId));
         accessScopeService.checkAssessmentAccess(authentication, assessment);
 
-        return ResponseUtil.success("Report documents retrieved",
-                reportDocumentService.getDocuments(assessment));
+        ReportDocumentsDto dto = reportDocumentService.getDocuments(assessment);
+        dto.setRetestTemplateAvailable(retestReportService.hasRetestTemplate(assessment));
+        return ResponseUtil.success("Report documents retrieved", dto);
     }
 
     @GetMapping("/{assessmentId}/pdf")

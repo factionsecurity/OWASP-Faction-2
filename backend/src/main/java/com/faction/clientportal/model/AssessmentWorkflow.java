@@ -108,6 +108,14 @@ public class AssessmentWorkflow {
     @Builder.Default
     private boolean allowSelfPeerReview = false;
 
+    /**
+     * Whether retest evidence already included in a retest report may still be edited. Off by
+     * default: what the client received stays fixed. On, an edit puts the assessment back in the
+     * "ready for retest report" list so the correction is reissued.
+     */
+    @Builder.Default
+    private boolean allowRetestEvidenceEditAfterReport = false;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

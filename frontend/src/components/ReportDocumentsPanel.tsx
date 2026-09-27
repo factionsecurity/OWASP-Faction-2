@@ -2,11 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEdition } from '../context/EditionContext';
 import {
   AlertCircle,
-  Check,
-  Copy,
   Download,
-  Eye,
-  EyeOff,
   FileOutput,
   FileText,
   Loader2,
@@ -17,6 +13,7 @@ import type { Assessment, ReportDocumentInfo, ReportDocumentType } from '../type
 import { assessmentsApi, reportsApi } from '../api';
 import { Button } from './Button';
 import Modal from './Modal';
+import ReportPasswordField from './ReportPasswordField';
 import './ReportDocumentsPanel.css';
 
 interface Props {
@@ -27,6 +24,8 @@ interface Props {
    * blocked (the server returns 409). Downloads stay available.
    */
   readOnly?: boolean;
+  /** Downloads only: hides Upload and Generate, for places that just hand out the report. */
+  downloadOnly?: boolean;
 }
 
 const DOC_ROWS: { type: ReportDocumentType; label: string; description: string; encrypted?: boolean }[] = [
@@ -52,15 +51,13 @@ function formatDateTime(iso?: string | null): string | null {
 const DOCX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const PDF_CONTENT_TYPE = 'application/pdf';
 
-export default function ReportDocumentsPanel({ assessmentId, onAssessmentUpdated, readOnly = false }: Props) {
+export default function ReportDocumentsPanel({ assessmentId, onAssessmentUpdated, readOnly = false, downloadOnly = false }: Props) {
   const [documents, setDocuments] = useState<ReportDocumentInfo[]>([]);
   const encryptedPdfAvailable = useEdition().hasFeature('encrypted_pdf');
   const [reportPassword, setReportPassword] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [errorDetail, setErrorDetail] = useState<{ label: string; message: string } | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -167,17 +164,6 @@ export default function ReportDocumentsPanel({ assessmentId, onAssessmentUpdated
     window.open(reportsApi.getDownloadUrl(assessmentId, type), '_blank', 'noopener,noreferrer');
   };
 
-  const handleCopyPassword = async () => {
-    if (!reportPassword) return;
-    try {
-      await navigator.clipboard.writeText(reportPassword);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard unavailable */
-    }
-  };
-
   const renderStatus = (doc?: ReportDocumentInfo) => {
     if (!doc) {
       return <span className="report-doc-status report-doc-status--muted">Not generated yet</span>;
@@ -217,7 +203,7 @@ export default function ReportDocumentsPanel({ assessmentId, onAssessmentUpdated
     <div className="report-docs-card">
       <div className="report-docs-header">
         <h4 className="finalize-actions-title">Report Documents</h4>
-        <div className="report-docs-header-actions">
+        {!downloadOnly && <div className="report-docs-header-actions">
           <input
             ref={fileInputRef}
             type="file"
@@ -247,7 +233,7 @@ export default function ReportDocumentsPanel({ assessmentId, onAssessmentUpdated
               : <FileOutput size={14} />}
             {starting || anyGenerating ? 'Generating…' : 'Generate Report'}
           </Button>
-        </div>
+        </div>}
       </div>
 
       {error && <div className="finalize-error">{error}</div>}
@@ -281,32 +267,7 @@ export default function ReportDocumentsPanel({ assessmentId, onAssessmentUpdated
         })}
       </div>
 
-      {encryptedPdfAvailable && reportPassword && (
-        <div className="report-docs-password">
-          <span className="report-docs-password-label">
-            <Lock size={13} /> PDF Password
-          </span>
-          <code className="report-docs-password-value">
-            {showPassword ? reportPassword : '•'.repeat(reportPassword.length)}
-          </code>
-          <button
-            type="button"
-            className="report-docs-password-btn"
-            onClick={() => setShowPassword((v) => !v)}
-            title={showPassword ? 'Hide password' : 'Show password'}
-          >
-            {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-          </button>
-          <button
-            type="button"
-            className="report-docs-password-btn"
-            onClick={handleCopyPassword}
-            title="Copy password"
-          >
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-          </button>
-        </div>
-      )}
+      {encryptedPdfAvailable && reportPassword && <ReportPasswordField password={reportPassword} />}
 
       <Modal
         isOpen={!!errorDetail}

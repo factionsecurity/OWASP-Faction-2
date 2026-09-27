@@ -147,6 +147,11 @@ public class ReportData {
         private String description;
         private String recommendation;
         private String details;
+        /** From the finding's latest PASSED/FAILED retest; blank when never retested. */
+        private String retestEvidence;
+        private String retestResult;
+        private LocalDateTime retestDate;
+        private String retestedBy;
         private String trackingId;
         private LocalDateTime openedAt;
         private LocalDateTime closedAt;

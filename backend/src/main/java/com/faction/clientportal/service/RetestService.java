@@ -5,12 +5,14 @@ import com.faction.clientportal.dto.CreateRetestRequest;
 import com.faction.clientportal.dto.RetestDto;
 import com.faction.clientportal.dto.UpdateRetestRequest;
 import com.faction.clientportal.dto.UpdateVulnerabilityStatusRequest;
+import com.faction.clientportal.exception.BusinessRuleException;
 import com.faction.clientportal.exception.ResourceNotFoundException;
 import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.RemediationStage;
 import com.faction.clientportal.model.EmailNotificationEvent;
 import com.faction.clientportal.model.Permission;
 import com.faction.clientportal.model.Retest;
+import com.faction.clientportal.model.User;
 import com.faction.clientportal.model.Vulnerability;
 import com.faction.clientportal.model.VulnerabilityComment;
 import com.faction.clientportal.model.VulnerabilitySeverity;
@@ -42,6 +44,7 @@ public class RetestService {
     private final AccessScopeService accessScopeService;
     private final VulnerabilityRepository vulnerabilityRepository;
     private final AssessmentRepository assessmentRepository;
+    private final com.faction.clientportal.repository.ApplicationRepository applicationRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final VulnerabilityService vulnerabilityService;
@@ -74,6 +77,9 @@ public class RetestService {
     static final String DUPLICATE_OPEN_RETEST =
             "A retest is already open for this vulnerability. Reschedule or cancel the existing "
             + "retest instead of creating another.";
+
+    public static final String RETEST_EVIDENCE_LOCKED =
+            "This retest's evidence is included in a retest report and can no longer be changed.";
 
     private static boolean isEmpty(List<String> ids) {
         return ids == null || ids.isEmpty();
@@ -208,8 +214,27 @@ public class RetestService {
     /** @param status optional comma-separated status filter, e.g. "REQUESTED,SCHEDULED,IN_PROGRESS" */
     public List<RetestDto> getAll(boolean assignedToMe, String status, String username,
                                   Authentication authentication) {
+        return getAll(assignedToMe, status, null, username, authentication);
+    }
+
+    /**
+     * @param status optional comma-separated status filter, e.g. "REQUESTED,SCHEDULED,IN_PROGRESS"
+     * @param vulnerabilityId optional filter to a single finding's retest history
+     */
+    public List<RetestDto> getAll(boolean assignedToMe, String status, String vulnerabilityId,
+                                  String username, Authentication authentication) {
         List<Retest> retests;
-        if (assignedToMe) {
+        if (vulnerabilityId != null && !vulnerabilityId.isBlank()) {
+            retests = retestRepository.findByVulnerabilityIdAndDeletedAtIsNull(vulnerabilityId);
+            if (assignedToMe) {
+                String userId = userRepository.findByUsername(username)
+                        .map(u -> u.getId())
+                        .orElse(username);
+                retests = retests.stream()
+                        .filter(r -> r.getAssignedAssessorIds() != null && r.getAssignedAssessorIds().contains(userId))
+                        .collect(Collectors.toList());
+            }
+        } else if (assignedToMe) {
             String userId = userRepository.findByUsername(username)
                     .map(u -> u.getId())
                     .orElse(username);
@@ -256,10 +281,57 @@ public class RetestService {
 
     // ── Update ────────────────────────────────────────────────────────────────
 
+    /**
+     * Whether this retest's evidence may change: never once cancelled, and not after a retest
+     * report included it unless the assessment's workflow allows edits after a report.
+     */
+    private boolean evidenceEditable(Retest retest, Assessment assessment) {
+        if (RETEST_CANCELLED.equals(retest.getStatus())) return false;
+        if (retest.getEvidenceLockedAt() == null) return true;
+        return assessment != null
+                && workflowCatalogService.forAssessment(assessment).isAllowRetestEvidenceEditAfterReport();
+    }
+
+    /**
+     * Evidence is the tester's record of the retest, so writing it needs more than vulnerability
+     * edit permission: the caller must be able to edit the retest's assessment, or be one of the
+     * retest's assigned assessors (who may be outside the assessment's own team). Only applies
+     * when the request actually changes the evidence; a null authentication is an internal call.
+     */
+    private void checkEvidenceWriteAccess(Retest retest, String evidence, Authentication authentication) {
+        if (authentication == null || evidence == null || evidence.equals(retest.getEvidence())) return;
+        List<String> assigned = retest.getAssignedAssessorIds();
+        boolean isAssignee = assigned != null && accessScopeService.currentUser(authentication)
+                .map(User::getId)
+                .filter(assigned::contains)
+                .isPresent();
+        if (isAssignee) return;
+        accessScopeService.checkAssessmentEditAccess(authentication, retest.getAssessmentId());
+    }
+
+    private void applyEvidence(Retest retest, String evidence) {
+        if (evidence == null || evidence.equals(retest.getEvidence())) return;
+        Assessment assessment = assessmentRepository.findByIdAndDeletedAtIsNull(retest.getAssessmentId()).orElse(null);
+        if (!evidenceEditable(retest, assessment)) {
+            throw new BusinessRuleException(RETEST_EVIDENCE_LOCKED);
+        }
+        retest.setEvidence(evidence);
+        retest.setEvidenceUpdatedAt(LocalDateTime.now());
+    }
+
     public RetestDto update(String id, UpdateRetestRequest request, String userId) {
+        return update(id, request, userId, null);
+    }
+
+    public RetestDto update(String id, UpdateRetestRequest request, String userId,
+                            Authentication authentication) {
         denyExternalUser(userId, "change a retest");
         Retest retest = retestRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Retest not found: " + id));
+
+        checkEvidenceWriteAccess(retest, request.getEvidence(), authentication);
+
+        applyEvidence(retest, request.getEvidence());
 
         boolean wasRequested = RETEST_REQUESTED.equals(retest.getStatus());
         String previousStatus = retest.getStatus();
@@ -377,9 +449,16 @@ public class RetestService {
     // ── Complete ──────────────────────────────────────────────────────────────
 
     public RetestDto complete(String id, CompleteRetestRequest request, String userId) {
+        return complete(id, request, userId, null);
+    }
+
+    public RetestDto complete(String id, CompleteRetestRequest request, String userId,
+                              Authentication authentication) {
         denyExternalUser(userId, "verify a retest");
         Retest retest = retestRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Retest not found: " + id));
+
+        checkEvidenceWriteAccess(retest, request.getEvidence(), authentication);
 
         String result = request.getResult().toUpperCase();
         if (!result.equals("PASS") && !result.equals("FAIL")) {
@@ -388,6 +467,8 @@ public class RetestService {
         if (RETEST_REQUESTED.equals(retest.getStatus())) {
             throw new IllegalArgumentException("Retest must be scheduled before it can be completed");
         }
+
+        applyEvidence(retest, request.getEvidence());
 
         retest.setResult(result);
         retest.setStatus(result.equals("PASS") ? "PASSED" : "FAILED");
@@ -566,6 +647,52 @@ public class RetestService {
 
     // ── Delete ────────────────────────────────────────────────────────────────
 
+    public static final String ASSIGN_TO_ME_REQUIRES_OPEN = "Only a scheduled or in-progress retest can be re-assigned.";
+
+    /**
+     * The caller takes a retest over: it becomes assigned to them alone. For a tester who finds,
+     * with "show all assessors", a retest someone else was given and can do it themselves. Only
+     * while the retest is scheduled or in progress, and only for someone who may edit the
+     * assessment — seeing a retest is not the same as being allowed to take it. Whoever it was
+     * taken from is told, so it doesn't just vanish from their queue.
+     */
+    public RetestDto assignToMe(String id, Authentication authentication) {
+        String username = authentication.getName();
+        denyExternalUser(username, "take over a retest");
+        Retest retest = retestRepository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Retest not found: " + id));
+        if (!SCHEDULED_STATUSES.contains(retest.getStatus())) {
+            throw new BusinessRuleException(ASSIGN_TO_ME_REQUIRES_OPEN);
+        }
+        accessScopeService.checkAssessmentEditAccess(authentication, retest.getAssessmentId());
+        User me = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+
+        List<String> previous = retest.getAssignedAssessorIds() != null
+                ? new ArrayList<>(retest.getAssignedAssessorIds()) : List.of();
+        retest.setAssignedAssessorIds(new ArrayList<>(List.of(me.getId())));
+        retest.setLastUpdatedBy(username);
+        retest.setUpdatedAt(LocalDateTime.now());
+        Retest saved = retestRepository.save(retest);
+
+        String vulnName = vulnerabilityRepository.findByIdAndDeletedAtIsNull(retest.getVulnerabilityId())
+                .map(Vulnerability::getName).orElse("a vulnerability");
+        String myName = resolveDisplayName(username);
+        for (String previousId : previous) {
+            if (previousId.equals(me.getId())) continue;
+            userRepository.findById(previousId).ifPresent(u -> {
+                try {
+                    notificationService.send(u.getUsername(), "Retest re-assigned",
+                            myName + " took over the retest of " + vulnName + ".",
+                            "RETEST_REASSIGNED", "/retests/" + saved.getId());
+                } catch (Exception e) {
+                    // Non-critical — the re-assignment itself has already been saved
+                }
+            });
+        }
+        return enrich(saved);
+    }
+
     public void cancel(String id, String userId) {
         cancel(id, userId, null);
     }
@@ -661,8 +788,18 @@ public class RetestService {
      * <p>Callers with no scoping authority at all are left unfiltered, which is the long-standing
      * behavior for internal roles; only the scopes listed here narrow the list.
      */
-    private List<Retest> filterToScope(List<Retest> retests, Authentication authentication) {
-        if (authentication == null) return retests;
+    List<Retest> filterToScope(List<Retest> retests, Authentication authentication) {
+        java.util.function.Predicate<String> visible = assessmentVisibility(authentication);
+        return retests.stream().filter(r -> visible.test(r.getAssessmentId())).collect(Collectors.toList());
+    }
+
+    /**
+     * Whether the caller may see an assessment's retests, by assessment id, under the rules
+     * described on {@link #filterToScope}. Package-private so {@link RetestReportService}
+     * applies the same scope rules; results are cached per id for the life of the predicate.
+     */
+    java.util.function.Predicate<String> assessmentVisibility(Authentication authentication) {
+        if (authentication == null) return aid -> true;
         boolean scoped = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch(a -> a.endsWith(":org") || a.endsWith(":owned")
@@ -677,22 +814,20 @@ public class RetestService {
                 .anyMatch(a -> a.equals("super_admin")
                         || a.equals(Permission.VULNERABILITIES_READ_ALL.getPermission())
                         || a.equals(Permission.ASSESSMENTS_READ_ALL.getPermission()));
-        if (!scoped || unrestricted) return retests;
+        if (!scoped || unrestricted) return aid -> true;
 
         java.util.Map<String, Boolean> assessmentAllowed = new java.util.HashMap<>();
-        return retests.stream()
-                .filter(r -> assessmentAllowed.computeIfAbsent(r.getAssessmentId(), aid ->
-                        assessmentRepository.findByIdAndDeletedAtIsNull(aid)
-                                .map(a -> {
-                                    try {
-                                        accessScopeService.checkAssessmentAccess(authentication, a);
-                                        return true;
-                                    } catch (org.springframework.security.access.AccessDeniedException e) {
-                                        return false;
-                                    }
-                                })
-                                .orElse(false)))
-                .collect(Collectors.toList());
+        return assessmentId -> assessmentAllowed.computeIfAbsent(assessmentId, aid ->
+                assessmentRepository.findByIdAndDeletedAtIsNull(aid)
+                        .map(a -> {
+                            try {
+                                accessScopeService.checkAssessmentAccess(authentication, a);
+                                return true;
+                            } catch (org.springframework.security.access.AccessDeniedException e) {
+                                return false;
+                            }
+                        })
+                        .orElse(false));
     }
 
     private Assessment getAssessmentOrThrow(String assessmentId) {
@@ -867,9 +1002,25 @@ public class RetestService {
                     dto.setVulnerabilitySeverity(v.getSeverity() != null ? v.getSeverity().name() : null);
                 });
 
-        // Enrich with assessment name
+        // Enrich with assessment name and evidence editability
         assessmentRepository.findByIdAndDeletedAtIsNull(retest.getAssessmentId())
-                .ifPresent(a -> dto.setAssessmentName(a.getName()));
+                .ifPresentOrElse(a -> {
+                    dto.setAssessmentName(a.getName());
+                    dto.setAssessmentRetestReportGeneratedAt(a.getRetestReportGeneratedAt());
+                    dto.setEvidenceEditable(evidenceEditable(retest, a));
+                }, () -> dto.setEvidenceEditable(false));
+
+        // Enrich with the application's name and human-facing ID, so retest lists can show and
+        // search them. Older retests may predate applicationId; fall back to the assessment's.
+        String applicationId = retest.getApplicationId() != null ? retest.getApplicationId()
+                : assessmentRepository.findByIdAndDeletedAtIsNull(retest.getAssessmentId())
+                        .map(Assessment::getApplicationId).orElse(null);
+        if (applicationId != null) {
+            applicationRepository.findById(applicationId).ifPresent(app -> {
+                dto.setApplicationName(app.getName());
+                dto.setApplicationAppId(app.getAppId());
+            });
+        }
 
         // Enrich with assessor display names (IDs are UUIDs, not usernames)
         if (retest.getAssignedAssessorIds() != null && !retest.getAssignedAssessorIds().isEmpty()) {

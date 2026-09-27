@@ -97,6 +97,27 @@ public class ReportTemplate {
     private String templateFileContentType;
 
     /**
+     * S3/MinIO file ID reference for the DOCX used for retest reports. Optional: it shares this
+     * template's CSS, sections, fields and palette, and only the document layout differs.
+     */
+    private String retestTemplateFileId;
+
+    /**
+     * Original filename of the uploaded retest DOCX file
+     */
+    private String retestTemplateFileName;
+
+    /**
+     * Size of the retest template file in bytes
+     */
+    private Long retestTemplateFileSize;
+
+    /**
+     * Content type of the retest template file
+     */
+    private String retestTemplateFileContentType;
+
+    /**
      * Scoring type used for vulnerabilities: NATIVE, CVSS_31, or CVSS_40
      */
     private String scoringType;

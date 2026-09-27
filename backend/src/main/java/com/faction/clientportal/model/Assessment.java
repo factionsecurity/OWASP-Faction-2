@@ -242,6 +242,12 @@ public class Assessment {
     private LocalDateTime reportGeneratedAt;
 
     /**
+     * When the retest report generation that last succeeded *started*. Retests finished after
+     * this make the assessment ready for another retest report.
+     */
+    private LocalDateTime retestReportGeneratedAt;
+
+    /**
      * Password for the encrypted PDF report variant, stored AES-GCM encrypted
      * via {@link com.faction.clientportal.service.EncryptionService}.
      * Generated once per assessment and reused across regenerations.

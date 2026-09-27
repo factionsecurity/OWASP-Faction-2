@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-import type { MentionableUser, AssessorAvailability, RetestCompletionLog, RetestActivitySummary, LoginRequest, LoginResponse, User, Role, ResourcePermissions, ApiResponse, PagedApiResponse, CreateUserRequest, UpdateUserRequest, Team, CreateTeamRequest, UpdateTeamRequest, CreateRoleRequest, UpdateRoleRequest, ApiKey, CreateApiKeyRequest, CreateApiKeyResponse, AssessmentType, CreateAssessmentTypeRequest, UpdateAssessmentTypeRequest, Organization, CreateOrganizationRequest, UpdateOrganizationRequest, Application, ApplicationStatus, ApplicationComment, ApplicationImportResult, CreateApplicationRequest, UpdateApplicationRequest, ApplicationConnection, CreateApplicationConnectionRequest, UpdateApplicationConnectionRequest, ReportTemplate, ReportTemplateSummary, CreateReportTemplateRequest, UpdateReportTemplateRequest, Assessment, CreateAssessmentRequest, UpdateAssessmentRequest, AssessmentMetrics, VulnerabilityCategory, CreateVulnerabilityCategoryRequest, UpdateVulnerabilityCategoryRequest, DefaultVulnerability, CreateDefaultVulnerabilityRequest, UpdateDefaultVulnerabilityRequest, DefaultVulnerabilityImportResult, UserDefinedField, Vulnerability, VulnerabilityListItem, VulnerabilityComment, CreateVulnerabilityRequest, UpdateVulnerabilityRequest, UpdateVulnerabilityExceptionRequest, AssessmentFile, EntityFieldConfig, FieldScope, PeerReview, UpdatePeerReviewRequest, AcceptPeerReviewRequest, AssessmentWorkflowConfig, ChecklistTemplate, CreateChecklistTemplateRequest, UpdateChecklistTemplateRequest, AssessmentChecklist, AddAssessmentChecklistRequest, UpdateAssessmentChecklistRequest, AssignedUser, AssignUserRequest, UserApplicationAssignment, SsoConfig, SsoStatus, AzureDirectoryUser, NotebookNode, NotebookSearchResult, CreateNotebookNodeRequest, UpdateNotebookNodeRequest, MoveNotebookNodeRequest, NotebookAttachment, Retest, CreateRetestRequest, UpdateRetestRequest, CompleteRetestRequest, EmailConfig, UpdateEmailConfigRequest, TestEmailRequest, TestEmailResponse, InboundEmailConfig, UpdateInboundEmailConfigRequest, Branding, BrandingAssetSlot, UpdateBrandingSizesRequest, EmailNotificationConfig, UpdateEmailNotificationConfigRequest, NotificationPreference, UpdateNotificationPreferencesRequest, AiProviderConfig, SaveAiProviderConfigRequest, TestAiProviderRequest, TestAiProviderResponse, AiPromptTemplate, SaveAiPromptTemplateRequest, AiPromptSummary, AiPromptScope, ExecuteAiPromptRequest, AskAiRequest, AiGenerationResponse, SuggestAiTitleRequest, WebSearchConfig, UpdateWebSearchConfigRequest, AiAnonymizationConfig, UpdateAiAnonymizationConfigRequest, AiLogConfig, UpdateAiLogConfigRequest, AiRequestLog, AiTokenUsageDay, McpServerConfig, McpStatus, McpToolCallLog, Notification, NotificationTargetType, SurveyTemplate, CreateSurveyTemplateRequest, UpdateSurveyTemplateRequest, AssessmentSurvey, AddAssessmentSurveyRequest, UpdateAssessmentSurveyRequest, ApplicationIdConfig, ReportDocuments, Campaign, CreateCampaignRequest, UpdateCampaignRequest, AssessmentImportPreview, AssessmentImportResult, ManagerDashboardSummary, ManagerDashboardStats, ManagerDashboardAssessment, ManagerDashboardVulnerability, ManagerDashboardVulnerabilityDetail, ManagerDashboardFilters, VulnerabilityTrendSummary, RemediationQueueRow, RemediationQueueSummary, AssignableUser, SubOrganization, SubOrganizationRequest, VulnerabilityStageCompletion, Extension, ExtensionLog, UpdateExtensionRequest, ExternalApplication, EditionStatus, UpgradeRequired, ContentTemplate, ContentTemplateScope, SaveContentTemplateRequest,
+import type { MentionableUser, AssessorAvailability, RetestCompletionLog, RetestActivitySummary, LoginRequest, LoginResponse, User, Role, ResourcePermissions, ApiResponse, PagedApiResponse, CreateUserRequest, UpdateUserRequest, Team, CreateTeamRequest, UpdateTeamRequest, CreateRoleRequest, UpdateRoleRequest, ApiKey, CreateApiKeyRequest, CreateApiKeyResponse, AssessmentType, CreateAssessmentTypeRequest, UpdateAssessmentTypeRequest, Organization, CreateOrganizationRequest, UpdateOrganizationRequest, Application, ApplicationStatus, ApplicationComment, ApplicationImportResult, CreateApplicationRequest, UpdateApplicationRequest, ApplicationConnection, CreateApplicationConnectionRequest, UpdateApplicationConnectionRequest, ReportTemplate, ReportTemplateSummary, CreateReportTemplateRequest, UpdateReportTemplateRequest, Assessment, CreateAssessmentRequest, UpdateAssessmentRequest, AssessmentMetrics, VulnerabilityCategory, CreateVulnerabilityCategoryRequest, UpdateVulnerabilityCategoryRequest, DefaultVulnerability, CreateDefaultVulnerabilityRequest, UpdateDefaultVulnerabilityRequest, DefaultVulnerabilityImportResult, UserDefinedField, Vulnerability, VulnerabilityListItem, VulnerabilityComment, CreateVulnerabilityRequest, UpdateVulnerabilityRequest, UpdateVulnerabilityExceptionRequest, AssessmentFile, EntityFieldConfig, FieldScope, PeerReview, UpdatePeerReviewRequest, AcceptPeerReviewRequest, AssessmentWorkflowConfig, ChecklistTemplate, CreateChecklistTemplateRequest, UpdateChecklistTemplateRequest, AssessmentChecklist, AddAssessmentChecklistRequest, UpdateAssessmentChecklistRequest, AssignedUser, AssignUserRequest, UserApplicationAssignment, SsoConfig, SsoStatus, AzureDirectoryUser, NotebookNode, NotebookSearchResult, CreateNotebookNodeRequest, UpdateNotebookNodeRequest, MoveNotebookNodeRequest, NotebookAttachment, Retest, CreateRetestRequest, UpdateRetestRequest, CompleteRetestRequest, RetestReportReady, EmailConfig, UpdateEmailConfigRequest, TestEmailRequest, TestEmailResponse, InboundEmailConfig, UpdateInboundEmailConfigRequest, Branding, BrandingAssetSlot, UpdateBrandingSizesRequest, EmailNotificationConfig, UpdateEmailNotificationConfigRequest, NotificationPreference, UpdateNotificationPreferencesRequest, AiProviderConfig, SaveAiProviderConfigRequest, TestAiProviderRequest, TestAiProviderResponse, AiPromptTemplate, SaveAiPromptTemplateRequest, AiPromptSummary, AiPromptScope, ExecuteAiPromptRequest, AskAiRequest, AiGenerationResponse, SuggestAiTitleRequest, WebSearchConfig, UpdateWebSearchConfigRequest, AiAnonymizationConfig, UpdateAiAnonymizationConfigRequest, AiLogConfig, UpdateAiLogConfigRequest, AiRequestLog, AiTokenUsageDay, McpServerConfig, McpStatus, McpToolCallLog, Notification, NotificationTargetType, SurveyTemplate, CreateSurveyTemplateRequest, UpdateSurveyTemplateRequest, AssessmentSurvey, AddAssessmentSurveyRequest, UpdateAssessmentSurveyRequest, ApplicationIdConfig, ReportDocuments, Campaign, CreateCampaignRequest, UpdateCampaignRequest, AssessmentImportPreview, AssessmentImportResult, ManagerDashboardSummary, ManagerDashboardStats, ManagerDashboardAssessment, ManagerDashboardVulnerability, ManagerDashboardVulnerabilityDetail, ManagerDashboardFilters, VulnerabilityTrendSummary, RemediationQueueRow, RemediationQueueSummary, AssignableUser, SubOrganization, SubOrganizationRequest, VulnerabilityStageCompletion, Extension, ExtensionLog, UpdateExtensionRequest, ExternalApplication, EditionStatus, UpgradeRequired, ContentTemplate, ContentTemplateScope, SaveContentTemplateRequest,
   PasswordPolicy,
   TerminologyConfig,
   Workflow,
@@ -864,6 +864,29 @@ export const reportTemplatesApi = {
     return response.data;
   },
 
+  uploadRetestFile: async (id: string, file: File): Promise<ApiResponse<ReportTemplate>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await api.post<ApiResponse<ReportTemplate>>(
+      `/report-templates/${id}/retest-file`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  },
+
+  downloadRetestFile: async (id: string): Promise<Blob> => {
+    const response = await api.get(`/report-templates/${id}/retest-file`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
   getVulnerabilityFields: async (): Promise<ApiResponse<UserDefinedField[]>> => {
     const response = await api.get<ApiResponse<UserDefinedField[]>>('/report-templates/vulnerability-fields');
     return response.data;
@@ -1653,6 +1676,11 @@ export const reportsApi = {
     return response.data;
   },
 
+  generateRetest: async (assessmentId: string): Promise<ApiResponse<void>> => {
+    const response = await api.post<ApiResponse<void>>(`/reports/${assessmentId}/retest/generate`);
+    return response.data;
+  },
+
   getPdf: async (assessmentId: string): Promise<Blob> => {
     const response = await api.get(`/reports/${assessmentId}/pdf`, { responseType: 'blob' });
     return response.data as Blob;
@@ -1962,9 +1990,15 @@ export const retestApi = {
     api.get(`/assessments/${assessmentId}/retests`)
        .then(r => r.data as ApiResponse<Retest[]>),
 
-  getAll: (params?: { assignedToMe?: boolean; status?: string }) =>
+  getAll: (params?: { assignedToMe?: boolean; status?: string; vulnerabilityId?: string }) =>
     api.get('/retests', { params })
        .then(r => r.data as ApiResponse<Retest[]>),
+
+  /** Assessments with at least one completed retest and a retest template, ready to have their
+   *  retest report (re)generated. Backs the retest-report ready list. */
+  getReadyForReport: () =>
+    api.get('/retests/ready-for-report')
+       .then(r => r.data as ApiResponse<RetestReportReady[]>),
 
   getCalendar: (startDate: string, endDate: string) => {
     const start = startDate.includes('T') ? startDate : `${startDate}T00:00:00`;
@@ -1973,12 +2007,22 @@ export const retestApi = {
               .then(r => r.data as ApiResponse<Retest[]>);
   },
 
+  /** Per assessment, how many findings have no passed or failed retest. Out-of-scope ids are omitted. */
+  getUntestedCounts: (assessmentIds: string[]) =>
+    api.get('/retests/untested-counts', { params: { assessmentIds: assessmentIds.join(',') } })
+       .then(r => r.data as ApiResponse<Record<string, number>>),
+
   getById: (id: string) =>
     api.get(`/retests/${id}`)
        .then(r => r.data as ApiResponse<Retest>),
 
   update: (id: string, data: UpdateRetestRequest) =>
     api.patch(`/retests/${id}`, data)
+       .then(r => r.data as ApiResponse<Retest>),
+
+  /** Takes over a scheduled or in-progress retest: it becomes assigned to the caller alone. */
+  assignToMe: (id: string) =>
+    api.post(`/retests/${id}/assign-to-me`)
        .then(r => r.data as ApiResponse<Retest>),
 
   complete: (id: string, data: CompleteRetestRequest) =>

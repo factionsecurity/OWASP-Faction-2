@@ -5,11 +5,14 @@ import com.faction.clientportal.security.RequiresPermission;
 import com.faction.clientportal.dto.CompleteRetestRequest;
 import com.faction.clientportal.dto.CreateRetestRequest;
 import com.faction.clientportal.dto.RetestDto;
+import com.faction.clientportal.dto.RetestReportReadyDto;
 import com.faction.clientportal.dto.UpdateRetestRequest;
 import com.faction.clientportal.dto.common.JsonApiResponse;
+import com.faction.clientportal.service.RetestReportService;
 import com.faction.clientportal.service.RetestService;
 import com.faction.clientportal.util.ResponseUtil;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,6 +32,7 @@ import java.util.List;
 public class RetestController {
 
     private final RetestService service;
+    private final RetestReportService retestReportService;
 
     // ── Assessment-scoped endpoints ────────────────────────────────────────────
 
@@ -57,14 +61,16 @@ public class RetestController {
 
     @GetMapping("/api/v1/retests")
     @RequiresPermission({Permission.VULNERABILITIES_READ_ALL, Permission.VULNERABILITIES_READ_TEAM, Permission.VULNERABILITIES_READ_ASSESSMENT, Permission.VULNERABILITIES_READ_ORG, Permission.VULNERABILITIES_RETEST_ORG, Permission.VULNERABILITIES_READ_OWNED, Permission.VULNERABILITIES_RETEST_OWNED})
-    @Operation(summary = "List all retests, optionally filtered to those assigned to the current user "
-            + "and/or by status (comma-separated, e.g. REQUESTED,SCHEDULED,IN_PROGRESS)")
+    @Operation(summary = "List all retests, optionally filtered to those assigned to the current user, "
+            + "by status (comma-separated, e.g. REQUESTED,SCHEDULED,IN_PROGRESS), and/or by vulnerability "
+            + "(a single finding's retest history)")
     public ResponseEntity<JsonApiResponse<List<RetestDto>>> getAll(
             @RequestParam(defaultValue = "false") boolean assignedToMe,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String vulnerabilityId,
             Authentication authentication) {
         return ResponseUtil.success("Retests retrieved successfully",
-                service.getAll(assignedToMe, status, authentication.getName(), authentication));
+                service.getAll(assignedToMe, status, vulnerabilityId, authentication.getName(), authentication));
     }
 
     @GetMapping("/api/v1/retests/calendar")
@@ -76,6 +82,24 @@ public class RetestController {
             Authentication authentication) {
         return ResponseUtil.success("Retests retrieved successfully",
                 service.getCalendar(startDate, endDate, authentication));
+    }
+
+    @GetMapping("/api/v1/retests/ready-for-report")
+    @RequiresPermission({Permission.VULNERABILITIES_READ_ALL, Permission.VULNERABILITIES_READ_TEAM, Permission.VULNERABILITIES_READ_ASSESSMENT, Permission.VULNERABILITIES_READ_ORG, Permission.VULNERABILITIES_RETEST_ORG, Permission.VULNERABILITIES_READ_OWNED, Permission.VULNERABILITIES_RETEST_OWNED})
+    @Operation(summary = "Assessments with retests finished since their last retest report, for the current user")
+    public ResponseEntity<JsonApiResponse<List<RetestReportReadyDto>>> readyForReport(Authentication authentication) {
+        return ResponseUtil.success("Ready assessments retrieved",
+                retestReportService.readyForReport(authentication.getName(), authentication));
+    }
+
+    @GetMapping("/api/v1/retests/untested-counts")
+    @RequiresPermission({Permission.VULNERABILITIES_READ_ALL, Permission.VULNERABILITIES_READ_TEAM, Permission.VULNERABILITIES_READ_ASSESSMENT, Permission.VULNERABILITIES_READ_ORG, Permission.VULNERABILITIES_RETEST_ORG, Permission.VULNERABILITIES_READ_OWNED, Permission.VULNERABILITIES_RETEST_OWNED})
+    @Operation(summary = "Per assessment, how many findings have no passed or failed retest (comma-separated assessmentIds; out-of-scope assessments are omitted)")
+    public ResponseEntity<JsonApiResponse<java.util.Map<String, Integer>>> untestedCounts(
+            @RequestParam List<String> assessmentIds,
+            Authentication authentication) {
+        return ResponseUtil.success("Untested counts retrieved",
+                retestReportService.untestedCounts(assessmentIds, authentication));
     }
 
     // ── Single retest endpoints ────────────────────────────────────────────────
@@ -96,7 +120,19 @@ public class RetestController {
             @Valid @RequestBody UpdateRetestRequest request,
             Authentication authentication) {
         return ResponseUtil.success("Retest updated successfully",
-                service.update(id, request, authentication.getName()));
+                service.update(id, request, authentication.getName(), authentication));
+    }
+
+    @PostMapping("/api/v1/retests/{id}/assign-to-me")
+    @RequiresPermission({Permission.VULNERABILITIES_EDIT_ALL, Permission.VULNERABILITIES_EDIT_TEAM, Permission.VULNERABILITIES_EDIT_ASSESSMENT})
+    @Operation(summary = "Take over a scheduled or in-progress retest: it becomes assigned to the caller alone",
+            responses = {
+                @ApiResponse(responseCode = "200", description = "Retest re-assigned to the caller"),
+                @ApiResponse(responseCode = "403", description = "The caller may not edit the retest's assessment"),
+                @ApiResponse(responseCode = "409", description = "The retest is no longer scheduled or in progress"),
+            })
+    public ResponseEntity<JsonApiResponse<RetestDto>> assignToMe(@PathVariable String id, Authentication authentication) {
+        return ResponseUtil.success("Retest re-assigned to you", service.assignToMe(id, authentication));
     }
 
     @PostMapping("/api/v1/retests/{id}/complete")
@@ -107,7 +143,7 @@ public class RetestController {
             @Valid @RequestBody CompleteRetestRequest request,
             Authentication authentication) {
         return ResponseUtil.success("Retest completed successfully",
-                service.complete(id, request, authentication.getName()));
+                service.complete(id, request, authentication.getName(), authentication));
     }
 
     @DeleteMapping("/api/v1/retests/{id}")

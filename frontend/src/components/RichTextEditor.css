@@ -954,3 +954,37 @@
   font-size: 0.72rem;
   font-weight: 600;
 }
+
+/* ── Expanded (fills the window) ── */
+.rte-btn--expand {
+  margin-left: auto;
+}
+
+.rte-expand-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.rte-wrap--expanded {
+  position: fixed;
+  inset: 2rem;
+  z-index: 1000;
+  background: var(--primary-bg, #ffffff);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+.rte-wrap--expanded .rte-toolbar {
+  position: static;
+}
+
+.rte-wrap--expanded .rte-panes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rte-wrap--expanded .rte-body {
+  min-height: 100%;
+}

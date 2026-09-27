@@ -23,8 +23,8 @@ import java.util.stream.Collectors;
 
 /**
  * Tracks the per-document lifecycle of a report generation run (DOCX, PDF,
- * encrypted PDF) and owns the per-assessment report password used for the
- * encrypted PDF variant.
+ * encrypted PDF — main report and retest report alike) and owns the
+ * per-assessment report password used for the encrypted PDF variant.
  */
 @Service
 @RequiredArgsConstructor
@@ -40,12 +40,12 @@ public class ReportDocumentService {
     private final EditionPolicy editionPolicy;
 
     /**
-     * Marks every document type as GENERATING ahead of an async generation
-     * run. Existing fileId/generatedAt values are kept so the last good file
-     * stays downloadable while the new one is produced.
+     * Marks every main-report document type as GENERATING ahead of an async
+     * generation run. Existing fileId/generatedAt values are kept so the last
+     * good file stays downloadable while the new one is produced.
      */
     public void startGeneration(String assessmentId) {
-        startGeneration(assessmentId, java.util.EnumSet.allOf(ReportDocumentType.class));
+        startGeneration(assessmentId, ReportDocumentType.MAIN);
     }
 
     /**
@@ -76,7 +76,7 @@ public class ReportDocumentService {
      * clears rows left behind by a build that could once produce them.
      */
     private boolean isProducible(ReportDocumentType type) {
-        return type != ReportDocumentType.ENCRYPTED_PDF
+        return (type != ReportDocumentType.ENCRYPTED_PDF && type != ReportDocumentType.RETEST_ENCRYPTED_PDF)
                 || editionPolicy.enabled(Feature.ENCRYPTED_PDF);
     }
 
@@ -103,12 +103,23 @@ public class ReportDocumentService {
     }
 
     /**
-     * Marks any document still GENERATING as FAILED. Called when the async
-     * generation run aborts so the frontend never spins forever.
+     * Marks any main-report document still GENERATING as FAILED. Called when
+     * the async generation run aborts so the frontend never spins forever.
      */
     public void failStuckDocuments(String assessmentId, String errorMessage) {
+        failStuckDocuments(assessmentId, ReportDocumentType.MAIN, errorMessage);
+    }
+
+    /**
+     * Marks any document of the given types still GENERATING as FAILED. Scoped
+     * to a set of types so a stuck retest run never fails the main report (and
+     * vice versa) — the Finalize panel treats any GENERATING main-report
+     * document as the whole report still running.
+     */
+    public void failStuckDocuments(String assessmentId, java.util.Collection<ReportDocumentType> types,
+                                    String errorMessage) {
         for (ReportDocument doc : reportDocumentRepository.findByAssessmentId(assessmentId)) {
-            if (doc.getStatus() == ReportDocumentStatus.GENERATING) {
+            if (types.contains(doc.getDocType()) && doc.getStatus() == ReportDocumentStatus.GENERATING) {
                 doc.setStatus(ReportDocumentStatus.FAILED);
                 doc.setErrorMessage(truncate(errorMessage));
                 doc.setUpdatedAt(LocalDateTime.now());
@@ -138,11 +149,20 @@ public class ReportDocumentService {
      * for display in the Finalize panel.
      */
     public ReportDocumentsDto getDocuments(Assessment assessment) {
-        List<ReportDocumentDto> documents = reportDocumentRepository
+        List<ReportDocument> producibleDocs = reportDocumentRepository
                 .findByAssessmentId(assessment.getId())
                 .stream()
                 .filter(this::isProducible)
                 .sorted(Comparator.comparing(ReportDocument::getDocType))
+                .collect(Collectors.toList());
+
+        List<ReportDocumentDto> documents = producibleDocs.stream()
+                .filter(doc -> !doc.getDocType().isRetest())
+                .map(ReportDocumentDto::fromEntity)
+                .collect(Collectors.toList());
+
+        List<ReportDocumentDto> retestDocuments = producibleDocs.stream()
+                .filter(doc -> doc.getDocType().isRetest())
                 .map(ReportDocumentDto::fromEntity)
                 .collect(Collectors.toList());
 
@@ -171,6 +191,7 @@ public class ReportDocumentService {
 
         return ReportDocumentsDto.builder()
                 .documents(documents)
+                .retestDocuments(retestDocuments)
                 .reportPassword(password)
                 .build();
     }

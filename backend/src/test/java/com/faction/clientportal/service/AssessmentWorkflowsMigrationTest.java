@@ -169,6 +169,11 @@ class AssessmentWorkflowsMigrationTest extends TestContainersConfig {
         inScratchSchema(db -> {
             db.execute(LEGACY_SCHEMA);
             runMigration(db);
+            // V20260926071149 adds this column in a later migration (guarded on the whole-database
+            // existence of tables this scratch schema doesn't recreate), so apply just its
+            // assessment_workflows change here to keep this comparison meaningful.
+            db.execute("ALTER TABLE assessment_workflows ADD COLUMN IF NOT EXISTS "
+                    + "allow_retest_evidence_edit_after_report BOOLEAN NOT NULL DEFAULT FALSE");
 
             assertThat(columns(db, "assessment_workflows")).isEqualTo(hibernateTable);
             assertThat(column(db, "assessment_types", "workflow_id")).isEqualTo(hibernateTypeColumn);

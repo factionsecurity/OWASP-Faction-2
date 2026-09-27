@@ -18,6 +18,13 @@ public interface RetestRepository extends JpaRepository<Retest, String> {
     List<Retest> findByVulnerabilityIdAndStatusInAndDeletedAtIsNull(
             String vulnerabilityId, Collection<String> statuses);
     List<Retest> findByAssessmentIdAndDeletedAtIsNull(String assessmentId);
+
+    /** An assessment's retests in any of the given statuses — the PASSED/FAILED ones a retest report covers. */
+    List<Retest> findByAssessmentIdAndStatusInAndDeletedAtIsNull(String assessmentId, Collection<String> statuses);
+
+    /** Retests a user completed, by username, in any of the given statuses. */
+    List<Retest> findByCompletedByAndStatusInAndDeletedAtIsNull(String completedBy, Collection<String> statuses);
+
     Optional<Retest> findByIdAndDeletedAtIsNull(String id);
     @Query(value = "SELECT * FROM retests WHERE assigned_assessor_ids @> CAST(CONCAT('[\"', ?1, '\"]') AS jsonb) AND deleted_at IS NULL", nativeQuery = true)
     List<Retest> findByAssignedAssessorIdsContainingAndDeletedAtIsNull(String userId);

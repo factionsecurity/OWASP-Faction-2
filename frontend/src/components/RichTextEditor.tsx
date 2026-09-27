@@ -18,7 +18,9 @@ import {
   ListOrdered,
   Loader2,
   Lock,
+  Maximize2,
   MessageCircleQuestion,
+  Minimize2,
   RemoveFormatting,
   Sparkles,
   Table2,
@@ -1128,6 +1130,11 @@ export interface RichTextEditorProps {
    * from the user directory their permissions already allow.
    */
   mentionContext?: { vulnerabilityId?: string; applicationId?: string };
+  /**
+   * Adds a toolbar button that expands the editor to fill the window, for long write-ups with
+   * several screenshots. Esc or the button again returns it to its place in the page.
+   */
+  expandable?: boolean;
 }
 
 export interface RichTextEditorRef {
@@ -1231,7 +1238,7 @@ const FONT_COLORS = [
 ];
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
-  ({ value = '', onChange, onImageUpload, placeholder, disabled = false, lockedBy, aiContext, templateScope, mentions = false, mentionContext }, ref) => {
+  ({ value = '', onChange, onImageUpload, placeholder, disabled = false, lockedBy, aiContext, templateScope, mentions = false, mentionContext, expandable = false }, ref) => {
     /** Content cannot be modified — either permanently (`disabled`) or while another user holds the lock. */
     const isReadOnly = disabled || !!lockedBy;
     // The CodeMirror extensions below are built once, so they read the flag through a ref.
@@ -1246,6 +1253,13 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
     const fileInputRef = useRef<HTMLInputElement>(null);
     const replaceTargetRef = useRef<HTMLImageElement | null>(null);
     const mermaidTargetRef = useRef<HTMLImageElement | null>(null);
+    const [expanded, setExpanded] = useState(false);
+    useEffect(() => {
+      if (!expanded) return;
+      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false); };
+      document.addEventListener('keydown', onKey);
+      return () => document.removeEventListener('keydown', onKey);
+    }, [expanded]);
     const [mermaidOpen, setMermaidOpen] = useState(false);
     const [mermaidSource, setMermaidSource] = useState('');
     const tablePickerWrapRef = useRef<HTMLDivElement>(null);
@@ -4335,7 +4349,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
 
     return (
       <>
-      <div className="rte-wrap">
+      {expanded && <div className="rte-expand-backdrop" onClick={() => setExpanded(false)} />}
+      <div className={`rte-wrap${expanded ? ' rte-wrap--expanded' : ''}`}>
         {!disabled && (
           <div className={`rte-toolbar${lockedBy ? ' rte-toolbar--locked' : ''}`}>
             <button type="button" className="rte-btn" onMouseDown={e => execFormat(e, 'bold')} title="Bold (Ctrl+B)">
@@ -4663,6 +4678,17 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
                   )}
                 </div>
               </>
+            )}
+            {expandable && (
+              <button
+                type="button"
+                className="rte-btn rte-btn--expand"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => setExpanded(v => !v)}
+                title={expanded ? 'Collapse (Esc)' : 'Expand editor'}
+              >
+                {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              </button>
             )}
           </div>
         )}

@@ -34,7 +34,8 @@ class WorkflowSettingsChangeTest {
                 .vulnerabilitySlas(new ArrayList<>(second.getVulnerabilitySlas()))
                 .vulnerabilityStatuses(entries("Risk Accepted"))
                 .remediationStages(new ArrayList<>(second.getRemediationStages()))
-                .allowSelfPeerReview(true);
+                .allowSelfPeerReview(true)
+                .allowRetestEvidenceEditAfterReport(true);
     }
 
     private static List<NamedEntry> entries(String... names) {
@@ -239,5 +240,6 @@ class WorkflowSettingsChangeTest {
         assertThat(settings.getStatusColors()).containsEntry("Complete", "#16a34a").doesNotContainKey("Signed Off");
         assertThat(settings.getVulnerabilityStatuses()).containsExactly("Risk Accepted");
         assertThat(settings.isAllowSelfPeerReview()).isTrue();
+        assertThat(settings.isAllowRetestEvidenceEditAfterReport()).isTrue();
     }
 }

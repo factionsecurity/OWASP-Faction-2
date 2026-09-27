@@ -43,6 +43,12 @@ public interface ReportTemplateRepository extends JpaRepository<ReportTemplate, 
     Page<ReportTemplate> findByAssessmentTypeIdAndActiveTrueAndDeletedAtIsNull(String assessmentTypeId, Pageable pageable);
 
     /**
+     * The most recently updated live template for an assessment type: what a report falls back
+     * to when the assessment's own template has been retired.
+     */
+    Optional<ReportTemplate> findFirstByAssessmentTypeIdAndActiveTrueAndDeletedAtIsNullOrderByUpdatedAtDesc(String assessmentTypeId);
+
+    /**
      * Every template still in play, whatever its active flag.
      */
     Page<ReportTemplate> findByDeletedAtIsNull(Pageable pageable);

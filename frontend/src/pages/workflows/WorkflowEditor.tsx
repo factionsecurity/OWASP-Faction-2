@@ -582,6 +582,23 @@ export default function WorkflowEditor({ workflow, onSaved, onDirtyChange }: Pro
         </FormHint>
       </FormGroup>
 
+      {/* ── Retests ─────────────────────────────────────────────────────── */}
+      <FormGroup className="workflow-section">
+        <h4 className="workflow-section-title">Retests</h4>
+        <Checkbox
+          label="Allow editing retest evidence after a retest report"
+          checked={draft.allowRetestEvidenceEditAfterReport}
+          onChange={(e) => {
+            const allow = e.target.checked;
+            setDraft((prev) => ({ ...prev, allowRetestEvidenceEditAfterReport: allow }));
+          }}
+        />
+        <FormHint>
+          Off by default: once a retest report includes a retest&apos;s evidence, it can no longer change.
+          Turn this on to correct evidence and regenerate the report.
+        </FormHint>
+      </FormGroup>
+
       {errors.length > 0 && (
         <div className="workflow-errors" role="alert">
           <strong>Not saved:</strong>

@@ -18,6 +18,8 @@ public class RetestDto {
     private String assessmentName;
     private String applicationId;
     private String applicationName;
+    /** The application's human-facing ID (e.g. APP-1234), not its database id. */
+    private String applicationAppId;
     private LocalDateTime scheduledStartDate;
     private LocalDateTime scheduledEndDate;
     private LocalDateTime closedDate;
@@ -34,6 +36,12 @@ public class RetestDto {
     private String createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    private String evidence;
+    private LocalDateTime evidenceUpdatedAt;
+    private LocalDateTime evidenceLockedAt;
+    private boolean evidenceEditable;
+    private LocalDateTime assessmentRetestReportGeneratedAt;
 
     public static RetestDto fromEntity(Retest r) {
         return RetestDto.builder()
@@ -53,6 +61,9 @@ public class RetestDto {
                 .createdBy(r.getCreatedBy())
                 .createdAt(r.getCreatedAt())
                 .updatedAt(r.getUpdatedAt())
+                .evidence(r.getEvidence())
+                .evidenceUpdatedAt(r.getEvidenceUpdatedAt())
+                .evidenceLockedAt(r.getEvidenceLockedAt())
                 .build();
     }
 }

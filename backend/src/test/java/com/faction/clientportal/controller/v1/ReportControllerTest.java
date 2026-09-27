@@ -57,6 +57,8 @@ class ReportControllerTest extends TestContainersConfig {
     @Autowired private ReportDocumentRepository reportDocumentRepository;
     @Autowired private com.faction.clientportal.service.EncryptionService encryptionService;
     @Autowired private com.faction.clientportal.repository.AssessmentWorkflowRepository workflowRepository;
+    @Autowired private ReportTemplateRepository reportTemplateRepository;
+    @Autowired private com.faction.clientportal.repository.RetestRepository retestRepository;
 
     // Mock heavy dependencies so they don't try to connect to MinIO/docx4j/LibreOffice
     @MockBean private ReportGenerationTrigger reportGenerationTrigger;
@@ -111,6 +113,23 @@ class ReportControllerTest extends TestContainersConfig {
     @org.junit.jupiter.api.AfterEach
     void tearDownWorkflows() {
         workflowRepository.deleteAll();
+        if (retestTemplate != null) {
+            reportTemplateRepository.deleteById(retestTemplate.getId());
+            retestTemplate = null;
+        }
+    }
+
+    private com.faction.clientportal.model.ReportTemplate retestTemplate;
+
+    /** Points the fixture assessment at a report template, with or without a retest DOCX. */
+    private void useReportTemplate(boolean withRetestDocx) {
+        retestTemplate = reportTemplateRepository.save(com.faction.clientportal.model.ReportTemplate.builder()
+                .name("Retest report template " + System.nanoTime())
+                .templateFileId("report-templates/t/report.docx")
+                .retestTemplateFileId(withRetestDocx ? "report-templates/t/retest/r.docx" : null)
+                .build());
+        testAssessment.setReportTemplateId(retestTemplate.getId());
+        assessmentRepository.save(testAssessment);
     }
 
     // ── POST /{assessmentId}/generate ────────────────────────────────────────
@@ -548,5 +567,197 @@ class ReportControllerTest extends TestContainersConfig {
         mockMvc.perform(get("/api/v1/reports/{id}/pdf", testAssessment.getId())
                         .header("Authorization", "Bearer " + jwtToken))
                 .andExpect(status().isInternalServerError());
+    }
+
+    // ── POST /{assessmentId}/retest/generate ─────────────────────────────────
+
+    @Test
+    void retestGenerateIsAllowedOnACompletedAssessment() throws Exception {
+        completeTestAssessment();
+        useReportTemplate(true);
+
+        // Retests happen after the assessment is finalized, so its retest report must still run
+        mockMvc.perform(post("/api/v1/reports/{id}/retest/generate", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("started")));
+
+        verify(reportGenerationTrigger).triggerRetest(testAssessment.getId(), "report-test-user");
+        verify(reportGenerationTrigger, never()).trigger(anyString(), anyString());
+        org.assertj.core.api.Assertions.assertThat(reportDocumentRepository.findByAssessmentId(testAssessment.getId()))
+                .isNotEmpty()
+                .allSatisfy(d -> {
+                    org.assertj.core.api.Assertions.assertThat(d.getDocType().isRetest()).isTrue();
+                    org.assertj.core.api.Assertions.assertThat(d.getStatus()).isEqualTo(ReportDocumentStatus.GENERATING);
+                });
+    }
+
+    /**
+     * A reporter who can read every assessment but edit none of them. Retest report generation
+     * rewrites the assessment's retest documents and locks retest evidence, so read scope alone
+     * is not enough.
+     */
+    private String readOnlyReporterToken(String username) {
+        User reporter = userRepository.save(User.builder()
+                .username(username).email(username + "@test.com")
+                .password(passwordEncoder.encode("password")).firstName("Read").lastName("Only")
+                .loginOption(LoginOption.NATIVE).isInternal(true).createdAt(LocalDateTime.now())
+                .build());
+        readOnlyReporterId = reporter.getId();
+        return jwtService.generateToken(username, List.of(
+                new SimpleGrantedAuthority("reporting:create"),
+                new SimpleGrantedAuthority("assessments:read:all")));
+    }
+
+    private String readOnlyReporterId;
+
+    private void saveRetest(java.util.function.UnaryOperator<com.faction.clientportal.model.Retest.RetestBuilder> customize) {
+        retestRepository.save(customize.apply(com.faction.clientportal.model.Retest.builder()
+                .vulnerabilityId("v-1").assessmentId(testAssessment.getId()).status("PASSED")
+                .closedDate(LocalDateTime.now())
+                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())).build());
+    }
+
+    @Test
+    void retestGenerateByACallerWithoutEditScopeOrARetestIs403() throws Exception {
+        completeTestAssessment();
+        useReportTemplate(true);
+        String token = readOnlyReporterToken("read-only-reporter");
+        try {
+            saveRetest(b -> b.assignedAssessorIds(new java.util.ArrayList<>(List.of("someone-else")))
+                    .completedBy("someone-else"));
+
+            mockMvc.perform(post("/api/v1/reports/{id}/retest/generate", testAssessment.getId())
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+
+            verify(reportGenerationTrigger, never()).triggerRetest(anyString(), anyString());
+            org.assertj.core.api.Assertions.assertThat(reportDocumentRepository.findByAssessmentId(testAssessment.getId()))
+                    .isEmpty();
+        } finally {
+            retestRepository.deleteAll();
+        }
+    }
+
+    @Test
+    void retestGenerateIsAllowedForTheRetestsAssignedAssessorWithoutEditScope() throws Exception {
+        completeTestAssessment();
+        useReportTemplate(true);
+        String token = readOnlyReporterToken("retest-assignee");
+        try {
+            saveRetest(b -> b.assignedAssessorIds(new java.util.ArrayList<>(List.of(readOnlyReporterId))));
+
+            mockMvc.perform(post("/api/v1/reports/{id}/retest/generate", testAssessment.getId())
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isAccepted());
+
+            verify(reportGenerationTrigger).triggerRetest(testAssessment.getId(), "retest-assignee");
+        } finally {
+            retestRepository.deleteAll();
+        }
+    }
+
+    @Test
+    void retestGenerateIsAllowedForWhoeverCompletedARetestWithoutEditScope() throws Exception {
+        completeTestAssessment();
+        useReportTemplate(true);
+        String token = readOnlyReporterToken("retest-completer");
+        try {
+            saveRetest(b -> b.assignedAssessorIds(new java.util.ArrayList<>()).completedBy("retest-completer"));
+
+            mockMvc.perform(post("/api/v1/reports/{id}/retest/generate", testAssessment.getId())
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isAccepted());
+
+            verify(reportGenerationTrigger).triggerRetest(testAssessment.getId(), "retest-completer");
+        } finally {
+            retestRepository.deleteAll();
+        }
+    }
+
+    @Test
+    void retestGenerateWithoutARetestTemplateIs400() throws Exception {
+        useReportTemplate(false);
+
+        mockMvc.perform(post("/api/v1/reports/{id}/retest/generate", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isBadRequest());
+
+        verify(reportGenerationTrigger, never()).triggerRetest(anyString(), anyString());
+        org.assertj.core.api.Assertions.assertThat(reportDocumentRepository.findByAssessmentId(testAssessment.getId()))
+                .isEmpty();
+    }
+
+    @Test
+    void retestGenerateReturns404ForMissingAssessment() throws Exception {
+        mockMvc.perform(post("/api/v1/reports/{id}/retest/generate", "non-existent-id")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void mainGenerateStillRefusesACompletedAssessment() throws Exception {
+        completeTestAssessment();
+        useReportTemplate(true);
+
+        // A retest template does not reopen the main report of a finalized assessment
+        mockMvc.perform(post("/api/v1/reports/{id}/generate", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isConflict());
+
+        verify(reportGenerationTrigger, never()).trigger(anyString(), anyString());
+    }
+
+    @Test
+    void retestDocumentsDownloadWithARetestFileName() throws Exception {
+        reportDocumentRepository.save(ReportDocument.builder()
+                .assessmentId(testAssessment.getId())
+                .docType(ReportDocumentType.RETEST_DOCX)
+                .status(ReportDocumentStatus.COMPLETED)
+                .fileId("reports/a/retest-1.docx")
+                .generatedAt(LocalDateTime.now())
+                .build());
+        when(storageService.openStream("reports/a/retest-1.docx"))
+                .thenReturn(StoredObjects.of("retest-docx-bytes"));
+
+        mockMvc.perform(get("/api/v1/reports/{id}/documents/{type}/content", testAssessment.getId(), "RETEST_DOCX")
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(content().string("retest-docx-bytes"))
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.containsString("Test-Assessment-retest.docx")));
+    }
+
+    @Test
+    void getReportDocuments_saysWhetherARetestTemplateIsAvailable() throws Exception {
+        mockMvc.perform(get("/api/v1/reports/{id}/documents", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.retestTemplateAvailable").value(false));
+
+        useReportTemplate(true);
+
+        mockMvc.perform(get("/api/v1/reports/{id}/documents", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.retestTemplateAvailable").value(true));
+    }
+
+    @Test
+    void getReportDocuments_listsRetestDocumentsSeparately() throws Exception {
+        reportDocumentRepository.save(ReportDocument.builder()
+                .assessmentId(testAssessment.getId())
+                .docType(ReportDocumentType.RETEST_DOCX)
+                .status(ReportDocumentStatus.COMPLETED)
+                .fileId("reports/a/retest-1.docx")
+                .generatedAt(LocalDateTime.now())
+                .build());
+
+        mockMvc.perform(get("/api/v1/reports/{id}/documents", testAssessment.getId())
+                        .header("Authorization", "Bearer " + jwtToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.retestDocuments[?(@.type == 'RETEST_DOCX')].status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.documents[?(@.type == 'RETEST_DOCX')]").isEmpty());
     }
 }

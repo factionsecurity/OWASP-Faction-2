@@ -28,6 +28,7 @@ export interface WorkflowDraft {
   vulnerabilityStatuses: DraftRow[];
   stages: RemediationStage[];
   allowSelfPeerReview: boolean;
+  allowRetestEvidenceEditAfterReport: boolean;
 }
 
 export function newRow(name: string): DraftRow {
@@ -57,6 +58,7 @@ export function draftFromWorkflow(workflow: Workflow): WorkflowDraft {
     vulnerabilityStatuses: (workflow.vulnerabilityStatuses ?? []).map(loadedRow),
     stages: workflow.remediationStages ?? [],
     allowSelfPeerReview: !!workflow.allowSelfPeerReview,
+    allowRetestEvidenceEditAfterReport: !!workflow.allowRetestEvidenceEditAfterReport,
   };
 }
 
@@ -79,6 +81,7 @@ export function requestFromDraft(draft: WorkflowDraft): UpdateWorkflowRequest {
     vulnerabilityStatuses: draft.vulnerabilityStatuses.map((row) => ({ originalName: row.originalName, name: row.name.trim() })),
     remediationStages: draft.stages.map((stage) => ({ ...stage, name: stage.name.trim() })),
     allowSelfPeerReview: draft.allowSelfPeerReview,
+    allowRetestEvidenceEditAfterReport: draft.allowRetestEvidenceEditAfterReport,
   };
 }
 

@@ -19,6 +19,12 @@ public class ReportDocumentsDto {
 
     private List<ReportDocumentDto> documents;
 
+    /** The retest report's artifacts, separate so the main report panel never waits on them. */
+    private List<ReportDocumentDto> retestDocuments;
+
     /** Open password for the encrypted PDF; null until one has been provisioned. */
     private String reportPassword;
+
+    /** Whether the assessment's report template has a retest DOCX to generate from. */
+    private boolean retestTemplateAvailable;
 }

@@ -104,6 +104,7 @@ public record WorkflowSettingsChange(
                 .remediationStages(request.getRemediationStages() == null
                         ? null : new ArrayList<>(request.getRemediationStages()))
                 .allowSelfPeerReview(request.isAllowSelfPeerReview())
+                .allowRetestEvidenceEditAfterReport(request.isAllowRetestEvidenceEditAfterReport())
                 .build();
     }
 

@@ -1,0 +1,34 @@
+/* ── Retest report generate/download control (shared: ready list + Finalize panel) ── */
+.retest-report-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.retest-report-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.retest-report-link:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.retest-report-error {
+  font-size: 0.75rem;
+  color: var(--danger-color, #ef4444);
+}
+
+.retest-report-spinner {
+  animation: retest-report-spin 1s linear infinite;
+}
+
+@keyframes retest-report-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
