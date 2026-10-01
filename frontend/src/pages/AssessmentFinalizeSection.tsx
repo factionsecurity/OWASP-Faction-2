@@ -20,6 +20,7 @@ import { Button, IconButton, FormGroup, FormLabel, FormHint, Input } from '../co
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
 import ReportDocumentsPanel from '../components/ReportDocumentsPanel';
+import RetestReportPanel from '../components/RetestReportPanel';
 import PeerReviewDiff from './PeerReviewDiff';
 import { peerReviewerLabel } from '../utils/peerReview';
 import { usePermissions } from '../utils/permissions';
@@ -436,6 +437,8 @@ export default function AssessmentFinalizeSection({
         onAssessmentUpdated={onAssessmentUpdated}
         readOnly={isCompleted}
       />
+
+      <RetestReportPanel assessmentId={assessmentId} />
 
       {/* Machine-readable exports — the same findings the report narrates, in the two formats a
           scanner pipeline or an SBOM tool ingests. Available before finalizing too: the file is

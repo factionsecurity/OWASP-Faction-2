@@ -74,6 +74,7 @@ class AssessmentWorkflowPersistenceTest extends TestContainersConfig {
                 new RemediationStage("staging", "Staging"),
                 new RemediationStage("production", "Production"));
         assertThat(stored.isAllowSelfPeerReview()).isFalse();
+        assertThat(stored.isAllowRetestEvidenceEditAfterReport()).isFalse();
     }
 
     @Test
@@ -88,6 +89,7 @@ class AssessmentWorkflowPersistenceTest extends TestContainersConfig {
                 .vulnerabilityStatuses(new ArrayList<>(List.of("Risk Accepted")))
                 .remediationStages(new ArrayList<>(List.of(new RemediationStage("pci-live", "Live"))))
                 .allowSelfPeerReview(true)
+                .allowRetestEvidenceEditAfterReport(true)
                 .createdAt(created).updatedAt(created)
                 .build());
 
@@ -104,6 +106,7 @@ class AssessmentWorkflowPersistenceTest extends TestContainersConfig {
         assertThat(stored.getVulnerabilityStatuses()).containsExactly("Risk Accepted");
         assertThat(stored.getRemediationStages()).containsExactly(new RemediationStage("pci-live", "Live"));
         assertThat(stored.isAllowSelfPeerReview()).isTrue();
+        assertThat(stored.isAllowRetestEvidenceEditAfterReport()).isTrue();
         assertThat(stored.getCreatedAt()).isEqualTo(created);
     }
 

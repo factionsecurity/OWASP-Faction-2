@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { retestApi, vulnerabilitiesApi, reportsApi, applicationsApi, assessmentsApi } from '../api';
+import { retestApi, vulnerabilitiesApi, reportsApi, applicationsApi, assessmentsApi, inlineImagesApi } from '../api';
 import { DEFAULT_WORKFLOW_ID, useWorkflow } from '../hooks/useWorkflow';
-import type { Application, Assessment, Retest, RetestClosure, RemediationStage, Vulnerability } from '../types';
+import type { Application, Assessment, Retest, RetestClosure, RemediationStage, RetestReportReady, Vulnerability } from '../types';
 import ReportPreviewDrawer from '../components/ReportPreviewDrawer';
+import RetestReportButton from '../components/RetestReportButton';
 import { Copy, Check } from 'lucide-react';
 import { usePageTitle } from '../context/PageTitleContext';
 import RichTextEditor from '../components/RichTextEditor';
@@ -119,7 +120,30 @@ export default function RetestDetailPage() {
   const [completing, setCompleting] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAssignConfirm, setShowAssignConfirm] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState('');
+  // Who had the retest before "Re-assign to me", kept so the take-over can be undone from this
+  // page. Null once undone or when there was nobody to hand it back to.
+  const [undoAssignees, setUndoAssignees] = useState<string[] | null>(null);
+  // Keyed by user id, like assignedAssessorIds — same source the vulnerability drawer's "Assign me" uses.
+  const currentUserId = (() => {
+    try { return JSON.parse(localStorage.getItem('user') || '{}').id || ''; }
+    catch { return ''; }
+  })();
   const [deleting, setDeleting] = useState(false);
+
+  // Evidence: bound to the same draft whether the finding is still open or already closed
+  // (post-completion editing is gated by evidenceEditable, checked at render time).
+  const [evidenceDraft, setEvidenceDraft] = useState('');
+  const [savingEvidence, setSavingEvidence] = useState(false);
+  const [evidenceSaveError, setEvidenceSaveError] = useState('');
+
+  // Prior retests on the same finding, most recent first — the "Retest History" card.
+  const [history, setHistory] = useState<Retest[]>([]);
+
+  // Set once Save & Close completes and the assessment has retests ready to report.
+  const [readyBanner, setReadyBanner] = useState<RetestReportReady | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -135,6 +159,20 @@ export default function RetestDetailPage() {
         setRetest(r);
         setCommentDraft(r.comment || '');
         setSelectedResult((r.result as 'PASS' | 'FAIL') || '');
+        setEvidenceDraft(r.evidence || '');
+
+        // Load prior completed retests on the same finding for the history card.
+        try {
+          const historyRes = await retestApi.getAll({ vulnerabilityId: r.vulnerabilityId });
+          if (historyRes.success && historyRes.data) {
+            const prior = historyRes.data
+              .filter(h => h.id !== r.id && (h.status === 'PASSED' || h.status === 'FAILED'))
+              .sort((a, b) => new Date(b.closedDate || 0).getTime() - new Date(a.closedDate || 0).getTime());
+            setHistory(prior);
+          }
+        } catch {
+          // ignore
+        }
 
         // Load the linked vulnerability
         try {
@@ -225,7 +263,7 @@ export default function RetestDetailPage() {
     if (!retest) return;
     setSaving(true);
     try {
-      const res = await retestApi.update(retest.id, { comment: commentDraft, ...changedRatings() });
+      const res = await retestApi.update(retest.id, { comment: commentDraft, evidence: evidenceDraft, ...changedRatings() });
       if (res.success && res.data) {
         setRetest(res.data);
         setOriginalRatings(ratingDrafts);
@@ -246,16 +284,52 @@ export default function RetestDetailPage() {
         ...changedRatings(),
         result: selectedResult,
         comment: commentDraft,
+        evidence: evidenceDraft,
         // Only meaningful on a pass; the server ignores it on a fail.
         ...(selectedResult === 'PASS' && closure ? { closure } : {}),
       });
       if (res.success && res.data) {
-        navigate('/retests');
+        const completed = res.data;
+        const ready = await retestApi.getReadyForReport().catch(() => null);
+        const row = ready?.data?.find((x) => x.assessmentId === completed.assessmentId && x.hasRetestTemplate);
+        if (row) {
+          setRetest(completed);
+          setEvidenceDraft(completed.evidence || '');
+          setReadyBanner(row);
+        } else {
+          navigate('/retests');
+        }
       }
     } catch {
       // ignore
     } finally {
       setCompleting(false);
+    }
+  };
+
+  // Assessment-scoped, like AssessmentDetail's handler — the report renders these inline, and an
+  // image saved under the wrong assessment would 404 out of the generated document.
+  const handleInlineImageUpload = async (file: File): Promise<string> => {
+    if (!retest) throw new Error('No assessment ID');
+    const res = await inlineImagesApi.upload(retest.assessmentId, file);
+    if (!res.success || !res.data) throw new Error('Image upload failed');
+    return res.data.url;
+  };
+
+  const handleSaveEvidence = async () => {
+    if (!retest) return;
+    setSavingEvidence(true);
+    setEvidenceSaveError('');
+    try {
+      const res = await retestApi.update(retest.id, { evidence: evidenceDraft });
+      if (res.success && res.data) {
+        setRetest(res.data);
+        setEvidenceDraft(res.data.evidence || '');
+      }
+    } catch (err: any) {
+      setEvidenceSaveError(err.response?.data?.message || 'Failed to save evidence');
+    } finally {
+      setSavingEvidence(false);
     }
   };
 
@@ -270,6 +344,39 @@ export default function RetestDetailPage() {
       setCopiedEmail(email);
       setTimeout(() => setCopiedEmail(null), 2000);
     });
+  };
+
+  const handleAssignToMe = async () => {
+    if (!retest) return;
+    setAssigning(true);
+    const previous = retest.assignedAssessorIds || [];
+    try {
+      const res = await retestApi.assignToMe(retest.id);
+      if (res.success && res.data) setRetest(res.data);
+      // A scheduled retest must keep an assessor, so an unassigned one has nothing to return to.
+      setUndoAssignees(previous.length > 0 ? previous : null);
+      setShowAssignConfirm(false);
+    } catch (err: any) {
+      setAssignError(err.response?.data?.message || 'Could not re-assign this retest');
+      setShowAssignConfirm(false);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleUndoAssign = async () => {
+    if (!retest || !undoAssignees) return;
+    setAssigning(true);
+    setAssignError('');
+    try {
+      const res = await retestApi.update(retest.id, { assignedAssessorIds: undoAssignees });
+      if (res.success && res.data) setRetest(res.data);
+      setUndoAssignees(null);
+    } catch (err: any) {
+      setAssignError(err.response?.data?.message || 'Could not undo the re-assignment');
+    } finally {
+      setAssigning(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -329,6 +436,16 @@ export default function RetestDetailPage() {
           {retest.status.replace('_', ' ')}
         </span>
       </div>
+
+      {readyBanner && (
+        <div className="retest-ready-banner" role="status">
+          <span>
+            {readyBanner.passedCount + readyBanner.failedCount} retest{readyBanner.passedCount + readyBanner.failedCount === 1 ? '' : 's'} on {readyBanner.assessmentName} {readyBanner.passedCount + readyBanner.failedCount === 1 ? 'is' : 'are'} ready to report.
+          </span>
+          <RetestReportButton assessmentId={readyBanner.assessmentId} hasRetestTemplate label="Generate retest report" />
+          <button type="button" className="retest-btn retest-btn--secondary" onClick={() => setReadyBanner(null)}>Later</button>
+        </div>
+      )}
 
       <div className="retest-detail-content">
         {/* Left: vulnerability details */}
@@ -489,7 +606,29 @@ export default function RetestDetailPage() {
             {/* Always rendered: several assessors can share a retest, so "who else is on this"
                 is part of reading it — and an empty list is itself worth seeing. */}
             <div className="retest-detail-field">
-              <div className="retest-detail-field-label">Assessors</div>
+              <div className="retest-detail-field-label retest-assessors-label">
+                Assessors
+                {(retest.status === 'SCHEDULED' || retest.status === 'IN_PROGRESS')
+                  && currentUserId && !(retest.assignedAssessorIds || []).includes(currentUserId) && (
+                  <button
+                    type="button"
+                    className="retest-assign-me-btn"
+                    onClick={() => { setAssignError(''); setShowAssignConfirm(true); }}
+                    disabled={assigning}
+                  >
+                    Re-assign to me
+                  </button>
+                )}
+              </div>
+              {assignError && <div className="retest-assign-error">{assignError}</div>}
+              {undoAssignees && (
+                <div className="retest-assign-undo" role="status">
+                  Re-assigned to you.
+                  <button type="button" onClick={handleUndoAssign} disabled={assigning}>
+                    {assigning ? 'Undoing…' : 'Undo'}
+                  </button>
+                </div>
+              )}
               {retest.assignedAssessorNames && retest.assignedAssessorNames.length > 0 ? (
                 <div className="retest-assessors-list">
                   {retest.assignedAssessorNames.map((name, i) => (
@@ -572,7 +711,16 @@ export default function RetestDetailPage() {
             <div className="retest-detail-card">
               <h3>Complete Retest</h3>
               <div className="retest-result-form">
-                <div className="retest-detail-field-label" style={{ marginBottom: '0.5rem' }}>Result</div>
+                <div className="retest-detail-field-label" style={{ marginBottom: '0.5rem' }}>Evidence <span className="retest-detail-field-hint">Included in the retest report</span></div>
+                <RichTextEditor
+                  value={evidenceDraft}
+                  onChange={setEvidenceDraft}
+                  onImageUpload={handleInlineImageUpload}
+                  placeholder="Requests, responses, screenshots: what shows this is fixed or still open…"
+                  expandable
+                />
+
+                <div className="retest-detail-field-label" style={{ marginBottom: '0.5rem', marginTop: '1rem' }}>Result</div>
                 <div className="retest-result-options">
                   <button
                     type="button"
@@ -643,11 +791,13 @@ export default function RetestDetailPage() {
                   );
                 })()}
 
-                <div className="retest-detail-field-label" style={{ marginBottom: '0.5rem' }}>Comment</div>
+                <div className="retest-detail-field-label" style={{ marginBottom: '0.5rem' }}>Comment <span className="retest-detail-field-hint">Internal only, not included in the retest report</span></div>
                 <RichTextEditor
                   value={commentDraft}
                   onChange={setCommentDraft}
+                  onImageUpload={handleInlineImageUpload}
                   placeholder="Add a comment about this retest…"
+                  expandable
                 />
 
                 <div className="retest-result-actions">
@@ -690,12 +840,83 @@ export default function RetestDetailPage() {
               </div>
               {retest.comment && (
                 <div className="retest-detail-field">
-                  <div className="retest-detail-field-label">Comment</div>
+                  <div className="retest-detail-field-label">Comment <span className="retest-detail-field-hint">Internal only, not included in the retest report</span></div>
                   <div className="retest-detail-field-value">
                     <RichTextEditor value={retest.comment} disabled />
                   </div>
                 </div>
               )}
+
+              <div className="retest-detail-field">
+                <div className="retest-detail-field-label">Evidence <span className="retest-detail-field-hint">Included in the retest report</span></div>
+                {retest.evidenceEditable ? (
+                  <>
+                    <RichTextEditor
+                      value={evidenceDraft}
+                      onChange={setEvidenceDraft}
+                      onImageUpload={handleInlineImageUpload}
+                      placeholder="Requests, responses, screenshots: what shows this is fixed or still open…"
+                      expandable
+                    />
+                    <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="retest-btn retest-btn--secondary"
+                        style={{ fontSize: '0.8rem', padding: '0.3rem 0.75rem' }}
+                        onClick={handleSaveEvidence}
+                        disabled={savingEvidence}
+                      >
+                        {savingEvidence ? 'Saving…' : 'Save Evidence'}
+                      </button>
+                      {evidenceSaveError && (
+                        <span style={{ fontSize: '0.8rem', color: '#ef4444' }}>{evidenceSaveError}</span>
+                      )}
+                    </div>
+                  </>
+                ) : retest.evidence ? (
+                  <>
+                    <RichTextEditor value={retest.evidence} disabled />
+                    {retest.evidenceLockedAt && (
+                      <div style={{ marginTop: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Included in the retest report generated{' '}
+                        {new Date(retest.assessmentRetestReportGeneratedAt ?? retest.evidenceLockedAt).toLocaleDateString()}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="retest-detail-field-value" style={{ color: 'var(--text-muted)' }}>
+                    No evidence recorded.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Retest History: prior completed retests on the same finding */}
+          {history.length > 0 && (
+            <div className="retest-detail-card">
+              <h3>Retest History</h3>
+              {history.map(h => (
+                <details key={h.id} className="retest-history-entry">
+                  <summary className="retest-history-summary">
+                    <span
+                      className="retest-history-result"
+                      style={{ color: h.result === 'PASS' ? '#22c55e' : '#ef4444' }}
+                    >
+                      {h.result === 'PASS' ? 'Passed' : 'Failed'}
+                    </span>
+                    <span className="retest-history-date">
+                      {h.closedDate ? new Date(h.closedDate).toLocaleDateString() : '-'}
+                    </span>
+                    <span className="retest-history-by">{h.completedByName || '-'}</span>
+                  </summary>
+                  <div className="retest-history-body">
+                    {h.evidence
+                      ? <RichTextEditor value={h.evidence} disabled />
+                      : <div className="retest-detail-field-value" style={{ color: 'var(--text-muted)' }}>No evidence recorded.</div>}
+                  </div>
+                </details>
+              ))}
             </div>
           )}
 
@@ -712,6 +933,19 @@ export default function RetestDetailPage() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showAssignConfirm}
+        onClose={() => setShowAssignConfirm(false)}
+        onConfirm={handleAssignToMe}
+        title="Re-assign Retest"
+        message={retest.assignedAssessorNames && retest.assignedAssessorNames.length > 0
+          ? `This retest will be taken off ${retest.assignedAssessorNames.join(', ')} and assigned to you alone. They'll be notified.`
+          : 'This retest will be assigned to you.'}
+        confirmText="Re-assign to me"
+        variant="warning"
+        isLoading={assigning}
+      />
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}

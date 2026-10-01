@@ -33,6 +33,7 @@ public class UpdateWorkflowRequest {
     private List<NamedEntry> vulnerabilityStatuses;
     private List<RemediationStage> remediationStages;
     private boolean allowSelfPeerReview;
+    private boolean allowRetestEvidenceEditAfterReport;
 
     @Data
     @NoArgsConstructor

@@ -150,6 +150,59 @@ public class ReportTemplateController {
             .body(new ByteArrayResource(bytes));
     }
 
+    @PostMapping("/{id}/retest-file")
+    @RequiresPermission(Permission.REPORT_TEMPLATES_EDIT_ALL)
+    @Operation(
+        summary = "Upload retest template file",
+        description = "Upload the DOCX used for retest reports to S3/MinIO. Replaces any existing retest file; the main template file is untouched.",
+        responses = {
+            @ApiResponse(
+                responseCode = "200",
+                description = "Retest template file uploaded successfully",
+                content = @Content(schema = @Schema(implementation = ReportTemplateDto.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "Invalid file - must be DOCX"),
+            @ApiResponse(responseCode = "404", description = "Report template not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - User does not have required permission"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Invalid or missing JWT token")
+        }
+    )
+    public ResponseEntity<JsonApiResponse<ReportTemplateDto>> uploadRetestTemplateFile(
+        @PathVariable String id,
+        @RequestParam("file") MultipartFile file,
+        Authentication authentication
+    ) throws IOException {
+        String userId = authentication.getName();
+        ReportTemplateDto template = reportTemplateService.uploadRetestTemplateFile(id, file, userId);
+        return ResponseUtil.success("Retest template file uploaded successfully", template);
+    }
+
+    @GetMapping("/{id}/retest-file")
+    @RequiresPermission(Permission.REPORT_TEMPLATES_READ_ALL)
+    @Operation(
+        summary = "Download retest template file",
+        description = "Download the DOCX used for retest reports from S3/MinIO",
+        responses = {
+            @ApiResponse(
+                responseCode = "200",
+                description = "Retest template file downloaded successfully",
+                content = @Content(mediaType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            ),
+            @ApiResponse(responseCode = "404", description = "Report template or retest file not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - User does not have required permission"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Invalid or missing JWT token")
+        }
+    )
+    public ResponseEntity<Resource> downloadRetestTemplateFile(@PathVariable String id) {
+        ReportTemplateDto template = reportTemplateService.getReportTemplate(id);
+        byte[] bytes = reportTemplateService.downloadRetestTemplateFile(id);
+
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + template.getRetestTemplateFileName() + "\"")
+            .body(new ByteArrayResource(bytes));
+    }
+
     @GetMapping
     @RequiresPermission(Permission.REPORT_TEMPLATES_READ_ALL)
     @Operation(

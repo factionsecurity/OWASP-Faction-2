@@ -240,6 +240,21 @@ public class ReportTemplateService {
                         saved.getId(), source.getTemplateFileId(), e.getMessage(), e);
             }
         }
+        if (source.getRetestTemplateFileId() != null) {
+            try {
+                byte[] bytes = storageService.downloadBytes(source.getRetestTemplateFileId());
+                String key = "report-templates/" + saved.getId() + "/retest/" + source.getRetestTemplateFileName();
+                storageService.uploadBytes(key, bytes, source.getRetestTemplateFileContentType());
+                saved.setRetestTemplateFileId(key);
+                saved.setRetestTemplateFileName(source.getRetestTemplateFileName());
+                saved.setRetestTemplateFileSize(source.getRetestTemplateFileSize());
+                saved.setRetestTemplateFileContentType(source.getRetestTemplateFileContentType());
+                saved = reportTemplateRepository.save(saved);
+            } catch (Exception e) {
+                log.error("Cloned template {} but failed to copy the retest DOCX from {}: {}",
+                        saved.getId(), source.getRetestTemplateFileId(), e.getMessage(), e);
+            }
+        }
 
         log.info("Cloned report template {} -> {} ({} fields)", source.getName(), saved.getName(), fields.size());
         return ReportTemplateDto.fromEntity(saved);
@@ -252,19 +267,8 @@ public class ReportTemplateService {
         ReportTemplate template = reportTemplateRepository.findById(templateId)
             .orElseThrow(() -> new ResourceNotFoundException("Report template not found with id: " + templateId));
 
-        // Validate file
-        if (file.isEmpty()) {
-            throw new IllegalArgumentException("File is empty");
-        }
-
-        if (file.getSize() > MAX_FILE_SIZE) {
-            throw new IllegalArgumentException("File size exceeds maximum allowed size of 50MB");
-        }
-
+        validateDocx(file);
         String contentType = file.getContentType();
-        if (!DOCX_CONTENT_TYPE.equals(contentType)) {
-            throw new IllegalArgumentException("File must be a DOCX document. Received: " + contentType);
-        }
 
         // Delete old file from MinIO if one exists
         if (template.getTemplateFileId() != null) {
@@ -287,6 +291,66 @@ public class ReportTemplateService {
         log.info("Uploaded template file for template: {} (key: {})", template.getName(), key);
 
         return ReportTemplateDto.fromEntity(updatedTemplate);
+    }
+
+    /**
+     * Upload the DOCX used for retest reports. Stored under its own {@code retest/} prefix so a
+     * retest document with the same filename as the main one never overwrites it.
+     */
+    public ReportTemplateDto uploadRetestTemplateFile(String templateId, MultipartFile file, String userId) throws IOException {
+        ReportTemplate template = reportTemplateRepository.findById(templateId)
+            .orElseThrow(() -> new ResourceNotFoundException("Report template not found with id: " + templateId));
+
+        validateDocx(file);
+        String contentType = file.getContentType();
+
+        if (template.getRetestTemplateFileId() != null) {
+            deleteStorageFile(template.getRetestTemplateFileId());
+        }
+
+        String key = "report-templates/" + templateId + "/retest/" + file.getOriginalFilename();
+        storageService.uploadBytes(key, file.getBytes(), contentType);
+
+        template.setRetestTemplateFileId(key);
+        template.setRetestTemplateFileName(file.getOriginalFilename());
+        template.setRetestTemplateFileSize(file.getSize());
+        template.setRetestTemplateFileContentType(contentType);
+        template.setLastUpdatedBy(userId);
+        template.setUpdatedAt(LocalDateTime.now());
+
+        ReportTemplate updatedTemplate = reportTemplateRepository.save(template);
+        log.info("Uploaded retest template file for template: {} (key: {})", template.getName(), key);
+
+        return ReportTemplateDto.fromEntity(updatedTemplate);
+    }
+
+    /**
+     * Download the retest template file from MinIO, returning the raw bytes.
+     */
+    public byte[] downloadRetestTemplateFile(String templateId) {
+        ReportTemplate template = reportTemplateRepository.findById(templateId)
+            .orElseThrow(() -> new ResourceNotFoundException("Report template not found with id: " + templateId));
+
+        if (template.getRetestTemplateFileId() == null) {
+            throw new ResourceNotFoundException("Retest template file not found for template: " + templateId);
+        }
+
+        return storageService.downloadBytes(template.getRetestTemplateFileId());
+    }
+
+    private void validateDocx(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("File is empty");
+        }
+
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException("File size exceeds maximum allowed size of 50MB");
+        }
+
+        String contentType = file.getContentType();
+        if (!DOCX_CONTENT_TYPE.equals(contentType)) {
+            throw new IllegalArgumentException("File must be a DOCX document. Received: " + contentType);
+        }
     }
 
     /**
@@ -423,6 +487,9 @@ public class ReportTemplateService {
             // Hard delete
             if (template.getTemplateFileId() != null) {
                 deleteStorageFile(template.getTemplateFileId());
+            }
+            if (template.getRetestTemplateFileId() != null) {
+                deleteStorageFile(template.getRetestTemplateFileId());
             }
             reportTemplateRepository.delete(template);
             log.info("Hard deleted report template: {} (no assessments)", template.getName());

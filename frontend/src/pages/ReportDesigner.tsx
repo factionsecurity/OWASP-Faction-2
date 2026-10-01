@@ -364,6 +364,48 @@ export default function ReportDesigner() {
     }
   };
 
+  const handleRetestFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && selectedTemplate) {
+      try {
+        setSaving(true);
+        setError(null);
+
+        const response = await reportTemplatesApi.uploadRetestFile(selectedTemplate.id, file);
+
+        if (response.success && response.data) {
+          setSelectedTemplate(response.data);
+        }
+      } catch (err: any) {
+        const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to upload retest file';
+        setError(errorMessage);
+        console.error('Error uploading retest file:', err);
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  const handleDownloadRetestTemplate = async () => {
+    if (!selectedTemplate?.retestTemplateFileId) return;
+
+    try {
+      const blob = await reportTemplatesApi.downloadRetestFile(selectedTemplate.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = selectedTemplate.retestTemplateFileName || 'retest-template.docx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to download retest file';
+      setError(errorMessage);
+      console.error('Error downloading retest file:', err);
+    }
+  };
+
   const addUserDefinedField = (scope: FieldScope) => {
     if (!selectedTemplate) return;
     const newField: UserDefinedField = {
@@ -890,6 +932,37 @@ export default function ReportDesigner() {
                             {selectedTemplate.templateFileName}
                             {selectedTemplate.templateFileSize &&
                               ` (${(selectedTemplate.templateFileSize / 1024 / 1024).toFixed(2)} MB)`
+                            }
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="rd-row">
+                  <div className="rd-label">Retest Template</div>
+                  <div className="rd-value">
+                    <div className="template-upload-section">
+                      <label className="upload-button">
+                        <Upload size={18} />
+                        Upload Retest Template
+                        <input
+                          type="file"
+                          accept=".docx"
+                          onChange={handleRetestFileUpload}
+                          style={{ display: 'none' }}
+                          disabled={saving}
+                        />
+                      </label>
+                      {selectedTemplate.retestTemplateFileName && (
+                        <>
+                          <Button onClick={handleDownloadRetestTemplate} icon={Download} variant="secondary" disabled={saving}>
+                            Download
+                          </Button>
+                          <span className="template-filename">
+                            {selectedTemplate.retestTemplateFileName}
+                            {selectedTemplate.retestTemplateFileSize &&
+                              ` (${(selectedTemplate.retestTemplateFileSize / 1024 / 1024).toFixed(2)} MB)`
                             }
                           </span>
                         </>

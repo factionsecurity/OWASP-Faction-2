@@ -32,6 +32,7 @@ public class WorkflowDto {
     private List<String> builtInVulnerabilityStatuses;
     private List<RemediationStage> remediationStages;
     private boolean allowSelfPeerReview;
+    private boolean allowRetestEvidenceEditAfterReport;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<RenameInProgress> renamesInProgress;

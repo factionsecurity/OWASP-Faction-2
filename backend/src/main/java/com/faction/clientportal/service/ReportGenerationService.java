@@ -12,6 +12,13 @@ public interface ReportGenerationService {
     AssessmentDto generateReport(String assessmentId, String userId);
 
     /**
+     * Generate the assessment's retest report from its template's retest DOCX: every finding, with
+     * each one's latest PASSED/FAILED retest (evidence, result, date, tester) filled in. Stores the
+     * RETEST_* documents, records the run and locks the evidence it used.
+     */
+    void generateRetestReport(String assessmentId, String userId);
+
+    /**
      * Processes a manually uploaded report file, replacing the generated
      * artifacts for the assessment.
      *

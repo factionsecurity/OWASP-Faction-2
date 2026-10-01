@@ -56,7 +56,7 @@ class ReportDocumentServiceTest {
         verify(reportDocumentRepository, times(3)).save(captor.capture());
         assertThat(captor.getAllValues())
                 .extracting(ReportDocument::getDocType)
-                .containsExactlyInAnyOrder(ReportDocumentType.values());
+                .containsExactlyInAnyOrder(ReportDocumentType.MAIN.toArray(new ReportDocumentType[0]));
         assertThat(captor.getAllValues())
                 .allSatisfy(doc -> {
                     assertThat(doc.getStatus()).isEqualTo(ReportDocumentStatus.GENERATING);

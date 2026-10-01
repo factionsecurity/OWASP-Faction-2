@@ -95,6 +95,7 @@ public class AssessmentWorkflowConfigService {
         workflow.setVulnerabilityStatuses(submitted.getVulnerabilityStatuses());
         workflow.setRemediationStages(normalizeStages(submitted.getRemediationStages()));
         workflow.setAllowSelfPeerReview(submitted.isAllowSelfPeerReview());
+        workflow.setAllowRetestEvidenceEditAfterReport(submitted.isAllowRetestEvidenceEditAfterReport());
         workflow.setUpdatedAt(LocalDateTime.now());
 
         AssessmentWorkflow saved = repository.save(workflow);

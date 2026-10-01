@@ -22,4 +22,7 @@ public class UpdateRetestRequest {
     private String severity;
     private String likelihood;
     private String impact;
+
+    /** Retest evidence HTML. Null means unchanged. */
+    private String evidence;
 }
