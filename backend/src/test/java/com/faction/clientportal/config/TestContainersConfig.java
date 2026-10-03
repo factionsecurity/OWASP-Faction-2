@@ -11,8 +11,11 @@ public abstract class TestContainersConfig {
     static final DockerImageName timescaleImage = DockerImageName.parse("timescale/timescaledb:latest-pg16")
         .asCompatibleSubstituteFor("postgres");
 
-    static final DockerImageName minioImage = DockerImageName.parse("quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z")
-            // MinIO no longer publishes to Docker Hub; the same image lives on quay.io.
+    static final DockerImageName minioImage = DockerImageName.parse(
+            "pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372")
+            // Upstream MinIO images are gone (Docker Hub 404, quay.io/minio/minio now private;
+            // quay's AIStor image needs a commercial license). pgsty/minio is Pigsty's AGPLv3
+            // community build, pinned by digest to match docker-compose.yml.
             .asCompatibleSubstituteFor("minio/minio");
 
     static final PostgreSQLContainer<?> postgresqlContainer;
