@@ -44,8 +44,10 @@ services:
   # to it. Reads and writes are streamed through authenticated backend
   # endpoints so per-request permission checks apply.
   minio:
-    # MinIO no longer publishes to Docker Hub; quay.io carries the same images.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Upstream MinIO images are gone (Docker Hub 404, quay.io/minio/minio now
+    # private; quay's AIStor image needs a commercial license). pgsty/minio is
+    # Pigsty's AGPLv3 community build, pinned by digest as a third-party image.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
