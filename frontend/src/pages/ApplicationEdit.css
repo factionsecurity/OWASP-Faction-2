@@ -212,29 +212,19 @@
   background: rgba(239, 68, 68, 0.1);
 }
 
-/* Inline copy-to-clipboard button shown next to email addresses */
-.app-detail-copy-email {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  vertical-align: middle;
-  margin-left: 0.3rem;
-  padding: 0.15rem;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
+/* Stakeholder: name and role, with the email on its own line */
+.app-detail-stakeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.app-detail-stakeholder-role {
   color: var(--text-muted);
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s;
 }
 
-.app-detail-copy-email:hover {
-  color: var(--primary-color);
-  background: var(--tertiary-bg);
-}
-
-.app-detail-copy-email.copied {
-  color: #22c55e;
+.app-detail-stakeholder .copyable-email {
+  font-size: 0.8125rem;
 }
 
 /* ── Chat panel ────────────────────────────────────────────────────────────── */

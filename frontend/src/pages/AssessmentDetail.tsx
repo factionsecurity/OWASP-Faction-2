@@ -38,6 +38,7 @@ import AssessmentHistorySection from './AssessmentHistorySection';
 import AssessmentNotebookSection from './AssessmentNotebookSection';
 import ReportPreviewDrawer from '../components/ReportPreviewDrawer';
 import PeerReviewDiff from './PeerReviewDiff';
+import { CopyableEmail, CopyAllEmailsButton } from '../components/CopyEmail';
 import type { RefObject } from 'react';
 import { Button, Badge, Toast } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
@@ -1176,7 +1177,10 @@ export default function AssessmentDetail() {
 
             {assessment.stakeholders && assessment.stakeholders.length > 0 && (
               <div className="stakeholders-section">
-                <h4>Stakeholders</h4>
+                <h4>
+                  Stakeholders
+                  <CopyAllEmailsButton emails={assessment.stakeholders.map((s) => s.email)} />
+                </h4>
                 <table className="info-table">
                   <thead>
                     <tr>
@@ -1189,7 +1193,7 @@ export default function AssessmentDetail() {
                     {assessment.stakeholders.map((s, i) => (
                       <tr key={i}>
                         <td>{s.name}</td>
-                        <td>{s.email}</td>
+                        <td>{s.email ? <CopyableEmail email={s.email} /> : null}</td>
                         <td>{s.role}</td>
                       </tr>
                     ))}

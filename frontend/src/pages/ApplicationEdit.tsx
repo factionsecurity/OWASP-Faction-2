@@ -4,7 +4,7 @@ import UserAvatar from '../components/UserAvatar';
 import {
   X, Pencil, MessageSquare, Trash2, Send, Eye,
   CalendarClock, CheckCircle2, ClipboardList, ClipboardCheck, Info,
-  Copy, Check, ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp,
   type LucideIcon,
 } from 'lucide-react';
 import { marked } from 'marked';
@@ -57,6 +57,7 @@ import { useWorkflowsContext } from '../context/WorkflowsContext';
 import { colorFor, statusLabel } from '../utils/workflowLookup';
 import './Applications.css';
 import './ApplicationEdit.css';
+import { CopyableEmail, CopyAllEmailsButton } from '../components/CopyEmail';
 import { useTerminology } from '../context/TerminologyContext';
 
 const VULN_PAGE_SIZE = 10;
@@ -111,27 +112,6 @@ function SystemEventIcon({ content }: { content: string }) {
     <span className={`app-chat-event-icon app-chat-event-icon--${event?.variant ?? 'info'}`}>
       <Icon size={18} />
     </span>
-  );
-}
-
-// Small inline copy-to-clipboard button rendered next to email addresses.
-function CopyEmailButton({ email, title = 'Copy email' }: { email: string; title?: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(email).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
-  return (
-    <button
-      type="button"
-      className={`app-detail-copy-email${copied ? ' copied' : ''}`}
-      onClick={handleCopy}
-      title={copied ? 'Copied!' : title}
-    >
-      {copied ? <Check size={13} /> : <Copy size={13} />}
-    </button>
   );
 }
 
@@ -861,8 +841,7 @@ export default function ApplicationEdit() {
                         {appOwner.email && (
                           <>
                             {' · '}
-                            <a href={`mailto:${appOwner.email}`} className="link">{appOwner.email}</a>
-                            <CopyEmailButton email={appOwner.email} />
+                            <CopyableEmail email={appOwner.email} />
                           </>
                         )}
                       </>
@@ -903,25 +882,19 @@ export default function ApplicationEdit() {
                 <div className="app-detail-field">
                   <span className="app-detail-field-label">
                     Stakeholders
-                    {stakeholders.length > 0 && (
-                      <CopyEmailButton
-                        email={stakeholders.map((s) => s.email).join(', ')}
-                        title="Copy all emails"
-                      />
-                    )}
+                    <CopyAllEmailsButton emails={stakeholders.map((s) => s.email)} />
                   </span>
                   {stakeholders.length === 0 ? (
                     <span className="app-detail-field-value">—</span>
                   ) : (
                     <div className="app-detail-simple-list">
                       {stakeholders.map((stakeholder, index) => (
-                        <div key={index} className="app-detail-simple-list-item">
-                          {stakeholder.name}
-                          {' - '}
-                          <a href={`mailto:${stakeholder.email}`} className="link">{stakeholder.email}</a>
-                          <CopyEmailButton email={stakeholder.email} />
-                          {' - '}
-                          {stakeholder.role}
+                        <div key={index} className="app-detail-simple-list-item app-detail-stakeholder">
+                          <span>
+                            {stakeholder.name}
+                            {stakeholder.role && <span className="app-detail-stakeholder-role"> · {stakeholder.role}</span>}
+                          </span>
+                          <CopyableEmail email={stakeholder.email} />
                         </div>
                       ))}
                     </div>

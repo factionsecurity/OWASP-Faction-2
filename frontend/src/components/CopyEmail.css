@@ -1,0 +1,79 @@
+.copyable-email {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.05rem 0.25rem;
+  margin: 0 -0.25rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: var(--primary-color);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+/* In a narrow column a long address truncates rather than breaking mid-word; the
+   button's title and the copied text are always the full address. */
+.copyable-email__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copyable-email svg {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.copyable-email:hover {
+  background: var(--tertiary-bg);
+}
+
+.copyable-email:hover svg {
+  color: var(--primary-color);
+}
+
+.copyable-email.copied,
+.copyable-email.copied svg {
+  color: #22c55e;
+}
+
+.copy-all-emails {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+  text-transform: none;
+  letter-spacing: normal;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.45rem;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.copy-all-emails:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  background: var(--tertiary-bg);
+}
+
+.copy-all-emails.copied {
+  color: #22c55e;
+  border-color: #22c55e;
+}
+
+.copyable-email:focus-visible,
+.copy-all-emails:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
