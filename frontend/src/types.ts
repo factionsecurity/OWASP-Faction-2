@@ -318,6 +318,10 @@ export interface ApplicationImportResult {
   /** Rendered as "Organization / Division". */
   createdSubOrganizations: string[];
   errors: { line: number; identifier?: string; message: string }[];
+  /** Rows applied with something left out, e.g. a remediation owner that matched nobody. */
+  warnings: { line: number; identifier?: string; message: string }[];
+  /** The alternate layout the file was detected as; absent for the standard template. */
+  format?: string;
 }
 
 /** One row of an assessment CSV import dry run. */
@@ -396,6 +400,9 @@ export interface Application {
   stakeHolders?: Stakeholder[];
   technologies?: string[];
   appOwner?: AppOwner;
+  /** Internal user owning remediation; new assessments copy it onto their remediation manager. */
+  remediationOwnerId?: string;
+  remediationOwnerName?: string;
   status?: ApplicationStatus;
   organizationId?: string;
   /** Optional division within the organization; attribution only. */
@@ -444,6 +451,7 @@ export interface CreateApplicationRequest {
   stakeHolders?: Stakeholder[];
   technologies?: string[];
   appOwner?: AppOwner;
+  remediationOwnerId?: string;
   status?: ApplicationStatus;
   organizationId?: string;
   /** Optional division within the organization; attribution only. */
@@ -463,6 +471,8 @@ export interface UpdateApplicationRequest {
   stakeHolders?: Stakeholder[];
   technologies?: string[];
   appOwner?: AppOwner;
+  /** Omit to keep, empty string to clear. */
+  remediationOwnerId?: string;
   status?: ApplicationStatus;
   organizationId?: string;
   /** Optional division within the organization; attribution only. */

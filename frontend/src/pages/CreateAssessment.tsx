@@ -28,7 +28,7 @@ import type {
   Application,
   AssessmentPrefill,
 } from '../types';
-import { Button, FormLabel, Input, Select, Badge, RichTextEditor, DualListBox, ConfirmDialog } from '../components';
+import { Button, FormLabel, FormHint, Input, Select, Badge, RichTextEditor, DualListBox, ConfirmDialog } from '../components';
 import SearchableApplicationSelect from '../components/SearchableApplicationSelect';
 import type { RichTextEditorRef } from '../components';
 import AssessmentCalendar from '../components/AssessmentCalendar';
@@ -198,6 +198,9 @@ export default function CreateAssessment() {
   const [initialUrls, setInitialUrls] = useState<string>('');
   const [initialStakeholders, setInitialStakeholders] = useState<string>('');
   const [users, setUsers] = useState<User[]>([]);
+  // The selected application's remediation owner. A new assessment takes it as its remediation
+  // manager; only an application without one lets the scheduler pick, and the pick is saved back.
+  const [appRemediationOwner, setAppRemediationOwner] = useState<{ id: string; name: string } | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [applicationAppId, setApplicationAppId] = useState('');
   const [applicationName, setApplicationName] = useState('');
@@ -806,6 +809,13 @@ export default function CreateAssessment() {
   const loadApplicationStakeholders = async (applicationId: string) => {
     try {
       const response = await applicationsApi.getById(applicationId);
+      if (!id && response.success) {
+        const ownerId = response.data?.remediationOwnerId;
+        setAppRemediationOwner(ownerId
+          ? { id: ownerId, name: response.data?.remediationOwnerName || 'Unknown user' }
+          : null);
+        setFormData((prev) => ({ ...prev, remediationManagerId: ownerId || '' }));
+      }
       if (response.success && response.data?.stakeHolders) {
         setStakeholders(
           response.data.stakeHolders.map((sh: any) => ({
@@ -1430,6 +1440,7 @@ export default function CreateAssessment() {
                     onClear={() => {
                       setFormData((prev) => ({ ...prev, applicationId: '' }));
                       setApplicationName('');
+                      setAppRemediationOwner(null);
                     }}
                     onBlur={fillAssessmentNameFromApplicationName}
                     allowCreate={true}
@@ -1659,17 +1670,35 @@ export default function CreateAssessment() {
                 <div className="col-md-4">
                   <div className="form-group">
                     <FormLabel>Remediation Manager</FormLabel>
-                    <Select
-                      value={formData.remediationManagerId}
-                      onChange={(e) => setFormData({ ...formData, remediationManagerId: e.target.value })}
-                    >
-                      <option value="">Select manager...</option>
-                      {filteredUsers.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.firstName} {user.lastName} ({user.username})
-                        </option>
-                      ))}
-                    </Select>
+                    {mode === 'create' && appRemediationOwner ? (
+                      <>
+                        <Input type="text" value={appRemediationOwner.name} disabled readOnly />
+                        <FormHint>From the application's remediation owner.</FormHint>
+                      </>
+                    ) : (
+                      <>
+                        <Select
+                          value={formData.remediationManagerId}
+                          onChange={(e) => setFormData({ ...formData, remediationManagerId: e.target.value })}
+                        >
+                          <option value="">Select manager...</option>
+                          {(mode === 'create'
+                            ? filteredUsers.filter((user) => user.isInternal !== false)
+                            : filteredUsers
+                          ).map((user) => (
+                            <option key={user.id} value={user.id}>
+                              {user.firstName} {user.lastName} ({user.username})
+                            </option>
+                          ))}
+                        </Select>
+                        {mode === 'create' && formData.applicationId && (
+                          <FormHint>
+                            This application has no remediation owner yet; the person picked here
+                            becomes it.
+                          </FormHint>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

@@ -36,6 +36,8 @@ import VulnSummaryPanel from '../components/VulnSummaryPanel';
 import ReportPreviewDrawer from '../components/ReportPreviewDrawer';
 import SurveyDrawer from '../components/SurveyDrawer';
 import ResourceUserManager from './ResourceUserManager';
+import UserSelector from '../components/UserSelector';
+import { usePermissions } from '../utils/permissions';
 import './ResourceUserManager.css';
 import {
   Button,
@@ -181,6 +183,8 @@ interface AppFormSnapshot {
     applicationType: string;
     assessmentFrequency: string;
     customFrequencyMonths?: number;
+    /** Internal user owning remediation; '' when unset (saving '' clears it). */
+    remediationOwnerId: string;
   };
   urls: ApplicationUrl[];
   stakeholders: Stakeholder[];
@@ -210,7 +214,11 @@ export default function ApplicationEdit() {
     applicationType: '',
     assessmentFrequency: '',
     customFrequencyMonths: undefined,
+    remediationOwnerId: '',
   });
+  const [remediationOwnerName, setRemediationOwnerName] = useState('');
+  // Remediation owners are security staff; app owners (external) see the value but can't change it.
+  const { isExternal } = usePermissions();
   const [urls, setUrls] = useState<ApplicationUrl[]>([]);
   const [newUrl, setNewUrl] = useState({ url: '', title: '' });
   const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
@@ -312,7 +320,9 @@ export default function ApplicationEdit() {
           applicationType: app.applicationType || '',
           assessmentFrequency: app.assessmentFrequency || '',
           customFrequencyMonths: app.customFrequencyMonths,
+          remediationOwnerId: app.remediationOwnerId || '',
         };
+        setRemediationOwnerName(app.remediationOwnerName || '');
         const loadedUrls = app.urls || [];
         const loadedStakeholders = app.stakeHolders || [];
         const loadedTechnologies = app.technologies || [];
@@ -523,7 +533,8 @@ export default function ApplicationEdit() {
         appOwner: appOwner.fullName && appOwner.email ? appOwner : undefined,
         fieldValues: Object.keys(fieldValues).length > 0 ? fieldValues : undefined,
       };
-      await applicationsApi.update(id, requestData);
+      const saved = await applicationsApi.update(id, requestData);
+      setRemediationOwnerName(saved.data?.remediationOwnerName || '');
       setSavedSnapshot({ appId, formData, urls, stakeholders, technologies, appOwner, fieldValues });
       setEditingSections((prev) => {
         const next = new Set(prev);
@@ -848,6 +859,12 @@ export default function ApplicationEdit() {
                     ) : '—'}
                   </span>
                 </div>
+                <div className="app-detail-field">
+                  <span className="app-detail-field-label">Remediation Owner</span>
+                  <span className="app-detail-field-value">
+                    {formData.remediationOwnerId ? (remediationOwnerName || 'Unknown user') : '—'}
+                  </span>
+                </div>
                 {showMoreDetails && (
                 <>
                 <div className="app-detail-field app-detail-field--span2">
@@ -1069,6 +1086,23 @@ export default function ApplicationEdit() {
                       </Select>
                     </FormGroup>
                   )}
+                </FormRow>
+                <FormRow columns={3}>
+                  <FormGroup>
+                    <UserSelector
+                      label="Remediation Owner"
+                      placeholder="Search staff..."
+                      selectedUserIds={formData.remediationOwnerId ? [formData.remediationOwnerId] : []}
+                      onChange={(ids) => setFormData({ ...formData, remediationOwnerId: ids[0] || '' })}
+                      multiple={false}
+                      internalOnly
+                      disabled={isExternal}
+                    />
+                    <FormHint>
+                      Security team member who owns remediation. Copied onto each new assessment as
+                      its remediation manager. Internal users only.
+                    </FormHint>
+                  </FormGroup>
                 </FormRow>
                 <FormRow columns={3}>
                   <FormGroup>

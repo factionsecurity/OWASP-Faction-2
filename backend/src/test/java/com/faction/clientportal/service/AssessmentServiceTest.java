@@ -287,6 +287,66 @@ class AssessmentServiceTest {
         assertThat(result.getTeamName()).isEqualTo("Red Team");
     }
 
+    private CreateAssessmentRequest remediationRequest(String remediationManagerId) {
+        when(applicationRepository.findById(testApplication.getId()))
+                .thenReturn(Optional.of(testApplication));
+        when(assessmentTypeRepository.findById(testAssessmentType.getId()))
+                .thenReturn(Optional.of(testAssessmentType));
+        when(reportTemplateRepository.findByIdAndDeletedAtIsNull(testTemplate.getId()))
+                .thenReturn(Optional.of(testTemplate));
+        when(assessmentRepository.save(any(Assessment.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        return CreateAssessmentRequest.builder()
+                .name("New Assessment")
+                .applicationId(testApplication.getId())
+                .assessmentTypeId(testAssessmentType.getId())
+                .reportTemplateId(testTemplate.getId())
+                .remediationManagerId(remediationManagerId)
+                .initialFieldValues(new HashMap<>())
+                .build();
+    }
+
+    @Test
+    void testCreateAssessment_CopiesApplicationRemediationOwner() {
+        testApplication.setRemediationOwnerId("sec-lead");
+        CreateAssessmentRequest request = remediationRequest("someone-else");
+
+        AssessmentDto result = assessmentService.createAssessment(request, "testuser");
+
+        // The application's owner wins over whatever the form sent.
+        assertThat(result.getRemediationManagerId()).isEqualTo("sec-lead");
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    @Test
+    void testCreateAssessment_ApplicationWithoutOwnerAdoptsInternalPick() {
+        testApplication.setRemediationOwnerId(null);
+        User staff = User.builder().id("staff-1").username("staff").isInternal(true).build();
+        when(userRepository.findById("staff-1")).thenReturn(Optional.of(staff));
+        CreateAssessmentRequest request = remediationRequest("staff-1");
+
+        AssessmentDto result = assessmentService.createAssessment(request, "testuser");
+
+        assertThat(result.getRemediationManagerId()).isEqualTo("staff-1");
+        assertThat(testApplication.getRemediationOwnerId()).isEqualTo("staff-1");
+        verify(applicationRepository).save(testApplication);
+    }
+
+    @Test
+    void testCreateAssessment_ExternalPickIsNotAdoptedByApplication() {
+        testApplication.setRemediationOwnerId(null);
+        User external = User.builder().id("ext-1").username("ext").isInternal(false).build();
+        when(userRepository.findById("ext-1")).thenReturn(Optional.of(external));
+        CreateAssessmentRequest request = remediationRequest("ext-1");
+
+        AssessmentDto result = assessmentService.createAssessment(request, "testuser");
+
+        // Kept on the assessment as before, but never becomes the application's owner.
+        assertThat(result.getRemediationManagerId()).isEqualTo("ext-1");
+        assertThat(testApplication.getRemediationOwnerId()).isNull();
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
     @Test
     void testCreateAssessment_AnnouncesInApplicationChat() {
         // Given

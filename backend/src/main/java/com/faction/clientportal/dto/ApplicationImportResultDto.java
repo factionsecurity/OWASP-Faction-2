@@ -88,6 +88,30 @@ public class ApplicationImportResultDto {
         errors.add(error);
     }
 
+    /**
+     * Rows that were applied but with something left out — a remediation owner who matched no
+     * internal user, say. Same shape as {@link #errors}; the row still counts as created or updated.
+     */
+    @Builder.Default
+    private List<RowError> warnings = new ArrayList<>();
+
+    public List<RowError> getWarnings() {
+        return Collections.unmodifiableList(warnings);
+    }
+
+    public void setWarnings(List<RowError> warnings) {
+        this.warnings = (warnings == null) ? new ArrayList<>() : new ArrayList<>(warnings);
+    }
+
+    /** Records one applied-with-caveats row; see {@link #addError} for why this exists. */
+    public void addWarning(RowError warning) {
+        if (warning == null) return;
+        warnings.add(warning);
+    }
+
+    /** The alternate layout the file was recognized as, or null for the standard template. */
+    private String format;
+
     /** One rejected row, identified by its line in the uploaded file. */
     @Data
     @Builder

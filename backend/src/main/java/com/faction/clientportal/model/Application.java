@@ -59,6 +59,13 @@ public class Application {
     @JdbcTypeCode(SqlTypes.JSON)
     private AppOwner appOwner;
 
+    /**
+     * The internal user (security team) who owns remediation for this application. Distinct from
+     * {@link #appOwner}, who is historically an external contact: new assessments copy this onto
+     * their remediation manager when they are scheduled.
+     */
+    private String remediationOwnerId;
+
     // Legacy owner fields (kept for backward compatibility)
     private String ownerName;
     private String ownerEmail;

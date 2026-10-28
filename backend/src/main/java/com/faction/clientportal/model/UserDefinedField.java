@@ -17,7 +17,7 @@ import java.util.List;
  * Used for both template definitions and assessment field snapshots.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserDefinedField {

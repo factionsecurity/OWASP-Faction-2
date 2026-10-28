@@ -32,6 +32,10 @@ public class ApplicationDto {
 
     // Application Owner
     private AppOwnerDto appOwner;
+    /** Internal user owning remediation for the application; see Application#remediationOwnerId. */
+    private String remediationOwnerId;
+    /** Display name for {@link #remediationOwnerId}, resolved by the service. */
+    private String remediationOwnerName;
 
     // Legacy owner fields (for backward compatibility)
     private String ownerName;

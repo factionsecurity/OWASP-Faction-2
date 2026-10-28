@@ -215,7 +215,7 @@ public class AssessmentService {
             .assessorId(request.getAssessorId()) // Legacy field
             .assessorIds(assessorIds)
             .engagementManagerId(request.getEngagementManagerId())
-            .remediationManagerId(request.getRemediationManagerId())
+            .remediationManagerId(remediationManagerFor(application, request.getRemediationManagerId()))
             .assessmentDate(LocalDateTime.now())
             .startDate(request.getStartDate())
             .plannedEndDate(request.getPlannedEndDate())
@@ -267,6 +267,28 @@ public class AssessmentService {
         );
 
         return savedAssessment;
+    }
+
+    /**
+     * The remediation manager of a new assessment comes from its application: the application's
+     * remediation owner is copied on, whatever the request asked for. Only an application without
+     * one uses the requested user — and adopts them, when they are internal, so the next assessment
+     * scheduled for it picks them up without asking. Later changes on either side are independent.
+     */
+    private String remediationManagerFor(Application application, String requested) {
+        if (org.springframework.util.StringUtils.hasText(application.getRemediationOwnerId())) {
+            return application.getRemediationOwnerId();
+        }
+        if (!org.springframework.util.StringUtils.hasText(requested)) {
+            return null;
+        }
+        userRepository.findById(requested)
+            .filter(u -> u.getDeletedAt() == null && Boolean.TRUE.equals(u.getIsInternal()))
+            .ifPresent(owner -> {
+                application.setRemediationOwnerId(owner.getId());
+                applicationRepository.save(application);
+            });
+        return requested;
     }
 
     /**
