@@ -119,6 +119,7 @@ public class ApplicationService {
                 .stakeHolders(toStakeHolderList(request.getStakeHolders()))
                 .technologies(request.getTechnologies() != null ? request.getTechnologies() : new ArrayList<>())
                 .appOwner(toAppOwner(request.getAppOwner()))
+                .remediationOwnerId(remediationOwnerFor(request.getRemediationOwnerId(), null, authentication))
                 .status(request.getStatus())
                 .organizationId(request.getOrganizationId())
                 .subOrganizationId(normalizeSubOrganization(
@@ -212,6 +213,10 @@ public class ApplicationService {
         application.setStakeHolders(toStakeHolderList(request.getStakeHolders()));
         application.setTechnologies(request.getTechnologies());
         application.setAppOwner(toAppOwner(request.getAppOwner()));
+        if (request.getRemediationOwnerId() != null) {
+            application.setRemediationOwnerId(remediationOwnerFor(
+                    request.getRemediationOwnerId(), application.getRemediationOwnerId(), authentication));
+        }
         application.setStatus(request.getStatus());
         application.setOrganizationId(newOrgId);
         // Moving to another organization invalidates the old division, which belonged to the
@@ -712,6 +717,10 @@ public class ApplicationService {
                 .stakeHolders(toStakeHolderDtoList(application.getStakeHolders()))
                 .technologies(application.getTechnologies())
                 .appOwner(toAppOwnerDto(application.getAppOwner()))
+                .remediationOwnerId(application.getRemediationOwnerId())
+                .remediationOwnerName(application.getRemediationOwnerId() == null ? null
+                        : userRepository.findById(application.getRemediationOwnerId())
+                                .map(this::buildDisplayName).orElse(null))
                 .status(application.getStatus())
                 .organizationId(application.getOrganizationId())
                 .subOrganizationId(application.getSubOrganizationId())
@@ -774,6 +783,41 @@ public class ApplicationService {
                         .title(url.getTitle())
                         .build())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * The remediation owner a create or update should store. Blank clears it. Remediation owners
+     * are security staff, so only an internal caller may change one: an external app owner saving
+     * the form sends back the current value, which is allowed, but cannot pick someone else.
+     */
+    private String remediationOwnerFor(String requested, String current, Authentication authentication) {
+        String next = org.springframework.util.StringUtils.hasText(requested) ? requested.trim() : null;
+        if (java.util.Objects.equals(next, current)) {
+            return current;
+        }
+        if (authentication != null) {
+            boolean callerInternal = userRepository.findById(resolveUserId(authentication))
+                    .map(u -> Boolean.TRUE.equals(u.getIsInternal()))
+                    .orElse(false);
+            if (!callerInternal) {
+                throw new AccessDeniedException("Only internal users can change an application's remediation owner");
+            }
+        }
+        return next == null ? null : requireInternalUser(next).getId();
+    }
+
+    /**
+     * Remediation owners are staff: they fix and track findings, and their notifications link into
+     * internal views. An external or deleted account here is a mistake worth refusing loudly.
+     */
+    public User requireInternalUser(String userId) {
+        User user = userRepository.findById(userId)
+                .filter(u -> u.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+        if (!Boolean.TRUE.equals(user.getIsInternal())) {
+            throw new IllegalArgumentException("Remediation owner must be an internal user: " + user.getUsername());
+        }
+        return user;
     }
 
     private AppOwner toAppOwner(AppOwnerDto dto) {

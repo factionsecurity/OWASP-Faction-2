@@ -94,6 +94,7 @@ export default function Applications() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ApplicationImportResult | null>(null);
   const [importError, setImportError] = useState('');
+  const [importFormats, setImportFormats] = useState<string[]>([]);
 
   const [regions, setRegions] = useState<string[]>([]);
 
@@ -355,6 +356,9 @@ export default function Applications() {
     setImportResult(null);
     setImportError('');
     setShowImport(true);
+    applicationsApi.importFormats()
+      .then((res) => setImportFormats(res.data || []))
+      .catch(() => setImportFormats([]));
   };
 
   const handleDownloadTemplate = async () => {
@@ -668,6 +672,17 @@ export default function Applications() {
             (<code>Java;React</code>), URLs are <code>address|title</code>, and stakeholders are{' '}
             <code>name|email|role</code>. A filled-in list cell replaces the whole list.
           </p>
+          <p className="app-import-lede">
+            <strong>remediationOwner</strong> names an internal user by email, username or full
+            name. Application custom fields go in columns named <code>field:</code> followed by
+            the field's variable name, e.g. <code>field:tier</code>.
+          </p>
+          {importFormats.length > 0 && (
+            <p className="app-import-lede">
+              Also accepted as exported, detected from the file's header:{' '}
+              <strong>{importFormats.join(', ')}</strong>.
+            </p>
+          )}
 
           <Button variant="secondary" icon={Download} onClick={handleDownloadTemplate}>
             Download Template
@@ -700,6 +715,10 @@ export default function Applications() {
                 <span className="text-muted">of {importResult.processed} rows</span>
               </div>
 
+              {importResult.format && (
+                <p className="text-sm">Read as: {importResult.format}</p>
+              )}
+
               {importResult.createdOrganizations.length > 0 && (
                 <p className="text-sm">
                   New organizations: {importResult.createdOrganizations.join(', ')}
@@ -726,6 +745,26 @@ export default function Applications() {
                     ))}
                   </tbody>
                 </table>
+              )}
+
+              {importResult.warnings?.length > 0 && (
+                <>
+                  <p className="text-sm">Applied, with something left out:</p>
+                  <table className="app-import-errors">
+                    <thead>
+                      <tr><th>Line</th><th>Row</th><th>Note</th></tr>
+                    </thead>
+                    <tbody>
+                      {importResult.warnings.map((w) => (
+                        <tr key={`${w.line}-${w.message}`}>
+                          <td>{w.line}</td>
+                          <td>{w.identifier || '—'}</td>
+                          <td>{w.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
               )}
             </div>
           )}

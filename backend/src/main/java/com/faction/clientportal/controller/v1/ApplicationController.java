@@ -151,6 +151,21 @@ public class ApplicationController {
                 .body(applicationCsvImportService.template());
     }
 
+    @GetMapping("/import/formats")
+    @PreAuthorize("hasAuthority('super_admin')")
+    @Operation(
+            summary = "List alternate application CSV formats",
+            description = "Other systems' exports the sync accepts as uploaded, besides the template. "
+                    + "The format is detected from the file's header.",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Format names (possibly empty)"),
+                    @ApiResponse(responseCode = "403", description = "Forbidden - Super Admins only"),
+            }
+    )
+    public ResponseEntity<JsonApiResponse<List<String>>> importFormats() {
+        return ResponseUtil.success("Import formats", applicationCsvImportService.availableFormats());
+    }
+
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('super_admin')")
     @Operation(

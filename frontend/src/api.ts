@@ -674,6 +674,12 @@ export const applicationsApi = {
     return response.data;
   },
 
+  /** Admin only: other systems' exports the sync accepts as uploaded, detected by header. */
+  importFormats: async (): Promise<ApiResponse<string[]>> => {
+    const response = await api.get<ApiResponse<string[]>>('/applications/import/formats');
+    return response.data;
+  },
+
   /** Admin only: the CSV layout the sync accepts, with an example row. */
   importTemplate: async (): Promise<Blob> => {
     const response = await api.get('/applications/import/template', { responseType: 'blob' });

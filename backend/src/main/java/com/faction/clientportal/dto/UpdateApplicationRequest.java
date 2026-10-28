@@ -40,6 +40,8 @@ public class UpdateApplicationRequest {
     // Application Owner
     @Valid
     private AppOwnerDto appOwner;
+    /** Internal user owning remediation; null leaves it unchanged, an empty string clears it. */
+    private String remediationOwnerId;
 
     // Legacy owner fields (for backward compatibility)
     private String ownerName;

@@ -9,6 +9,14 @@ import com.faction.clientportal.model.Organization;
 import com.faction.clientportal.repository.ApplicationRepository;
 import com.faction.clientportal.repository.OrganizationRepository;
 import com.faction.clientportal.repository.SubOrganizationRepository;
+import com.faction.clientportal.model.FieldScope;
+import com.faction.clientportal.model.FieldType;
+import com.faction.clientportal.model.LoginOption;
+import com.faction.clientportal.model.User;
+import com.faction.clientportal.model.UserDefinedField;
+import com.faction.clientportal.repository.EntityFieldConfigRepository;
+import com.faction.clientportal.repository.UserRepository;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +26,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -35,12 +45,79 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
     @Autowired private ApplicationRepository applicationRepository;
     @Autowired private OrganizationRepository organizationRepository;
     @Autowired private SubOrganizationRepository subOrganizationRepository;
+    @Autowired private UserRepository userRepository;
+    @Autowired private EntityFieldConfigRepository entityFieldConfigRepository;
+    @Autowired private EntityFieldConfigService entityFieldConfigService;
+    @Autowired private SubOrganizationService subOrganizationService;
+
+    private static final String USER_PREFIX = "csvsync-";
+
+    /**
+     * An alternate layout for the format hook: "Legacy_Name" and "Legacy_Tier" become the name and
+     * a {@code legacy_tier} custom field, and every row gets a fixed region. Wired by hand rather
+     * than as a test bean, so this class shares the cached application context.
+     */
+    private ApplicationCsvImportService withLegacyFormat() {
+        StaticListableBeanFactory beans = new StaticListableBeanFactory();
+        beans.addBean("legacyFormat", legacyFormat());
+        return new ApplicationCsvImportService(applicationRepository, organizationRepository,
+                subOrganizationRepository, subOrganizationService, entityFieldConfigService, userRepository,
+                beans.getBeanProvider(ApplicationCsvFormat.class));
+    }
+
+    private static ApplicationCsvFormat legacyFormat() {
+        return new ApplicationCsvFormat() {
+            @Override public String name() { return "Legacy export"; }
+
+            @Override public boolean recognizes(List<String> header) {
+                return header.contains("Legacy_Name");
+            }
+
+            @Override public List<UserDefinedField> customFields() {
+                return List.of(UserDefinedField.builder()
+                        .variableName("legacy_tier").displayName("Legacy Tier")
+                        .fieldType(FieldType.STRING).build());
+            }
+
+            @Override public List<List<String>> toTemplate(List<List<String>> rows) {
+                List<List<String>> out = new ArrayList<>();
+                out.add(List.of("name", FIELD_COLUMN_PREFIX + "legacy_tier", "region"));
+                for (List<String> row : rows.subList(1, rows.size())) {
+                    out.add(List.of(row.get(0), row.get(1), "LATAM"));
+                }
+                return out;
+            }
+        };
+    }
 
     @BeforeEach
     void setUp() {
         applicationRepository.deleteAll();
         subOrganizationRepository.deleteAll();
         organizationRepository.deleteAll();
+        entityFieldConfigRepository.findByScope(FieldScope.APPLICATION)
+                .ifPresent(entityFieldConfigRepository::delete);
+        userRepository.deleteAll(userRepository.findAll().stream()
+                .filter(u -> u.getUsername().startsWith(USER_PREFIX)).toList());
+    }
+
+    private User user(String username, String first, String last, boolean internal) {
+        return userRepository.save(User.builder()
+                .username(USER_PREFIX + username)
+                .email(username + "@csvsync.test")
+                .firstName(first)
+                .lastName(last)
+                .password("hashed")
+                .loginOption(LoginOption.NATIVE)
+                .roleIds(List.of())
+                .isInternal(internal)
+                .build());
+    }
+
+    private UserDefinedField field(String variable, FieldType type, String... options) {
+        return UserDefinedField.builder()
+                .variableName(variable).displayName(variable).fieldType(type)
+                .dropdownOptions(new ArrayList<>(List.of(options))).build();
     }
 
     private com.faction.clientportal.dto.ApplicationImportResultDto upload(String csv) throws IOException {
@@ -230,6 +307,54 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
     }
 
     @Test
+    void aNewAppIdDoesNotTakeOverAnApplicationKnownByAnotherAppId() throws IOException {
+        applicationRepository.save(Application.builder().appId("APP-1").name("Payroll").region("APAC").build());
+
+        var result = upload("""
+                appId,name,region
+                APP-99,Payroll,EMEA
+                """);
+
+        assertThat(result.getCreated()).isEqualTo(1);
+        assertThat(result.getUpdated()).isZero();
+        assertThat(applicationRepository.findByAppId("APP-1").orElseThrow().getRegion()).isEqualTo("APAC");
+        assertThat(applicationRepository.findByAppId("APP-99").orElseThrow().getName()).isEqualTo("Payroll");
+    }
+
+    @Test
+    void anAppIdClaimsASameNamedApplicationThatHasNoAppIdYet() throws IOException {
+        applicationRepository.save(Application.builder().name("Payroll").build());
+
+        var result = upload("""
+                appId,name
+                APP-7,payroll
+                """);
+
+        assertThat(result.getUpdated()).isEqualTo(1);
+        assertThat(applicationRepository.findAll()).singleElement()
+                .satisfies(app -> assertThat(app.getAppId()).isEqualTo("APP-7"));
+    }
+
+    @Test
+    void anAmbiguousNameFailsOnlyThatRow() throws IOException {
+        applicationRepository.save(Application.builder().name("Payroll").build());
+        applicationRepository.save(Application.builder().name("Payroll").build());
+
+        var result = upload("""
+                name,region
+                Payroll,EMEA
+                Ledger,APAC
+                """);
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getCreated()).isEqualTo(1);
+        assertThat(result.getErrors()).singleElement().satisfies(error -> {
+            assertThat(error.getLine()).isEqualTo(2);
+            assertThat(error.getMessage()).contains("matches 2 applications");
+        });
+    }
+
+    @Test
     void importsTechnologiesUrlsAndStakeholders() throws IOException {
         upload("""
                 name,technologies,urls,stakeholders
@@ -358,5 +483,128 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
         assertThat(result.getCreated()).isEqualTo(1);
         assertThat(result.getErrors()).isEmpty();
         assertThat(applicationRepository.findByAppId("APP-001")).isPresent();
+    }
+    // ── Remediation owner ────────────────────────────────────────────────────
+
+    @Test
+    void remediationOwnerMatchesInternalUserByEmailUsernameOrName() throws IOException {
+        User priya = user("priya", "Priya", "Raman", true);
+        User tom = user("tom", "Tom", "Okafor", true);
+        User ana = user("ana", "Ana", "Silva", true);
+
+        var result = upload("""
+                name,remediationOwner
+                By Email,PRIYA@csvsync.test
+                By Username,csvsync-tom
+                By Name,"Silva, Ana"
+                """);
+
+        assertThat(result.getWarnings()).isEmpty();
+        assertThat(applicationRepository.findByNameIgnoreCase("By Email").orElseThrow().getRemediationOwnerId())
+                .isEqualTo(priya.getId());
+        assertThat(applicationRepository.findByNameIgnoreCase("By Username").orElseThrow().getRemediationOwnerId())
+                .isEqualTo(tom.getId());
+        assertThat(applicationRepository.findByNameIgnoreCase("By Name").orElseThrow().getRemediationOwnerId())
+                .isEqualTo(ana.getId());
+    }
+
+    @Test
+    void unmatchedOrExternalRemediationOwnerIsAWarningNotAFailure() throws IOException {
+        user("client", "Casey", "Client", false);
+        user("twin1", "Sam", "Lee", true);
+        user("twin2", "Sam", "Lee", true);
+
+        var result = upload("""
+                name,remediationOwner
+                External,client@csvsync.test
+                Nobody,ghost@csvsync.test
+                Ambiguous,Sam Lee
+                """);
+
+        // Every row is still written; the owner is just left unset.
+        assertThat(result.getCreated()).isEqualTo(3);
+        assertThat(result.getFailed()).isZero();
+        assertThat(result.getWarnings())
+                .extracting(e -> e.getLine(), e -> e.getIdentifier())
+                .containsExactly(tuple(2, "External"), tuple(3, "Nobody"), tuple(4, "Ambiguous"));
+        assertThat(result.getWarnings().get(2).getMessage()).contains("matches 2 internal users");
+        assertThat(applicationRepository.findByNameIgnoreCase("External").orElseThrow().getRemediationOwnerId())
+                .isNull();
+    }
+
+    // ── Custom field columns ─────────────────────────────────────────────────
+
+    @Test
+    void fieldColumnsSetCustomFieldsAndDropdownsTakeTheOptionSpelling() throws IOException {
+        List<UserDefinedField> defs = entityFieldConfigService.ensureFields(FieldScope.APPLICATION,
+                List.of(field("tier", FieldType.STRING),
+                        field("lifecycle", FieldType.DROPDOWN, "Operational", "Draft")), "admin");
+        String tierId = defs.get(0).getId();
+        String lifecycleId = defs.get(1).getId();
+
+        var result = upload("""
+                name,field:tier,field:lifecycle
+                Checkout,Tier 1,OPERATIONAL
+                Billing,Tier 2,Retired
+                """);
+
+        assertThat(result.getCreated()).isEqualTo(1);
+        assertThat(result.getErrors()).singleElement().satisfies(e -> {
+            assertThat(e.getLine()).isEqualTo(3);
+            assertThat(e.getMessage()).contains("'Retired' is not an option for lifecycle");
+        });
+        Application app = applicationRepository.findByNameIgnoreCase("Checkout").orElseThrow();
+        assertThat(app.getFieldValues())
+                .containsEntry(tierId, "Tier 1")
+                .containsEntry(lifecycleId, "Operational");
+    }
+
+    @Test
+    void unknownCustomFieldColumnRejectsTheFile() {
+        assertThatThrownBy(() -> upload("""
+                name,field:nope
+                Checkout,x
+                """))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown application custom field(s): nope");
+    }
+
+    // ── Alternate formats ────────────────────────────────────────────────────
+
+    private com.faction.clientportal.dto.ApplicationImportResultDto uploadLegacy(String csv) throws IOException {
+        return withLegacyFormat().importCsv(new MockMultipartFile(
+                "file", "apps.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)), "admin");
+    }
+
+    @Test
+    void recognizedFormatIsTranslatedAndCreatesItsCustomFields() throws IOException {
+        var result = uploadLegacy("""
+                Legacy_Name,Legacy_Tier
+                Payroll,Gold
+                """);
+
+        assertThat(result.getFormat()).isEqualTo("Legacy export");
+        assertThat(result.getCreated()).isEqualTo(1);
+        UserDefinedField tier = entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION).stream()
+                .filter(f -> f.getVariableName().equals("legacy_tier")).findFirst().orElseThrow();
+        Application app = applicationRepository.findByNameIgnoreCase("Payroll").orElseThrow();
+        assertThat(app.getRegion()).isEqualTo("LATAM");
+        assertThat(app.getFieldValues()).containsEntry(tier.getId(), "Gold");
+
+        // A second upload reuses the field rather than adding another.
+        uploadLegacy("""
+                Legacy_Name,Legacy_Tier
+                Payroll,Silver
+                """);
+        assertThat(entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION)).hasSize(1);
+    }
+
+    @Test
+    void templateUploadReportsNoFormat() throws IOException {
+        var result = upload("""
+                name
+                Checkout
+                """);
+        assertThat(result.getFormat()).isNull();
     }
 }

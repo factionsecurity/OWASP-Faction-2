@@ -98,6 +98,41 @@ public class EntityFieldConfigService {
     }
 
     /**
+     * Adds any of these fields whose {@code variableName} the scope doesn't define yet, leaving
+     * existing ones exactly as configured — an admin may have renamed a field or edited its
+     * options since it was first created. Returns the scope's full definition list afterwards.
+     */
+    public List<UserDefinedField> ensureFields(FieldScope scope, List<UserDefinedField> wanted, String userId) {
+        EntityFieldConfig config = entityFieldConfigRepository.findByScope(scope)
+                .orElseGet(() -> EntityFieldConfig.builder()
+                        .scope(scope)
+                        .fieldDefinitions(new ArrayList<>())
+                        .build());
+        List<UserDefinedField> fields = new ArrayList<>(config.getFieldDefinitions());
+        boolean added = false;
+        for (UserDefinedField field : wanted) {
+            boolean exists = fields.stream()
+                    .anyMatch(f -> f.getVariableName() != null
+                            && f.getVariableName().equalsIgnoreCase(field.getVariableName()));
+            if (!exists) {
+                fields.add(field.toBuilder()
+                        .id(UUID.randomUUID().toString())
+                        .fieldScope(scope)
+                        .displayOrder(fields.size())
+                        .build());
+                added = true;
+            }
+        }
+        if (!added) {
+            return fields;
+        }
+        config.setFieldDefinitions(fields);
+        config.setLastUpdatedBy(userId);
+        config.setUpdatedAt(LocalDateTime.now());
+        return entityFieldConfigRepository.save(config).getFieldDefinitions();
+    }
+
+    /**
      * Returns field definitions as DTOs for a scope.
      */
     public List<UserDefinedFieldDto> getFieldDefinitionDtos(FieldScope scope) {

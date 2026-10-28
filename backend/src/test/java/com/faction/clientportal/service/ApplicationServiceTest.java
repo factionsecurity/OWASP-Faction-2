@@ -200,6 +200,77 @@ class ApplicationServiceTest {
                 .hasMessageContaining("appId 'ASMT-2' already exists");
     }
 
+    // ── Remediation owner ─────────────────────────────────────────────────────
+
+    private Application appWithOwner(String ownerId) {
+        Application existing = Application.builder()
+                .id("app-1").name("My App").remediationOwnerId(ownerId)
+                .createdAt(LocalDateTime.now()).build();
+        when(applicationRepository.findById("app-1")).thenReturn(Optional.of(existing));
+        return existing;
+    }
+
+    private UpdateApplicationRequest ownerRequest(String ownerId) {
+        return UpdateApplicationRequest.builder().name("My App").remediationOwnerId(ownerId).build();
+    }
+
+    @Test
+    void updateApplication_setsInternalRemediationOwnerAndResolvesTheirName() {
+        appWithOwner(null);
+        User staff = User.builder().id("staff-1").username("staff").firstName("Priya").lastName("Raman")
+                .isInternal(true).build();
+        when(userRepository.findById("staff-1")).thenReturn(Optional.of(staff));
+
+        ApplicationDto dto = applicationService.updateApplication("app-1", ownerRequest("staff-1"), "user-1");
+
+        assertThat(dto.getRemediationOwnerId()).isEqualTo("staff-1");
+        assertThat(dto.getRemediationOwnerName()).isEqualTo("Priya Raman");
+    }
+
+    @Test
+    void updateApplication_rejectsExternalRemediationOwner() {
+        appWithOwner(null);
+        when(userRepository.findById("ext-1"))
+                .thenReturn(Optional.of(User.builder().id("ext-1").username("client").isInternal(false).build()));
+
+        assertThatThrownBy(() -> applicationService.updateApplication("app-1", ownerRequest("ext-1"), "user-1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be an internal user");
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void updateApplication_nullKeepsRemediationOwnerAndBlankClearsIt() {
+        Application existing = appWithOwner("staff-1");
+
+        applicationService.updateApplication("app-1", ownerRequest(null), "user-1");
+        assertThat(existing.getRemediationOwnerId()).isEqualTo("staff-1");
+
+        applicationService.updateApplication("app-1", ownerRequest(""), "user-1");
+        assertThat(existing.getRemediationOwnerId()).isNull();
+    }
+
+    @Test
+    void updateApplication_externalCallerCannotChangeRemediationOwner() {
+        appWithOwner("staff-1");
+        var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                "client", null, List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("super_admin")));
+        when(userRepository.findByUsername("client"))
+                .thenReturn(Optional.of(User.builder().id("ext-1").username("client").isInternal(false).build()));
+        when(userRepository.findById("ext-1"))
+                .thenReturn(Optional.of(User.builder().id("ext-1").username("client").isInternal(false).build()));
+
+        when(userRepository.findById("staff-1"))
+                .thenReturn(Optional.of(User.builder().id("staff-1").username("staff").isInternal(true).build()));
+
+        // Sending back the current owner, as a full-form save does, is fine...
+        applicationService.updateApplication("app-1", ownerRequest("staff-1"), "ext-1", auth);
+
+        // ...but picking someone else is not.
+        assertThatThrownBy(() -> applicationService.updateApplication("app-1", ownerRequest("other"), "ext-1", auth))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
+
     @Test
     void updateApplication_keepsAppIdWhenNotProvided() {
         Application existing = Application.builder()

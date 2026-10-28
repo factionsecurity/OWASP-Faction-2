@@ -40,6 +40,8 @@ public class CreateApplicationRequest {
     // Application Owner
     @Valid
     private AppOwnerDto appOwner;
+    /** Internal user owning remediation for the application. */
+    private String remediationOwnerId;
 
     // Legacy owner fields (for backward compatibility)
     private String ownerName;
