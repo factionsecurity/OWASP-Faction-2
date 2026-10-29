@@ -100,14 +100,17 @@ public class EmailNotificationConfigService {
                 if (update.getKey() == null || update.getKey().isBlank()) continue;
                 if (EmailNotificationEvent.fromKey(update.getKey()) == null) continue; // unknown key
 
-                EventSettings settings = events
-                        .getOrDefault(update.getKey(), EventSettings.builder().build());
+                // An unsaved event starts from its defaults, so switching one audience off on a
+                // default-on event leaves the others on rather than resetting them all.
+                EventSettings settings = events.containsKey(update.getKey())
+                        ? events.get(update.getKey()) : config.settingsFor(update.getKey());
 
                 if (update.getNotifyAssessors() != null)      settings.setNotifyAssessors(update.getNotifyAssessors());
                 if (update.getNotifyStakeholders() != null)   settings.setNotifyStakeholders(update.getNotifyStakeholders());
                 if (update.getNotifyAppOwner() != null)       settings.setNotifyAppOwner(update.getNotifyAppOwner());
                 if (update.getIncludeMentionedUsers() != null) settings.setIncludeMentionedUsers(update.getIncludeMentionedUsers());
                 if (update.getNotifyOrgUsers() != null)       settings.setNotifyOrgUsers(update.getNotifyOrgUsers());
+                if (update.getNotifyAssignedUsers() != null)  settings.setNotifyAssignedUsers(update.getNotifyAssignedUsers());
                 if (update.getCustomMessage() != null) {
                     settings.setCustomMessage(update.getCustomMessage().isBlank()
                             ? null : update.getCustomMessage().trim());
@@ -141,6 +144,7 @@ public class EmailNotificationConfigService {
                         .notifyAppOwner(source.isNotifyAppOwner())
                         .includeMentionedUsers(source.isIncludeMentionedUsers())
                         .notifyOrgUsers(source.isNotifyOrgUsers())
+                        .notifyAssignedUsers(source.isNotifyAssignedUsers())
                         .customMessage(source.getCustomMessage())
                         .build());
                 changed = true;
@@ -219,6 +223,7 @@ public class EmailNotificationConfigService {
                 .notifyAppOwner(settings.isNotifyAppOwner())
                 .includeMentionedUsers(settings.isIncludeMentionedUsers())
                 .notifyOrgUsers(settings.isNotifyOrgUsers())
+                .notifyAssignedUsers(settings.isNotifyAssignedUsers())
                 .customMessage(settings.getCustomMessage())
                 .perStage(event.isPerStage())
                 .stageId(stageId)

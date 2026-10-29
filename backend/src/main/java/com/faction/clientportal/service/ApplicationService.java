@@ -53,6 +53,7 @@ public class ApplicationService {
     private final MentionQueueService mentionQueueService;
     private final NotificationService notificationService;
     private final com.faction.clientportal.service.email.ThreadCommentEmailSender threadCommentEmailSender;
+    private final com.faction.clientportal.service.email.CommentAudienceNotifier commentAudienceNotifier;
     private final SubOrganizationService subOrganizationService;
     private final VulnerabilityRepository vulnerabilityRepository;
     private final com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
@@ -882,6 +883,7 @@ public class ApplicationService {
         }
 
         notifySubscribers(application, comment, username, contextLink);
+        notifyApplicationAudience(application, comment, username, contextLink);
 
         return application.getComments().stream()
                 .map(ApplicationCommentDto::fromEntity)
@@ -974,6 +976,26 @@ public class ApplicationService {
                         subscriber, application.getId(), e.getMessage());
             }
         }
+    }
+
+    /**
+     * Emails the application's app owner, assigned users and organization users about the
+     * comment, as the "Application comment" email setting routes it. Skips everyone the thread
+     * has already told: its followers, the people mentioned, and the author.
+     */
+    private void notifyApplicationAudience(Application application, ApplicationComment comment,
+                                           String authorUsername, String contextLink) {
+        Set<String> alreadyNotified = new HashSet<>(mentionQueueService.extractMentions(comment.getContent()));
+        if (application.getSubscribers() != null) alreadyNotified.addAll(application.getSubscribers());
+        alreadyNotified.add(authorUsername);
+
+        commentAudienceNotifier.notify(EmailNotificationEvent.APPLICATION_COMMENT, application,
+                new com.faction.clientportal.service.email.CommentAudienceNotifier.Comment(
+                        MentionTargetType.APPLICATION, application.getId(), null, application.getName(),
+                        authorUsername,
+                        comment.getAuthorName() != null ? comment.getAuthorName() : authorUsername,
+                        comment.getContent(), contextLink),
+                alreadyNotified);
     }
 
     /**

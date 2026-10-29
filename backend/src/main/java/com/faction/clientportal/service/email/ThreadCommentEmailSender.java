@@ -97,6 +97,30 @@ public class ThreadCommentEmailSender {
         replyTokens.settle(token, emailService.send(message).orElse(null));
     }
 
+    /**
+     * The same comment email for an address with no Faction account — an app owner recorded
+     * only as a name and email. No reply token, so no reply-by-email and no unsubscribe link:
+     * both are keyed to an account. Marked auto-submitted, like the other event email that
+     * reaches outside addresses.
+     */
+    @Async("mailExecutor")
+    public void sendToAddress(String to, String authorName, String commentHtml,
+                              String subject, String contextLink) {
+        if (to == null || to.isBlank() || !emailService.isConfigured()) return;
+
+        emailService.send(EmailMessage.builder()
+                .to(to)
+                .subject("Faction — new comment on " + subject)
+                .htmlBody(emailService.renderShell(
+                        "New comment on " + subject,
+                        body(authorName, commentHtml, false),
+                        "View in Faction",
+                        contextLink,
+                        null))
+                .autoSubmitted(true)
+                .build());
+    }
+
     private String body(String authorName, String commentHtml, boolean replyable) {
         StringBuilder sb = new StringBuilder();
 

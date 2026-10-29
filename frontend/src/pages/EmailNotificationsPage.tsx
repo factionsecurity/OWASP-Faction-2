@@ -19,6 +19,7 @@ const AUDIENCES: Array<{ key: EmailNotificationAudience; label: string; field: S
   { key: 'APP_OWNER', label: 'App owner', field: 'notifyAppOwner' },
   { key: 'MENTIONED_USERS', label: 'Mentioned users', field: 'includeMentionedUsers' },
   { key: 'ORG_USERS', label: 'Org access', field: 'notifyOrgUsers' },
+  { key: 'ASSIGNED_USERS', label: 'Assigned users', field: 'notifyAssignedUsers' },
 ];
 
 type SwitchField =
@@ -26,7 +27,16 @@ type SwitchField =
   | 'notifyStakeholders'
   | 'notifyAppOwner'
   | 'includeMentionedUsers'
-  | 'notifyOrgUsers';
+  | 'notifyOrgUsers'
+  | 'notifyAssignedUsers';
+
+/**
+ * Comment emails are the discussion thread's own email, which carries the comment itself and
+ * has no place for added wording, so these events offer no custom message.
+ */
+function isCommentEvent(e: EmailNotificationEvent): boolean {
+  return e.event.endsWith('_COMMENT');
+}
 
 /** Sections, in the order they read: the assessment lifecycle, then what follows from it. */
 const GROUPS: Array<{ title: string; hint: string; match: (e: EmailNotificationEvent) => boolean }> = [
@@ -41,11 +51,18 @@ const GROUPS: Array<{ title: string; hint: string; match: (e: EmailNotificationE
     match: e => e.event.startsWith('RETEST_'),
   },
   {
+    title: 'Comments',
+    hint: 'Sent when someone comments on an application or a finding, to the people below as '
+        + 'well as everyone following the discussion. Finding comments only go out once the '
+        + 'assessment is finalized. Nobody gets the same comment twice.',
+    match: isCommentEvent,
+  },
+  {
     title: 'Vulnerabilities',
     hint: 'Due-date reminders are digests — one email covering every finding across all '
         + 'applications and organizations, never one email per finding. Findings in the '
         + 'Exception state are never included.',
-    match: e => e.event.startsWith('VULNERABILITY_'),
+    match: e => e.event.startsWith('VULNERABILITY_') && !isCommentEvent(e),
   },
 ];
 
@@ -269,16 +286,20 @@ export default function EmailNotificationsPage() {
                       ))}
 
                       <td className="email-notifications-audience">
-                        <button
-                          type="button"
-                          className={`email-notifications-message-btn${
-                            event.customMessage ? ' email-notifications-message-btn--set' : ''}`}
-                          onClick={() => toggleMessageEditor(event)}
-                          title={event.customMessage || 'Add wording of your own'}
-                          aria-label={`${eventLabel} — custom message`}
-                        >
-                          {editing ? <X size={14} /> : <MessageSquareText size={14} />}
-                        </button>
+                        {isCommentEvent(event) ? (
+                          <span className="email-notifications-na" aria-hidden="true">—</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className={`email-notifications-message-btn${
+                              event.customMessage ? ' email-notifications-message-btn--set' : ''}`}
+                            onClick={() => toggleMessageEditor(event)}
+                            title={event.customMessage || 'Add wording of your own'}
+                            aria-label={`${eventLabel} — custom message`}
+                          >
+                            {editing ? <X size={14} /> : <MessageSquareText size={14} />}
+                          </button>
+                        )}
                       </td>
                     </tr>,
 
