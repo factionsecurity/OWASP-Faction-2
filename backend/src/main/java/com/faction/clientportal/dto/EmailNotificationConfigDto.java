@@ -56,6 +56,7 @@ public class EmailNotificationConfigDto {
         private boolean notifyAppOwner;
         private boolean includeMentionedUsers;
         private boolean notifyOrgUsers;
+        private boolean notifyAssignedUsers;
 
         private String customMessage;
 

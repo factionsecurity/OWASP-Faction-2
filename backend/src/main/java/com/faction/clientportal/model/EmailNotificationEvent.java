@@ -75,7 +75,18 @@ public enum EmailNotificationEvent {
             EmailNotificationAudience.STAKEHOLDERS,
             EmailNotificationAudience.APP_OWNER,
             EmailNotificationAudience.MENTIONED_USERS,
-            EmailNotificationAudience.ORG_USERS);
+            EmailNotificationAudience.ORG_USERS),
+    APPLICATION_COMMENT("Application comment",
+            "When someone comments in an application's discussion.",
+            EmailNotificationAudience.APP_OWNER,
+            EmailNotificationAudience.ORG_USERS,
+            EmailNotificationAudience.ASSIGNED_USERS),
+    VULNERABILITY_COMMENT("Vulnerability comment",
+            "When someone comments on a finding. Only for finalized assessments, the findings "
+                    + "customers can see.",
+            EmailNotificationAudience.APP_OWNER,
+            EmailNotificationAudience.ORG_USERS,
+            EmailNotificationAudience.ASSIGNED_USERS);
 
     /** Separates the event from its remediation stage id in a settings key. */
     public static final String KEY_SEPARATOR = ":";
@@ -98,6 +109,16 @@ public enum EmailNotificationEvent {
 
     public boolean supports(EmailNotificationAudience audience) {
         return audiences.contains(audience);
+    }
+
+    /**
+     * True when every audience this event offers is on until an admin says otherwise. Only the
+     * comment events: the people they reach are the application's own owners and users, who
+     * expect to hear about its discussion, so an unconfigured install should not stay silent.
+     * Every other event stays off until switched on.
+     */
+    public boolean isOnByDefault() {
+        return this == APPLICATION_COMMENT || this == VULNERABILITY_COMMENT;
     }
 
     /** True when this event is configured once per remediation stage rather than once overall. */

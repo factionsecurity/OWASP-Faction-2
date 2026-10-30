@@ -1976,7 +1976,8 @@ export type EmailNotificationAudience =
   | 'STAKEHOLDERS'
   | 'APP_OWNER'
   | 'MENTIONED_USERS'
-  | 'ORG_USERS';
+  | 'ORG_USERS'
+  | 'ASSIGNED_USERS';
 
 export interface EmailNotificationEvent {
   /** Settings key, e.g. `ASSESSMENT_CREATED` or `VULNERABILITY_CLOSED:staging`. */
@@ -1992,6 +1993,7 @@ export interface EmailNotificationEvent {
   notifyAppOwner: boolean;
   includeMentionedUsers: boolean;
   notifyOrgUsers: boolean;
+  notifyAssignedUsers: boolean;
   customMessage?: string | null;
   perStage: boolean;
   stageId?: string | null;
@@ -2021,6 +2023,7 @@ export interface UpdateEmailNotificationConfigRequest {
     notifyAppOwner?: boolean;
     includeMentionedUsers?: boolean;
     notifyOrgUsers?: boolean;
+    notifyAssignedUsers?: boolean;
     /** Empty string clears the wording; omitted leaves it unchanged. */
     customMessage?: string;
   }>;

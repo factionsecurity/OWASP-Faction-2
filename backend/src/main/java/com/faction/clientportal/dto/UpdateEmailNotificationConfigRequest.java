@@ -31,6 +31,7 @@ public class UpdateEmailNotificationConfigRequest {
         private Boolean notifyAppOwner;
         private Boolean includeMentionedUsers;
         private Boolean notifyOrgUsers;
+        private Boolean notifyAssignedUsers;
 
         /** Empty string clears the custom wording; null leaves it unchanged. */
         private String customMessage;

@@ -31,7 +31,9 @@ import java.util.Map;
  *
  * <p>Every switch defaults <em>off</em>. These emails go to stakeholders and app owners —
  * people outside the platform — so an upgrade must never start mailing them because a
- * default said so.
+ * default said so. The exception is the comment events
+ * ({@link EmailNotificationEvent#isOnByDefault()}), whose audiences start on; the master
+ * switch still governs them.
  */
 @Entity
 @Table(name = "email_notification_config")
@@ -112,6 +114,10 @@ public class EmailNotificationConfig {
         @Builder.Default
         private boolean notifyOrgUsers = false;
 
+        /** Whether users assigned directly to the application are copied in. */
+        @Builder.Default
+        private boolean notifyAssignedUsers = false;
+
         /**
          * Extra wording appended to the email body — "Please schedule remediation", "To
          * avoid escalation, schedule a retest or update the team". Plain text; it is
@@ -126,6 +132,7 @@ public class EmailNotificationConfig {
                 case APP_OWNER -> notifyAppOwner;
                 case MENTIONED_USERS -> includeMentionedUsers;
                 case ORG_USERS -> notifyOrgUsers;
+                case ASSIGNED_USERS -> notifyAssignedUsers;
                 // Always on, and never consulted: the resolver adds the owner without asking.
                 // Present so this switch stays exhaustive over the enum.
                 case REMEDIATION_OWNER -> true;
@@ -139,16 +146,32 @@ public class EmailNotificationConfig {
          * an {@code isX()} method as a property: without it the derived value was written
          * into the column and then failed to read back as an unknown field.
          */
+        /** What an event reads as before an admin has saved anything for it. */
+        public static EventSettings defaultsFor(EmailNotificationEvent event) {
+            EventSettings settings = EventSettings.builder().build();
+            if (event == null || !event.isOnByDefault()) return settings;
+            settings.setNotifyAssessors(event.supports(EmailNotificationAudience.ASSESSORS));
+            settings.setNotifyStakeholders(event.supports(EmailNotificationAudience.STAKEHOLDERS));
+            settings.setNotifyAppOwner(event.supports(EmailNotificationAudience.APP_OWNER));
+            settings.setIncludeMentionedUsers(event.supports(EmailNotificationAudience.MENTIONED_USERS));
+            settings.setNotifyOrgUsers(event.supports(EmailNotificationAudience.ORG_USERS));
+            settings.setNotifyAssignedUsers(event.supports(EmailNotificationAudience.ASSIGNED_USERS));
+            return settings;
+        }
+
         @JsonIgnore
         public boolean isAnyAudienceEnabled() {
             return notifyAssessors || notifyStakeholders || notifyAppOwner
-                    || includeMentionedUsers || notifyOrgUsers;
+                    || includeMentionedUsers || notifyOrgUsers || notifyAssignedUsers;
         }
     }
 
-    /** Settings for a key, never null — an unconfigured event reads as all-off. */
+    /**
+     * Settings for a key, never null. An unconfigured event reads as all-off, or with every
+     * audience it offers on when the event is {@link EmailNotificationEvent#isOnByDefault()}.
+     */
     public EventSettings settingsFor(String key) {
-        if (events == null) return EventSettings.builder().build();
-        return events.getOrDefault(key, EventSettings.builder().build());
+        EventSettings stored = events == null ? null : events.get(key);
+        return stored != null ? stored : EventSettings.defaultsFor(EmailNotificationEvent.fromKey(key));
     }
 }

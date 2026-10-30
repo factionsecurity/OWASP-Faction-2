@@ -84,6 +84,10 @@ public class EmailService {
                 // straight from the client, and our endpoint is reached through a
                 // confirmation page so link prefetchers cannot unsubscribe people.
             }
+            if (message.getThreadId() != null && !message.getThreadId().isBlank()) {
+                mime.setHeader("References", message.getThreadId());
+                mime.setHeader("In-Reply-To", message.getThreadId());
+            }
             if (message.isAutoSubmitted()) {
                 // RFC 3834: tells other automatic responders not to reply to this, which
                 // is what stops two systems answering each other indefinitely.
