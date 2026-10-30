@@ -43,9 +43,11 @@ public class ThreadCommentEmailSender {
     private final ReplyTokenService replyTokens;
     private final UserRepository userRepository;
     private final NotificationPreferenceService preferenceService;
+    private final EmailThread emailThread;
 
     /**
-     * @param subject       the item being discussed, e.g. the vulnerability name
+     * @param subject       the item being discussed, e.g. the vulnerability name; the
+     *                      email's subject line is built from it by {@link EmailThread}
      * @param notificationType drives the per-category opt-out check
      */
     @Async("mailExecutor")
@@ -83,7 +85,7 @@ public class ThreadCommentEmailSender {
 
         EmailMessage message = EmailMessage.builder()
                 .to(to)
-                .subject("Faction — new comment on " + subject)
+                .subject(emailThread.subject(targetType, subject, assessmentId))
                 .htmlBody(emailService.renderShell(
                         "New comment on " + subject,
                         body(authorName, commentHtml, replyable),
@@ -92,6 +94,7 @@ public class ThreadCommentEmailSender {
                         footer))
                 .replyTo(replyable ? replyTokens.replyToAddress(replyMailbox, token.getId()) : null)
                 .unsubscribeUrl(unsubscribeUrl)
+                .threadId(EmailThread.threadId(targetType, targetId))
                 .build();
 
         replyTokens.settle(token, emailService.send(message).orElse(null));
@@ -105,18 +108,20 @@ public class ThreadCommentEmailSender {
      */
     @Async("mailExecutor")
     public void sendToAddress(String to, String authorName, String commentHtml,
-                              String subject, String contextLink) {
+                              String subject, String contextLink,
+                              MentionTargetType targetType, String targetId, String assessmentId) {
         if (to == null || to.isBlank() || !emailService.isConfigured()) return;
 
         emailService.send(EmailMessage.builder()
                 .to(to)
-                .subject("Faction — new comment on " + subject)
+                .subject(emailThread.subject(targetType, subject, assessmentId))
                 .htmlBody(emailService.renderShell(
                         "New comment on " + subject,
                         body(authorName, commentHtml, false),
                         "View in Faction",
                         contextLink,
                         null))
+                .threadId(EmailThread.threadId(targetType, targetId))
                 .autoSubmitted(true)
                 .build());
     }

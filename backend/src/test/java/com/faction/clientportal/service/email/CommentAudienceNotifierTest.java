@@ -86,7 +86,7 @@ class CommentAudienceNotifierTest {
         verify(threadCommentEmailSender).send(eq("carol"), eq("Bob Author"), eq("<p>status update</p>"),
                 eq("Payments API"), any(), eq(MentionTargetType.APPLICATION), eq("app-1"), any(),
                 eq("COMMENT_ADDED"));
-        verify(threadCommentEmailSender, never()).sendToAddress(any(), any(), any(), any(), any());
+        verify(threadCommentEmailSender, never()).sendToAddress(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -96,7 +96,8 @@ class CommentAudienceNotifierTest {
         notifier.notify(EmailNotificationEvent.APPLICATION_COMMENT, application, comment, Set.of("bob"));
 
         verify(threadCommentEmailSender).sendToAddress(eq("dana@example.com"), eq("Bob Author"),
-                eq("<p>status update</p>"), eq("Payments API"), any());
+                eq("<p>status update</p>"), eq("Payments API"), any(),
+                eq(MentionTargetType.APPLICATION), eq("app-1"), any());
         verifyNoInteractions(notificationService);
     }
 
@@ -114,7 +115,7 @@ class CommentAudienceNotifierTest {
 
         verifyNoInteractions(notificationService);
         verify(threadCommentEmailSender, never()).send(any(), any(), any(), any(), any(), any(), any(), any(), any());
-        verify(threadCommentEmailSender, never()).sendToAddress(any(), any(), any(), any(), any());
+        verify(threadCommentEmailSender, never()).sendToAddress(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -126,7 +127,7 @@ class CommentAudienceNotifierTest {
 
         notifier.notify(EmailNotificationEvent.APPLICATION_COMMENT, application, comment, Set.of("bob"));
 
-        verify(threadCommentEmailSender).sendToAddress(eq("old@example.com"), any(), any(), any(), any());
+        verify(threadCommentEmailSender).sendToAddress(eq("old@example.com"), any(), any(), any(), any(), any(), any(), any());
         verifyNoInteractions(notificationService);
     }
 
@@ -150,6 +151,6 @@ class CommentAudienceNotifierTest {
 
         notifier.notify(EmailNotificationEvent.APPLICATION_COMMENT, application, comment, Set.of("bob"));
 
-        verify(threadCommentEmailSender).sendToAddress(eq("dana@example.com"), any(), any(), any(), any());
+        verify(threadCommentEmailSender).sendToAddress(eq("dana@example.com"), any(), any(), any(), any(), any(), any(), any());
     }
 }

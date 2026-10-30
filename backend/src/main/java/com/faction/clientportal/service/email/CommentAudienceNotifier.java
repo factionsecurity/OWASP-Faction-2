@@ -80,7 +80,8 @@ public class CommentAudienceNotifier {
 
         if (account.isEmpty()) {
             threadCommentEmailSender.sendToAddress(recipient.email(), comment.authorName(),
-                    comment.content(), comment.subject(), comment.contextLink());
+                    comment.content(), comment.subject(), comment.contextLink(),
+                    comment.targetType(), comment.targetId(), comment.assessmentId());
             return;
         }
 
