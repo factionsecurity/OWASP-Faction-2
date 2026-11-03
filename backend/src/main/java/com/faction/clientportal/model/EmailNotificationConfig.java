@@ -13,6 +13,7 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -74,6 +75,19 @@ public class EmailNotificationConfig {
     /** Days to wait between past-due repeats. Ignored when {@link #pastDueRepeatCount} is 0. */
     @Builder.Default
     private int pastDueRepeatIntervalDays = 7;
+
+    /**
+     * Whether notification emails name applications. Off, they say what the item is instead,
+     * for teams that do not want application names sitting in inboxes.
+     */
+    @Builder.Default
+    @ColumnDefault("true") // rows written before the switch existed read as on
+    private boolean includeApplicationNames = true;
+
+    /** Whether notification emails name vulnerabilities. */
+    @Builder.Default
+    @ColumnDefault("true")
+    private boolean includeVulnerabilityNames = true;
 
     public Map<String, EventSettings> getEvents() {
         return events == null ? new HashMap<>() : new HashMap<>(events);

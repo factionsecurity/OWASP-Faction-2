@@ -81,13 +81,14 @@ public class ThreadCommentEmailSender {
                 targetType, targetId, assessmentId, recipientUsername, contextLink);
         String unsubscribeUrl = emailService.unsubscribeUrl(token.getId());
 
-        String footer = emailService.unsubscribeFooter(unsubscribeUrl, subject);
+        String item = emailThread.itemLabel(targetType, subject);
+        String footer = emailService.unsubscribeFooter(unsubscribeUrl, item);
 
         EmailMessage message = EmailMessage.builder()
                 .to(to)
                 .subject(emailThread.subject(targetType, subject, assessmentId))
                 .htmlBody(emailService.renderShell(
-                        "New comment on " + subject,
+                        "New comment on " + item,
                         body(authorName, commentHtml, replyable),
                         "View in Faction",
                         contextLink,
@@ -116,7 +117,7 @@ public class ThreadCommentEmailSender {
                 .to(to)
                 .subject(emailThread.subject(targetType, subject, assessmentId))
                 .htmlBody(emailService.renderShell(
-                        "New comment on " + subject,
+                        "New comment on " + emailThread.itemLabel(targetType, subject),
                         body(authorName, commentHtml, false),
                         "View in Faction",
                         contextLink,

@@ -18,6 +18,10 @@ public class UpdateEmailNotificationConfigRequest {
 
     private Integer pastDueRepeatIntervalDays;
 
+    private Boolean includeApplicationNames;
+
+    private Boolean includeVulnerabilityNames;
+
     private List<EventUpdate> events;
 
     @Data

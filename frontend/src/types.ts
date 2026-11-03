@@ -2008,6 +2008,10 @@ export interface EmailNotificationConfig {
   smtpConfigured: boolean;
   pastDueRepeatCount: number;
   pastDueRepeatIntervalDays: number;
+  /** Whether notification emails name applications. */
+  includeApplicationNames: boolean;
+  /** Whether notification emails name vulnerabilities. */
+  includeVulnerabilityNames: boolean;
   events: EmailNotificationEvent[];
 }
 
@@ -2015,6 +2019,8 @@ export interface UpdateEmailNotificationConfigRequest {
   enabled?: boolean;
   pastDueRepeatCount?: number;
   pastDueRepeatIntervalDays?: number;
+  includeApplicationNames?: boolean;
+  includeVulnerabilityNames?: boolean;
   events?: Array<{
     key: string;
     /** Omitted means "leave this switch unchanged". */

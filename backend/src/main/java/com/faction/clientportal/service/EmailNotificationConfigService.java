@@ -8,6 +8,7 @@ import com.faction.clientportal.model.EmailNotificationConfig;
 import com.faction.clientportal.model.EmailNotificationConfig.EventSettings;
 import com.faction.clientportal.model.EmailNotificationEvent;
 import com.faction.clientportal.repository.EmailNotificationConfigRepository;
+import com.faction.clientportal.service.email.EmailNaming;
 import com.faction.clientportal.service.email.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -72,6 +73,16 @@ public class EmailNotificationConfigService {
         return isEnabled(event.key());
     }
 
+    /** Which names emails may carry. Every name is hidden when the settings cannot be read. */
+    public EmailNaming naming() {
+        try {
+            return EmailNaming.from(getOrCreate());
+        } catch (Exception e) {
+            log.warn("Could not read the email naming settings: {}", e.getMessage());
+            return EmailNaming.HIDDEN;
+        }
+    }
+
     // ── Admin API ─────────────────────────────────────────────────────────────
 
     public EmailNotificationConfigDto getConfig() {
@@ -88,6 +99,12 @@ public class EmailNotificationConfigService {
         if (request.getPastDueRepeatIntervalDays() != null) {
             // At least a day: a zero-day interval would re-send the digest on every run.
             config.setPastDueRepeatIntervalDays(Math.max(1, request.getPastDueRepeatIntervalDays()));
+        }
+        if (request.getIncludeApplicationNames() != null) {
+            config.setIncludeApplicationNames(request.getIncludeApplicationNames());
+        }
+        if (request.getIncludeVulnerabilityNames() != null) {
+            config.setIncludeVulnerabilityNames(request.getIncludeVulnerabilityNames());
         }
 
         if (request.getEvents() != null) {
@@ -200,6 +217,8 @@ public class EmailNotificationConfigService {
                 .smtpConfigured(emailService.isConfigured())
                 .pastDueRepeatCount(config.getPastDueRepeatCount())
                 .pastDueRepeatIntervalDays(config.getPastDueRepeatIntervalDays())
+                .includeApplicationNames(config.isIncludeApplicationNames())
+                .includeVulnerabilityNames(config.isIncludeVulnerabilityNames())
                 .events(events)
                 .build();
     }

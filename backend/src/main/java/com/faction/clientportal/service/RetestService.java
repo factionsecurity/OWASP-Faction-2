@@ -52,6 +52,7 @@ public class RetestService {
     private final VulnerabilityEventService vulnerabilityEventService;
     private final com.faction.clientportal.service.extension.ExtensionEventService extensionEventService;
     private final com.faction.clientportal.service.email.EventNotificationEmailSender eventEmailSender;
+    private final EmailNotificationConfigService emailNotificationConfigService;
     private final SlaService slaService;
 
     /** Retest status for an app-owner request awaiting scheduling by staff. */
@@ -889,8 +890,12 @@ public class RetestService {
 
             Vulnerability finding = vuln != null ? vuln
                     : vulnerabilityRepository.findByIdAndDeletedAtIsNull(retest.getVulnerabilityId()).orElse(null);
+            // Null when there is no name to give, or the email settings keep finding names out of email.
             String vulnName = finding != null && finding.getName() != null
-                    ? finding.getName() : "a finding";
+                    && emailNotificationConfigService.naming().vulnerabilityNames()
+                    ? finding.getName() : null;
+            String named = vulnName == null ? "" : ": " + vulnName;
+            String quoted = vulnName == null ? "a finding" : "\"" + vulnName + "\"";
 
             DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
             List<String> lines = new ArrayList<>();
@@ -899,9 +904,9 @@ public class RetestService {
             String title;
 
             if (event == EmailNotificationEvent.RETEST_SCHEDULED) {
-                subject = "Retest scheduled: " + vulnName;
+                subject = "Retest scheduled" + named;
                 title = "Retest scheduled";
-                lines.add("A retest has been scheduled for \"" + vulnName + "\".");
+                lines.add("A retest has been scheduled for " + quoted + ".");
                 if (retest.getScheduledStartDate() != null) {
                     details.add(new String[]{"Scheduled start",
                             retest.getScheduledStartDate().toLocalDate().format(fmt)});
@@ -912,9 +917,9 @@ public class RetestService {
                 }
             } else {
                 boolean passed = "PASSED".equals(retest.getStatus());
-                subject = "Retest " + (passed ? "passed" : "failed") + ": " + vulnName;
+                subject = "Retest " + (passed ? "passed" : "failed") + named;
                 title = "Retest " + (passed ? "passed" : "failed");
-                lines.add("The retest of \"" + vulnName + "\" " + (passed
+                lines.add("The retest of " + quoted + " " + (passed
                         ? "passed. The finding has been closed."
                         : "failed. The finding remains open."));
                 details.add(new String[]{"Result", passed ? "Passed" : "Failed"});
@@ -923,7 +928,7 @@ public class RetestService {
                 }
             }
 
-            details.add(new String[]{"Finding", vulnName});
+            if (vulnName != null) details.add(new String[]{"Finding", vulnName});
             details.add(new String[]{"Assessment", target.getName()});
             if (retest.getComment() != null && !retest.getComment().isBlank()) {
                 details.add(new String[]{"Comment", retest.getComment()});

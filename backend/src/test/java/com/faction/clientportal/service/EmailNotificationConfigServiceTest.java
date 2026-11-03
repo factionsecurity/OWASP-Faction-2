@@ -9,6 +9,7 @@ import com.faction.clientportal.model.EmailNotificationConfig;
 import com.faction.clientportal.model.EmailNotificationConfig.EventSettings;
 import com.faction.clientportal.model.EmailNotificationEvent;
 import com.faction.clientportal.repository.EmailNotificationConfigRepository;
+import com.faction.clientportal.service.email.EmailNaming;
 import com.faction.clientportal.service.email.EmailService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -210,6 +211,27 @@ class EmailNotificationConfigServiceTest {
 
         assertThat(dto.getPastDueRepeatCount()).isZero();
         assertThat(dto.getPastDueRepeatIntervalDays()).isEqualTo(1);
+    }
+
+    @Test
+    void namesInEmailsAreOnByDefaultAndEachSwitchesOffAlone() {
+        EmailNotificationConfigDto before = service.getConfig();
+        assertThat(before.isIncludeApplicationNames()).isTrue();
+        assertThat(before.isIncludeVulnerabilityNames()).isTrue();
+
+        UpdateEmailNotificationConfigRequest request = new UpdateEmailNotificationConfigRequest();
+        request.setIncludeVulnerabilityNames(false);
+        EmailNotificationConfigDto after = service.updateConfig(request);
+
+        assertThat(after.isIncludeVulnerabilityNames()).isFalse();
+        assertThat(after.isIncludeApplicationNames()).isTrue();
+    }
+
+    @Test
+    void unreadableSettingsHideEveryName() {
+        when(repository.findById(EmailNotificationConfig.SINGLETON_ID)).thenThrow(new RuntimeException("db down"));
+
+        assertThat(service.naming()).isEqualTo(EmailNaming.HIDDEN);
     }
 
     @Test

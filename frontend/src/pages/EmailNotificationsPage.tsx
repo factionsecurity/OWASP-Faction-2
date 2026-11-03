@@ -22,6 +22,22 @@ const AUDIENCES: Array<{ key: EmailNotificationAudience; label: string; field: S
   { key: 'ASSIGNED_USERS', label: 'Assigned users', field: 'notifyAssignedUsers' },
 ];
 
+/** Whether notification emails may name what they are about. */
+const NAME_SWITCHES: Array<{ field: NameField; label: string; hint: string }> = [
+  {
+    field: 'includeApplicationNames',
+    label: 'Application names',
+    hint: 'Off, emails say "an application" instead of its name.',
+  },
+  {
+    field: 'includeVulnerabilityNames',
+    label: 'Vulnerability names',
+    hint: 'Off, emails say "a vulnerability" or "a finding" instead of its name.',
+  },
+];
+
+type NameField = 'includeApplicationNames' | 'includeVulnerabilityNames';
+
 type SwitchField =
   | 'notifyAssessors'
   | 'notifyStakeholders'
@@ -127,6 +143,11 @@ export default function EmailNotificationsPage() {
     save({ enabled }, 'master');
   };
 
+  const toggleNames = (field: NameField, next: boolean) => {
+    setConfig(prev => prev && { ...prev, [field]: next });
+    save({ [field]: next }, field);
+  };
+
   const toggleAudience = (event: EmailNotificationEvent, field: SwitchField, next: boolean) => {
     setConfig(prev => prev && {
       ...prev,
@@ -218,6 +239,35 @@ export default function EmailNotificationsPage() {
               up under Email Config first.
             </div>
           )}
+
+          <div className="email-notifications-names">
+            <div className="email-notifications-label">Names in emails</div>
+            <p className="email-notifications-hint">
+              Emails name the applications and vulnerabilities they are about, in the subject
+              and the message. Switch either off to keep those names out of inboxes — the link
+              in the email still opens the item. Assessment names are always shown.
+            </p>
+            {NAME_SWITCHES.map(s => (
+              <div className="email-notifications-name-row" key={s.field}>
+                <label className="notif-toggle">
+                  <input
+                    type="checkbox"
+                    checked={config[s.field]}
+                    disabled={saving.has(s.field)}
+                    onChange={e => toggleNames(s.field, e.target.checked)}
+                    aria-label={s.label}
+                  />
+                  <span className="notif-toggle-track" />
+                </label>
+                <div>
+                  <div className="email-notifications-name-label">
+                    {s.label}{saving.has(s.field) && ' — Saving…'}
+                  </div>
+                  <div className="email-notifications-description">{s.hint}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
