@@ -33,6 +33,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Bulk application sync from a CSV upload.
@@ -125,7 +127,13 @@ public class ApplicationCsvImportService {
             fieldDefinitions = entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION);
         }
 
-        Sheet sheet = readHeader(rows.get(0), fieldDefinitions, format);
+        Map<String, UserDefinedField> openFields = new LinkedHashMap<>();
+        if (format != null && !format.openDropdowns().isEmpty()) {
+            openFields = resolveOpenDropdowns(format, userId);
+            fieldDefinitions = entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION);
+        }
+
+        Sheet sheet = readHeader(rows.get(0), fieldDefinitions, format, openFields);
         Map<String, Integer> columns = sheet.columns();
         List<List<String>> dataRows = rows.subList(1, rows.size());
 
@@ -202,7 +210,8 @@ public class ApplicationCsvImportService {
             application.setStatus(parseStatus(status));
         }
 
-        applyCustomFields(row, sheet, application);
+        List<PendingOption> pendingOptions = new ArrayList<>();
+        applyCustomFields(row, sheet, application, pendingOptions);
 
         applyOrganization(row, columns, application, result, userId);
 
@@ -216,6 +225,17 @@ public class ApplicationCsvImportService {
 
         application.setLastUpdatedBy(userId);
         application.setUpdatedAt(LocalDateTime.now());
+        // Options are persisted only now, so a row that failed above leaves none behind.
+        for (PendingOption pending : pendingOptions) {
+            entityFieldConfigService.addDropdownOption(
+                    FieldScope.APPLICATION, pending.field().getId(), pending.option(), userId);
+            List<String> options = pending.field().getDropdownOptions() == null
+                    ? new ArrayList<>() : new ArrayList<>(pending.field().getDropdownOptions());
+            if (options.stream().noneMatch(pending.option()::equalsIgnoreCase)) {
+                options.add(pending.option());
+                pending.field().setDropdownOptions(options);
+            }
+        }
         applicationRepository.save(application);
 
         if (creating) {
@@ -376,9 +396,11 @@ public class ApplicationCsvImportService {
     /**
      * Custom field columns: each non-empty cell sets that field. A dropdown value must be one of
      * the field's options — matched ignoring case and stored as the option is spelled — so a typo
-     * fails the row instead of saving a value the edit form can't show.
+     * fails the row instead of saving a value the edit form can't show. An open dropdown instead
+     * stores the title-cased value and records it as a pending option for {@link #applyRow}.
      */
-    private void applyCustomFields(List<String> row, Sheet sheet, Application application) {
+    private void applyCustomFields(List<String> row, Sheet sheet, Application application,
+                                   List<PendingOption> pendingOptions) {
         for (Map.Entry<String, UserDefinedField> column : sheet.fieldColumns().entrySet()) {
             String raw = value(row, sheet.columns(), column.getKey());
             if (raw.isEmpty()) {
@@ -388,17 +410,102 @@ public class ApplicationCsvImportService {
             String value = raw;
             if (field.getFieldType() == FieldType.DROPDOWN) {
                 List<String> options = field.getDropdownOptions() == null ? List.of() : field.getDropdownOptions();
+                boolean open = sheet.openFieldIds().contains(field.getId());
                 value = options.stream()
                         .filter(raw::equalsIgnoreCase)
                         .findFirst()
-                        .orElseThrow(() -> new IllegalArgumentException("'" + raw + "' is not an option for "
-                                + field.getDisplayName() + ". Expected one of: " + String.join(", ", options)));
+                        .orElse(null);
+                if (value == null) {
+                    if (!open) {
+                        throw new IllegalArgumentException("'" + raw + "' is not an option for "
+                                + field.getDisplayName() + ". Expected one of: " + String.join(", ", options));
+                    }
+                    value = titleCase(raw);
+                    pendingOptions.add(new PendingOption(field, value));
+                }
             }
             if (application.getFieldValues() == null) {
                 application.setFieldValues(new HashMap<>());
             }
             application.getFieldValues().put(field.getId(), value);
         }
+    }
+
+    /** An option an open dropdown row introduced, saved with the row. */
+    private record PendingOption(UserDefinedField field, String option) {
+    }
+
+    /** Trims, collapses whitespace and capitalizes each word: {@code "  gold   TIER "} is "Gold Tier". */
+    static String titleCase(String value) {
+        StringBuilder out = new StringBuilder();
+        for (String word : value.trim().split("\\s+")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (out.length() > 0) {
+                out.append(' ');
+            }
+            out.append(word.substring(0, 1).toUpperCase(Locale.ROOT))
+                    .append(word.substring(1).toLowerCase(Locale.ROOT));
+        }
+        return out.toString();
+    }
+
+    /**
+     * Finds, creates or converts each dropdown the format declares open, keyed by the lower-case
+     * column the format writes ({@code field:<declared variable>}).
+     */
+    private Map<String, UserDefinedField> resolveOpenDropdowns(ApplicationCsvFormat format, String userId) {
+        Map<String, UserDefinedField> resolved = new LinkedHashMap<>();
+        for (UserDefinedField declared : format.openDropdowns()) {
+            List<UserDefinedField> definitions = entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION);
+            UserDefinedField found = definitions.stream()
+                    .filter(f -> f.getDisplayName() != null && declared.getDisplayName() != null
+                            && f.getDisplayName().trim().equalsIgnoreCase(declared.getDisplayName().trim()))
+                    .findFirst()
+                    .or(() -> definitions.stream()
+                            .filter(f -> f.getVariableName() != null
+                                    && f.getVariableName().equalsIgnoreCase(declared.getVariableName()))
+                            .findFirst())
+                    .orElse(null);
+            if (found == null) {
+                found = entityFieldConfigService.ensureFields(FieldScope.APPLICATION, List.of(declared), userId)
+                        .stream()
+                        .filter(f -> f.getVariableName().equalsIgnoreCase(declared.getVariableName()))
+                        .findFirst()
+                        .orElseThrow();
+            } else if (found.getFieldType() == FieldType.STRING) {
+                found = convertTextToDropdown(found, userId);
+            }
+            resolved.put((ApplicationCsvFormat.FIELD_COLUMN_PREFIX + declared.getVariableName())
+                    .toLowerCase(Locale.ROOT), found);
+        }
+        return resolved;
+    }
+
+    /** Turns a text field into a dropdown whose options are the title-cased values already stored. */
+    private UserDefinedField convertTextToDropdown(UserDefinedField field, String userId) {
+        List<Application> applications = applicationRepository.findAll();
+        Map<String, String> optionByLowerCase = new LinkedHashMap<>();
+        for (Application application : applications) {
+            Object stored = application.getFieldValues() == null ? null : application.getFieldValues().get(field.getId());
+            if (stored != null && !stored.toString().isBlank()) {
+                optionByLowerCase.putIfAbsent(titleCase(stored.toString()).toLowerCase(Locale.ROOT),
+                        titleCase(stored.toString()));
+            }
+        }
+        UserDefinedField converted = entityFieldConfigService.convertToDropdown(
+                FieldScope.APPLICATION, field.getId(), new ArrayList<>(optionByLowerCase.values()), userId);
+        List<Application> changed = new ArrayList<>();
+        for (Application application : applications) {
+            Object stored = application.getFieldValues() == null ? null : application.getFieldValues().get(field.getId());
+            if (stored != null && !stored.toString().isBlank()) {
+                application.getFieldValues().put(field.getId(), titleCase(stored.toString()));
+                changed.add(application);
+            }
+        }
+        applicationRepository.saveAll(changed);
+        return converted;
     }
 
     /**
@@ -440,7 +547,8 @@ public class ApplicationCsvImportService {
 
     /** The header as the rows are read against it: plain columns, custom field columns, owners. */
     private record Sheet(Map<String, Integer> columns, Map<String, UserDefinedField> fieldColumns,
-                         RemediationOwners owners, ApplicationCsvFormat format) {
+                         RemediationOwners owners, ApplicationCsvFormat format,
+                         Set<String> openFieldIds) {
     }
 
     /** Names of the alternate layouts this deployment accepts, for the upload dialog. */
@@ -461,7 +569,7 @@ public class ApplicationCsvImportService {
     }
 
     private Sheet readHeader(List<String> header, List<UserDefinedField> fieldDefinitions,
-                             ApplicationCsvFormat format) {
+                             ApplicationCsvFormat format, Map<String, UserDefinedField> openFields) {
         Map<String, Integer> columns = headerIndex(header);
 
         Map<String, UserDefinedField> fieldColumns = new LinkedHashMap<>();
@@ -469,6 +577,10 @@ public class ApplicationCsvImportService {
         String prefix = ApplicationCsvFormat.FIELD_COLUMN_PREFIX;
         for (String column : columns.keySet()) {
             if (!column.startsWith(prefix)) {
+                continue;
+            }
+            if (openFields.containsKey(column)) {
+                fieldColumns.put(column, openFields.get(column));
                 continue;
             }
             String variable = column.substring(prefix.length());
@@ -485,7 +597,9 @@ public class ApplicationCsvImportService {
         RemediationOwners owners = columns.containsKey("remediationowner")
                 ? new RemediationOwners(userRepository.findAll())
                 : new RemediationOwners(List.of());
-        return new Sheet(columns, fieldColumns, owners, format);
+        Set<String> openFieldIds = openFields.values().stream()
+                .map(UserDefinedField::getId).collect(Collectors.toSet());
+        return new Sheet(columns, fieldColumns, owners, format, openFieldIds);
     }
 
     private Map<String, Integer> headerIndex(List<String> header) {

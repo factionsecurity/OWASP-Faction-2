@@ -46,6 +46,18 @@ public interface ApplicationCsvFormat {
         return List.of();
     }
 
+    /**
+     * Application dropdowns that grow instead of rejecting unknown values. Each is found by display
+     * name (ignoring case and surrounding spaces), then by variable name, and created from this
+     * definition when neither exists. A field found as STRING is converted to a dropdown once,
+     * its stored values becoming title-cased options. The format writes the column as
+     * {@link #FIELD_COLUMN_PREFIX} + variableName of the definition returned here, whatever the found
+     * field's own variable name is.
+     */
+    default List<UserDefinedField> openDropdowns() {
+        return List.of();
+    }
+
     /** One template row, read by template column name ignoring case; "" when absent or blank. */
     @FunctionalInterface
     interface RowValues {

@@ -694,4 +694,161 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
         assertThat(calls.get()).isZero();
         assertThat(result.getCreatedInternalUsers()).isEmpty();
     }
+
+    /** Rows are "name,tier[,status]"; the format declares Application Tier as an open dropdown. */
+    private ApplicationCsvImportService withOpenDropdownFormat() {
+        StaticListableBeanFactory beans = new StaticListableBeanFactory();
+        beans.addBean("openFormat", new ApplicationCsvFormat() {
+            @Override public String name() { return "Open dropdown export"; }
+
+            @Override public boolean recognizes(List<String> header) {
+                return header.contains("Open_Name");
+            }
+
+            @Override public List<UserDefinedField> openDropdowns() {
+                return List.of(UserDefinedField.builder()
+                        .variableName("application_tier").displayName("Application Tier")
+                        .fieldType(FieldType.DROPDOWN).build());
+            }
+
+            @Override public List<List<String>> toTemplate(List<List<String>> rows) {
+                List<List<String>> out = new ArrayList<>();
+                out.add(List.of("name", FIELD_COLUMN_PREFIX + "application_tier", "status"));
+                for (List<String> row : rows.subList(1, rows.size())) {
+                    out.add(List.of(row.get(0), row.get(1), row.size() > 2 ? row.get(2) : ""));
+                }
+                return out;
+            }
+        });
+        return new ApplicationCsvImportService(applicationRepository, organizationRepository,
+                subOrganizationRepository, subOrganizationService, entityFieldConfigService, userRepository,
+                beans.getBeanProvider(ApplicationCsvFormat.class));
+    }
+
+    private com.faction.clientportal.dto.ApplicationImportResultDto uploadOpen(String csv) throws IOException {
+        return withOpenDropdownFormat().importCsv(new MockMultipartFile(
+                "file", "apps.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)), "admin");
+    }
+
+    private UserDefinedField storedField(String displayName) {
+        return entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION).stream()
+                .filter(f -> f.getDisplayName().equalsIgnoreCase(displayName)).findFirst().orElseThrow();
+    }
+
+    private UserDefinedField addField(UserDefinedField field) {
+        return entityFieldConfigService.ensureFields(FieldScope.APPLICATION, List.of(field), "admin").stream()
+                .filter(f -> f.getVariableName().equals(field.getVariableName())).findFirst().orElseThrow();
+    }
+
+    @Test
+    void titleCaseCapitalizesEveryWord() {
+        assertThat(ApplicationCsvImportService.titleCase("  gold   TIER ")).isEqualTo("Gold Tier");
+    }
+
+    @Test
+    void anOpenDropdownIsCreatedWhenMissing() throws IOException {
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Payroll,tier 1
+                """);
+
+        UserDefinedField tier = storedField("Application Tier");
+        assertThat(tier.getFieldType()).isEqualTo(FieldType.DROPDOWN);
+        assertThat(tier.getDropdownOptions()).containsExactly("Tier 1");
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll").orElseThrow().getFieldValues())
+                .containsEntry(tier.getId(), "Tier 1");
+    }
+
+    @Test
+    void anOpenDropdownIsFoundByDisplayName() throws IOException {
+        UserDefinedField made = addField(UserDefinedField.builder()
+                .variableName("apptier").displayName("application tier")
+                .fieldType(FieldType.DROPDOWN).dropdownOptions(new ArrayList<>()).build());
+
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Payroll,gold
+                """);
+
+        assertThat(entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION)).hasSize(1);
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll").orElseThrow().getFieldValues())
+                .containsEntry(made.getId(), "Gold");
+    }
+
+    @Test
+    void existingOptionsMatchIgnoringCase() throws IOException {
+        UserDefinedField made = addField(field("application_tier", FieldType.DROPDOWN, "Gold"));
+
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Payroll,gold
+                Billing,GOLD
+                """);
+
+        UserDefinedField tier = storedField("application_tier");
+        assertThat(tier.getDropdownOptions()).containsExactly("Gold");
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll").orElseThrow().getFieldValues())
+                .containsEntry(made.getId(), "Gold");
+        assertThat(applicationRepository.findByNameIgnoreCase("Billing").orElseThrow().getFieldValues())
+                .containsEntry(made.getId(), "Gold");
+    }
+
+    @Test
+    void twoRowsAddingTheSameNewValueAddOneOption() throws IOException {
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Payroll,silver
+                Billing,SILVER
+                """);
+
+        assertThat(storedField("Application Tier").getDropdownOptions()).containsExactly("Silver");
+    }
+
+    @Test
+    void aTextFieldIsConvertedOnce() throws IOException {
+        UserDefinedField text = addField(UserDefinedField.builder()
+                .variableName("application_tier").displayName("Application Tier")
+                .fieldType(FieldType.STRING).build());
+        for (String[] app : new String[][] {{"One", "tier 2"}, {"Two", "Tier 2"}}) {
+            applicationRepository.save(Application.builder().name(app[0])
+                    .fieldValues(new java.util.HashMap<>(java.util.Map.of(text.getId(), app[1]))).build());
+        }
+
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Three,tier 2
+                """);
+
+        UserDefinedField tier = storedField("Application Tier");
+        assertThat(tier.getFieldType()).isEqualTo(FieldType.DROPDOWN);
+        assertThat(tier.getDropdownOptions()).containsExactly("Tier 2");
+        for (String name : List.of("One", "Two", "Three")) {
+            assertThat(applicationRepository.findByNameIgnoreCase(name).orElseThrow().getFieldValues())
+                    .containsEntry(text.getId(), "Tier 2");
+        }
+    }
+
+    @Test
+    void aFailingRowAddsNoOption() throws IOException {
+        var result = uploadOpen("""
+                Open_Name,Open_Tier,Open_Status
+                Payroll,platinum,NOPE
+                """);
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(storedField("Application Tier").getDropdownOptions()).isEmpty();
+    }
+
+    @Test
+    void otherDropdownsStayStrict() throws IOException {
+        UserDefinedField strict = addField(field("risk", FieldType.DROPDOWN, "Low"));
+
+        var result = upload("""
+                name,field:risk
+                Payroll,Extreme
+                """);
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(storedField(strict.getDisplayName()).getDropdownOptions()).containsExactly("Low");
+    }
 }
