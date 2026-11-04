@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -623,5 +624,74 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
                 Checkout
                 """);
         assertThat(result.getFormat()).isNull();
+    }
+
+    /** A format whose rows are "name,status" and whose hook resolves the owner itself. */
+    private ApplicationCsvImportService withProvisioningFormat(AtomicInteger calls, String ownerId) {
+        StaticListableBeanFactory beans = new StaticListableBeanFactory();
+        beans.addBean("provisioningFormat", new ApplicationCsvFormat() {
+            @Override public String name() { return "Provisioning export"; }
+
+            @Override public boolean recognizes(List<String> header) {
+                return header.contains("Prov_Name");
+            }
+
+            @Override public List<List<String>> toTemplate(List<List<String>> rows) {
+                List<List<String>> out = new ArrayList<>();
+                out.add(List.of("name", "status"));
+                for (List<String> row : rows.subList(1, rows.size())) {
+                    out.add(List.of(row.get(0), row.get(1)));
+                }
+                return out;
+            }
+
+            @Override public String provisionOwners(RowValues row, int line,
+                    com.faction.clientportal.dto.ApplicationImportResultDto result) {
+                calls.incrementAndGet();
+                result.addCreatedInternalUser("x");
+                return ownerId;
+            }
+        });
+        return new ApplicationCsvImportService(applicationRepository, organizationRepository,
+                subOrganizationRepository, subOrganizationService, entityFieldConfigService, userRepository,
+                beans.getBeanProvider(ApplicationCsvFormat.class));
+    }
+
+    private com.faction.clientportal.dto.ApplicationImportResultDto uploadProvisioning(
+            ApplicationCsvImportService svc, String csv) throws IOException {
+        return svc.importCsv(new MockMultipartFile(
+                "file", "apps.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)), "admin");
+    }
+
+    @Test
+    void aFormatCanResolveTheRemediationOwnerItself() throws IOException {
+        User owner = user("provowner", "Pro", "Vowner", true);
+        AtomicInteger calls = new AtomicInteger();
+
+        var result = uploadProvisioning(withProvisioningFormat(calls, owner.getId()), """
+                Prov_Name,Prov_Status
+                Payroll,PRODUCTION
+                """);
+
+        assertThat(result.getCreated()).isEqualTo(1);
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll").orElseThrow().getRemediationOwnerId())
+                .isEqualTo(owner.getId());
+        assertThat(result.getCreatedInternalUsers()).containsExactly("x");
+    }
+
+    @Test
+    void provisioningIsSkippedForARowThatFails() throws IOException {
+        User owner = user("provowner", "Pro", "Vowner", true);
+        AtomicInteger calls = new AtomicInteger();
+
+        var result = uploadProvisioning(withProvisioningFormat(calls, owner.getId()), """
+                Prov_Name,Prov_Status
+                Payroll,NOPE
+                """);
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(calls.get()).isZero();
+        assertThat(result.getCreatedInternalUsers()).isEmpty();
     }
 }

@@ -37,6 +37,46 @@ public class ApplicationImportResultDto {
     @Builder.Default
     private List<String> createdSubOrganizations = new ArrayList<>();
 
+    /** Internal user accounts a format created while provisioning remediation owners. */
+    @Builder.Default
+    private List<String> createdInternalUsers = new ArrayList<>();
+
+    /** External user accounts a format created while provisioning stakeholders. */
+    @Builder.Default
+    private List<String> createdExternalUsers = new ArrayList<>();
+
+    public List<String> getCreatedInternalUsers() {
+        return new ArrayList<>(createdInternalUsers);
+    }
+
+    public void setCreatedInternalUsers(List<String> createdInternalUsers) {
+        this.createdInternalUsers = createdInternalUsers == null
+                ? new ArrayList<>()
+                : new ArrayList<>(createdInternalUsers);
+    }
+
+    /** Records an internal account created to satisfy a row. */
+    public void addCreatedInternalUser(String name) {
+        if (name == null) return;
+        createdInternalUsers.add(name);
+    }
+
+    public List<String> getCreatedExternalUsers() {
+        return new ArrayList<>(createdExternalUsers);
+    }
+
+    public void setCreatedExternalUsers(List<String> createdExternalUsers) {
+        this.createdExternalUsers = createdExternalUsers == null
+                ? new ArrayList<>()
+                : new ArrayList<>(createdExternalUsers);
+    }
+
+    /** Records an external account created to satisfy a row. */
+    public void addCreatedExternalUser(String name) {
+        if (name == null) return;
+        createdExternalUsers.add(name);
+    }
+
     public List<String> getCreatedSubOrganizations() {
         return new ArrayList<>(createdSubOrganizations);
     }

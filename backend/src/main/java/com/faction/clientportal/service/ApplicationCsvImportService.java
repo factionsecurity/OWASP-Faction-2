@@ -125,7 +125,7 @@ public class ApplicationCsvImportService {
             fieldDefinitions = entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION);
         }
 
-        Sheet sheet = readHeader(rows.get(0), fieldDefinitions);
+        Sheet sheet = readHeader(rows.get(0), fieldDefinitions, format);
         Map<String, Integer> columns = sheet.columns();
         List<List<String>> dataRows = rows.subList(1, rows.size());
 
@@ -203,9 +203,16 @@ public class ApplicationCsvImportService {
         }
 
         applyCustomFields(row, sheet, application);
-        applyRemediationOwner(row, sheet, line, application, result);
 
         applyOrganization(row, columns, application, result, userId);
+
+        String provisionedOwnerId = sheet.format() == null ? null
+                : sheet.format().provisionOwners(column -> value(row, columns, column), line, result);
+        if (provisionedOwnerId != null) {
+            application.setRemediationOwnerId(provisionedOwnerId);
+        } else {
+            applyRemediationOwner(row, sheet, line, application, result);
+        }
 
         application.setLastUpdatedBy(userId);
         application.setUpdatedAt(LocalDateTime.now());
@@ -433,7 +440,7 @@ public class ApplicationCsvImportService {
 
     /** The header as the rows are read against it: plain columns, custom field columns, owners. */
     private record Sheet(Map<String, Integer> columns, Map<String, UserDefinedField> fieldColumns,
-                         RemediationOwners owners) {
+                         RemediationOwners owners, ApplicationCsvFormat format) {
     }
 
     /** Names of the alternate layouts this deployment accepts, for the upload dialog. */
@@ -453,7 +460,8 @@ public class ApplicationCsvImportService {
                 .orElse(null);
     }
 
-    private Sheet readHeader(List<String> header, List<UserDefinedField> fieldDefinitions) {
+    private Sheet readHeader(List<String> header, List<UserDefinedField> fieldDefinitions,
+                             ApplicationCsvFormat format) {
         Map<String, Integer> columns = headerIndex(header);
 
         Map<String, UserDefinedField> fieldColumns = new LinkedHashMap<>();
@@ -477,7 +485,7 @@ public class ApplicationCsvImportService {
         RemediationOwners owners = columns.containsKey("remediationowner")
                 ? new RemediationOwners(userRepository.findAll())
                 : new RemediationOwners(List.of());
-        return new Sheet(columns, fieldColumns, owners);
+        return new Sheet(columns, fieldColumns, owners, format);
     }
 
     private Map<String, Integer> headerIndex(List<String> header) {

@@ -317,6 +317,8 @@ export interface ApplicationImportResult {
   createdOrganizations: string[];
   /** Rendered as "Organization / Division". */
   createdSubOrganizations: string[];
+  createdInternalUsers: string[];
+  createdExternalUsers: string[];
   errors: { line: number; identifier?: string; message: string }[];
   /** Rows applied with something left out, e.g. a remediation owner that matched nobody. */
   warnings: { line: number; identifier?: string; message: string }[];
