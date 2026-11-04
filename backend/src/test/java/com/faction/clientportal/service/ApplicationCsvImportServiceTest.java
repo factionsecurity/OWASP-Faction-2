@@ -697,6 +697,11 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
 
     /** Rows are "name,tier[,status]"; the format declares Application Tier as an open dropdown. */
     private ApplicationCsvImportService withOpenDropdownFormat() {
+        return withOpenDropdownFormat(false);
+    }
+
+    /** With {@code failAfterFields}, provisioning throws: after custom fields are applied, before save. */
+    private ApplicationCsvImportService withOpenDropdownFormat(boolean failAfterFields) {
         StaticListableBeanFactory beans = new StaticListableBeanFactory();
         beans.addBean("openFormat", new ApplicationCsvFormat() {
             @Override public String name() { return "Open dropdown export"; }
@@ -718,6 +723,14 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
                     out.add(List.of(row.get(0), row.get(1), row.size() > 2 ? row.get(2) : ""));
                 }
                 return out;
+            }
+
+            @Override public String provisionOwners(RowValues row, int line,
+                    com.faction.clientportal.dto.ApplicationImportResultDto result) {
+                if (failAfterFields) {
+                    throw new IllegalArgumentException("owner provisioning failed");
+                }
+                return null;
             }
         });
         return new ApplicationCsvImportService(applicationRepository, organizationRepository,
@@ -830,13 +843,16 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
 
     @Test
     void aFailingRowAddsNoOption() throws IOException {
-        var result = uploadOpen("""
-                Open_Name,Open_Tier,Open_Status
-                Payroll,platinum,NOPE
-                """);
+        var result = withOpenDropdownFormat(true).importCsv(new MockMultipartFile(
+                "file", "apps.csv", "text/csv", """
+                Open_Name,Open_Tier
+                Payroll,platinum
+                """.getBytes(StandardCharsets.UTF_8)), "admin");
 
         assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getErrors()).hasSize(1);
         assertThat(storedField("Application Tier").getDropdownOptions()).isEmpty();
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll")).isEmpty();
     }
 
     @Test

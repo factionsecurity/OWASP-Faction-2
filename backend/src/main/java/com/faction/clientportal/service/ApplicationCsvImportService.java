@@ -227,14 +227,9 @@ public class ApplicationCsvImportService {
         application.setUpdatedAt(LocalDateTime.now());
         // Options are persisted only now, so a row that failed above leaves none behind.
         for (PendingOption pending : pendingOptions) {
-            entityFieldConfigService.addDropdownOption(
+            UserDefinedField stored = entityFieldConfigService.addDropdownOption(
                     FieldScope.APPLICATION, pending.field().getId(), pending.option(), userId);
-            List<String> options = pending.field().getDropdownOptions() == null
-                    ? new ArrayList<>() : new ArrayList<>(pending.field().getDropdownOptions());
-            if (options.stream().noneMatch(pending.option()::equalsIgnoreCase)) {
-                options.add(pending.option());
-                pending.field().setDropdownOptions(options);
-            }
+            pending.field().setDropdownOptions(new ArrayList<>(stored.getDropdownOptions()));
         }
         applicationRepository.save(application);
 
