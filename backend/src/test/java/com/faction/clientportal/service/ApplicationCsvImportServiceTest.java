@@ -1,6 +1,7 @@
 package com.faction.clientportal.service;
 
 import com.faction.clientportal.config.TestContainersConfig;
+import com.faction.clientportal.model.AppOwner;
 import com.faction.clientportal.model.Application;
 import com.faction.clientportal.model.ApplicationStatus;
 import com.faction.clientportal.model.ApplicationUrl;
@@ -205,6 +206,22 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
         // A three-column sync file must not blank out everything it doesn't mention.
         assertThat(app.getDescription()).isEqualTo("Keep me");
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.PRODUCTION);
+    }
+
+    @Test
+    void ownerColumnsReplaceTheAppOwner() throws IOException {
+        applicationRepository.save(Application.builder()
+                .name("Payments").appOwner(new AppOwner("Old Owner", "old@x.test")).build());
+
+        upload("""
+                name,ownerName,ownerEmail
+                Payments,Jane Doe,jane.doe@x.test
+                """);
+
+        Application app = applicationRepository.findByName("Payments").orElseThrow();
+        assertThat(app.getAppOwner().getFullName()).isEqualTo("Jane Doe");
+        assertThat(app.getAppOwner().getEmail()).isEqualTo("jane.doe@x.test");
+        assertThat(app.getOwnerEmail()).isEqualTo("jane.doe@x.test");
     }
 
     @Test

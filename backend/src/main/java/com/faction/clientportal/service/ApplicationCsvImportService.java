@@ -2,6 +2,7 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.dto.ApplicationImportResultDto;
 import com.faction.clientportal.dto.SubOrganizationDto;
+import com.faction.clientportal.model.AppOwner;
 import com.faction.clientportal.model.Application;
 import com.faction.clientportal.model.ApplicationUrl;
 import com.faction.clientportal.model.ApplicationStatus;
@@ -192,6 +193,7 @@ public class ApplicationCsvImportService {
         setIfPresent(row, columns, "assessmentFrequency", application::setAssessmentFrequency);
         setIfPresent(row, columns, "ownerName", application::setOwnerName);
         setIfPresent(row, columns, "ownerEmail", application::setOwnerEmail);
+        applyAppOwner(row, columns, application);
 
         applyLists(row, columns, application);
 
@@ -519,6 +521,26 @@ public class ApplicationCsvImportService {
                 setter.accept(value);
             }
         }
+    }
+
+    /**
+     * The notification resolver and the app form read {@code appOwner} before the legacy
+     * owner fields, so a non-empty owner cell must replace it too. A missing part is kept.
+     */
+    private void applyAppOwner(List<String> row, Map<String, Integer> columns, Application application) {
+        String name = value(row, columns, "ownerName");
+        String email = value(row, columns, "ownerEmail");
+        if (name.isEmpty() && email.isEmpty()) {
+            return;
+        }
+        AppOwner existing = application.getAppOwner();
+        if (name.isEmpty() && existing != null) {
+            name = existing.getFullName();
+        }
+        if (email.isEmpty() && existing != null) {
+            email = existing.getEmail();
+        }
+        application.setAppOwner(new AppOwner(name, email));
     }
 
     private String rowIdentifier(List<String> row, Map<String, Integer> columns) {
