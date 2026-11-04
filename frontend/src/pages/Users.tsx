@@ -3,8 +3,8 @@ import { useEdition } from '../context/EditionContext';
 import { usePermissions } from '../utils/permissions';
 import { Edit2, Trash2, Plus, X, Search, Mail, Check, UserX, UserCheck, CalendarOff } from 'lucide-react';
 import { usersApi, rolesApi, teamsApi, organizationsApi, subOrganizationsApi, applicationsApi, azureUsersApi } from '../api';
-import type { User, Role, Team, Organization, SubOrganization, Application, CreateUserRequest, UpdateUserRequest, AzureDirectoryUser } from '../types';
-import { AvailabilityProfileCard } from '@enterprise';
+import type { User, Role, Team, Organization, SubOrganization, Application, CreateUserRequest, UpdateUserRequest, AzureDirectoryUser, UserFieldValuesSectionHandle } from '../types';
+import { AvailabilityProfileCard, UserFieldValuesSection } from '@enterprise';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
 import { usePersistedState } from '../hooks/usePersistedState';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
@@ -77,6 +77,7 @@ export default function Users() {
   const [azureSuggestions, setAzureSuggestions] = useState<AzureDirectoryUser[]>([]);
   const [azureOpen, setAzureOpen] = useState(false);
   const appliedAzureEmail = useRef('');
+  const userFieldsRef = useRef<UserFieldValuesSectionHandle>(null);
   const [confirmResetUser, setConfirmResetUser] = useState<User | null>(null);
   // Disable / re-enable, and delete — both confirmed, both acting on one row.
   const [confirmToggleUser, setConfirmToggleUser] = useState<User | null>(null);
@@ -404,6 +405,7 @@ export default function Users() {
           subOrganizationIds,
         };
         await usersApi.update(selectedUser.id, updateData);
+        await userFieldsRef.current?.save();
       }
 
       // Sync application assignments for external users. Application scope sends
@@ -1139,6 +1141,10 @@ export default function Users() {
             setAppSearchQuery('');
           }}
         />
+        )}
+
+        {selectedUser && hasFeature('user_fields') && (
+          <UserFieldValuesSection ref={userFieldsRef} userId={selectedUser.id} />
         )}
       </Modal>
 

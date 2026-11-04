@@ -68,7 +68,13 @@ public enum Feature {
      * regional holiday calendars, and the unavailability warnings shown when scheduling an
      * assessor. The single-calendar views and assessment-clash detection stay open source.
      */
-    TEAM_SCHEDULING("team_scheduling", "Team Scheduling");
+    TEAM_SCHEDULING("team_scheduling", "Team Scheduling"),
+
+    /**
+     * Custom fields recorded on each user: an administrator defines them under User Config,
+     * and whoever can edit a user fills in that user's values.
+     */
+    USER_FIELDS("user_fields", "User Custom Fields");
 
     private final String key;
     private final String displayName;

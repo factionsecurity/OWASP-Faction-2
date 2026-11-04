@@ -961,6 +961,21 @@ export interface RegionHolidays {
   inheritedDisabledKeys?: string[];
 }
 
+/** Custom field values recorded on one user, keyed by field id. */
+export interface UserFieldValues {
+  userId: string;
+  values: Record<string, string>;
+}
+
+export interface UserFieldValuesSectionProps {
+  userId: string;
+}
+
+/** Lets the Users form save the section's values as part of its own submit. */
+export interface UserFieldValuesSectionHandle {
+  save(): Promise<void>;
+}
+
 /** Props for the overlay's availability card; `userId` set means a manager editing someone else. */
 export interface AvailabilityProfileCardProps {
   userId?: string;
@@ -2485,7 +2500,8 @@ export type FeatureKey =
   | 'report_sections'
   | 'custom_workflows'
   | 'mcp_server'
-  | 'team_scheduling';
+  | 'team_scheduling'
+  | 'user_fields';
 
 /** Quota keys from the backend `Quota` enum. Capabilities that ship, but capped. */
 export type QuotaKey = 'ai_providers' | 'ai_prompts' | 'extensions';
