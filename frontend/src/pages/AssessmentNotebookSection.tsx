@@ -134,6 +134,7 @@ export default function AssessmentNotebookSection({ applicationId, assessmentId 
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [confirmDeleteNode, setConfirmDeleteNode] = useState<NotebookNode | null>(null);
   const [deletingNode, setDeletingNode] = useState(false);
@@ -196,6 +197,7 @@ export default function AssessmentNotebookSection({ applicationId, assessmentId 
     const res = await notebookApi.getNode(node.id).catch(() => null);
     const fresh = res?.data ?? node;
     setSelectedNode(fresh);
+    setSaveFailed(false);
     setEditTitle(fresh.title);
     setEditContent(fresh.content || '');
   }, []);
@@ -222,8 +224,11 @@ export default function AssessmentNotebookSection({ applicationId, assessmentId 
       const res = await notebookApi.updateNode(selectedNode.id, { title: editTitle });
       if (res.success && res.data) {
         setSelectedNode(res.data);
+        setSaveFailed(false);
         await loadTree();
       }
+    } catch {
+      setSaveFailed(true);
     } finally {
       setSaving(false);
     }
@@ -241,7 +246,10 @@ export default function AssessmentNotebookSection({ applicationId, assessmentId 
       });
       if (res.success && res.data) {
         setSelectedNode(res.data);
+        setSaveFailed(false);
       }
+    } catch {
+      setSaveFailed(true);
     } finally {
       setSaving(false);
     }
@@ -405,6 +413,11 @@ export default function AssessmentNotebookSection({ applicationId, assessmentId 
         <h3>Notebook</h3>
         <div className="section-header-actions">
           {saving && <span className="nb-saving-indicator">Saving…</span>}
+          {!saving && saveFailed && (
+            <span className="nb-saving-indicator nb-save-failed" role="alert">
+              Couldn't save this note. Your changes are still here; keep editing to retry.
+            </span>
+          )}
           <button
             className={`nb-icon-btn${searchOpen ? ' nb-icon-btn--active' : ''}`}
             title={searchOpen ? 'Close search' : 'Search notes'}

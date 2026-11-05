@@ -15,6 +15,10 @@
   margin-right: 0.25rem;
 }
 
+.nb-save-failed {
+  color: var(--danger-color);
+}
+
 /* ── Search Panel ─────────────────────────────────────────────────────────── */
 
 .nb-search-panel {
