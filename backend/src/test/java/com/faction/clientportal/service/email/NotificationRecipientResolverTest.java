@@ -1,6 +1,7 @@
 package com.faction.clientportal.service.email;
 
 import com.faction.clientportal.model.AppOwner;
+import com.faction.clientportal.model.AssignedUser;
 import com.faction.clientportal.model.Application;
 import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.EmailNotificationAudience;
@@ -488,5 +489,54 @@ class NotificationRecipientResolverTest {
             assertThat(r.email()).isEqualTo("alex@example.com");
             assertThat(r.name()).isEqualTo("Alex Pearson");
         });
+    }
+
+    @Test
+    void theCommentAudienceIsTheAppOwnerAssignedUsersAndOrganizationUsers() {
+        User assigned = orgUser("u-20", "assignee", "assignee@example.com");
+        when(userRepository.findById("u-20")).thenReturn(Optional.of(assigned));
+        application.setAssignedUsers(new ArrayList<>(List.of(
+                AssignedUser.builder().userId("u-20").accessLevel("READ").build())));
+        User customer = orgUser("u-10", "customer", "customer@example.com");
+        givenOrgUsers(customer);
+        when(accessScopeService.ownsApplication("u-10", application)).thenReturn(true);
+
+        List<NotificationRecipientResolver.Recipient> recipients = resolver.resolveCommentAudience(
+                EmailNotificationEvent.APPLICATION_COMMENT,
+                EventSettings.defaultsFor(EmailNotificationEvent.APPLICATION_COMMENT),
+                application);
+
+        assertThat(recipients).extracting(NotificationRecipientResolver.Recipient::email)
+                .containsExactly("dana@example.com", "assignee@example.com", "customer@example.com");
+        // Stakeholders are not a comment audience, whatever the application records.
+        assertThat(recipients).extracting(NotificationRecipientResolver.Recipient::audience)
+                .doesNotContain(EmailNotificationAudience.STAKEHOLDERS);
+    }
+
+    @Test
+    void disabledOrDeletedAssignedUsersAreNotMailed() {
+        User disabled = orgUser("u-21", "gone", "gone@example.com");
+        disabled.setDisabledAt(java.time.LocalDateTime.now());
+        when(userRepository.findById("u-21")).thenReturn(Optional.of(disabled));
+        application.setAssignedUsers(new ArrayList<>(List.of(
+                AssignedUser.builder().userId("u-21").accessLevel("WRITE").build(),
+                AssignedUser.builder().userId("missing").accessLevel("READ").build())));
+
+        List<NotificationRecipientResolver.Recipient> recipients = resolver.resolveCommentAudience(
+                EmailNotificationEvent.APPLICATION_COMMENT,
+                EventSettings.builder().notifyAssignedUsers(true).build(),
+                application);
+
+        assertThat(recipients).isEmpty();
+    }
+
+    @Test
+    void aSwitchedOffCommentAudienceIsNotResolved() {
+        List<NotificationRecipientResolver.Recipient> recipients = resolver.resolveCommentAudience(
+                EmailNotificationEvent.VULNERABILITY_COMMENT,
+                EventSettings.builder().notifyOrgUsers(true).build(),
+                application);
+
+        assertThat(recipients).isEmpty(); // no org on the application, and the app owner is off
     }
 }

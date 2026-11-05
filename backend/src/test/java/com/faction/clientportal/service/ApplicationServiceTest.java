@@ -64,6 +64,9 @@ class ApplicationServiceTest {
     private com.faction.clientportal.service.email.ThreadCommentEmailSender threadCommentEmailSender;
 
     @Mock
+    private com.faction.clientportal.service.email.CommentAudienceNotifier commentAudienceNotifier;
+
+    @Mock
     private com.faction.clientportal.service.AccessScopeService accessScopeService;
 
     @InjectMocks

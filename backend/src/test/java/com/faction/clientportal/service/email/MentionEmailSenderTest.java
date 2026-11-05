@@ -41,6 +41,7 @@ class MentionEmailSenderTest {
     @Mock private UserRepository userRepository;
     @Mock private ReplyMailboxProvider replyMailboxProvider;
     @Mock private NotificationPreferenceService preferenceService;
+    @Mock private EmailThread emailThread;
 
     @InjectMocks private MentionEmailSender sender;
 
@@ -63,6 +64,9 @@ class MentionEmailSenderTest {
                         + (i.getArgument(4) == null ? "" : "<small>" + i.getArgument(4) + "</small>"));
         when(emailService.send(any())).thenReturn(Optional.of("<generated@smtp>"));
         when(replyTokenRepository.save(any(EmailReplyToken.class))).thenAnswer(i -> i.getArgument(0));
+        // Every finding here belongs to "Payments API"; the lookup itself is EmailThreadTest's.
+        when(emailThread.subject(any(), any(), any())).thenAnswer(i -> EmailThread.compose(
+                i.getArgument(0), i.getArgument(1), "Payments API"));
 
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(
                 User.builder().username("alice").email("alice@example.com")
@@ -92,6 +96,7 @@ class MentionEmailSenderTest {
                 .targetType(type)
                 .targetId(targetId)
                 .assessmentId(assessmentId)
+                .targetName("SQL Injection")
                 .build();
     }
 
@@ -107,7 +112,11 @@ class MentionEmailSenderTest {
 
         EmailMessage msg = captureSent();
         assertThat(msg.getTo()).isEqualTo("alice@example.com");
-        assertThat(msg.getSubject()).contains("Bob Brown").contains("vulnerability comment");
+        // Names the finding and its application, and nothing that changes per message, so
+        // this mention and the comments after it land in one conversation.
+        assertThat(msg.getSubject()).isEqualTo("[Faction] SQL Injection — Payments API");
+        assertThat(msg.getThreadId()).isEqualTo("<vulnerability.v1@thread.faction>");
+        assertThat(msg.getHtmlBody()).contains("Bob Brown mentioned you");
         // The whole point: the body carries what was said, not just "you were mentioned".
         assertThat(msg.getHtmlBody()).contains("SQL injection");
         assertThat(msg.getHtmlBody()).contains(MentionEmailSender.REPLY_SENTINEL);
@@ -141,8 +150,9 @@ class MentionEmailSenderTest {
         String id = token.getAllValues().get(0).getId();
 
         assertThat(id).hasSize(32);
-        // '+' and '/' from standard base64 would corrupt an email local part.
-        assertThat(id).matches("[A-Za-z0-9_-]+");
+        // Lowercase base32: safe in an email local part, and unchanged when a mail system
+        // lower-cases the address on the way back.
+        assertThat(id).matches("[a-z2-7]+");
     }
 
     @Test
@@ -214,7 +224,7 @@ class MentionEmailSenderTest {
         EmailMessage msg = captureSent();
         assertThat(msg.getReplyTo()).isNull();
         assertThat(msg.getHtmlBody()).doesNotContain(MentionEmailSender.REPLY_SENTINEL);
-        assertThat(msg.getSubject()).contains("assessment note");
+        assertThat(msg.getSubject()).endsWith("— notes");
         // No unsubscribe either: a note keeps no subscriber list — unlike applications and
         // vulnerabilities — so "remove me" would be a link that errors when clicked.
         assertThat(msg.getUnsubscribeUrl()).isNull();

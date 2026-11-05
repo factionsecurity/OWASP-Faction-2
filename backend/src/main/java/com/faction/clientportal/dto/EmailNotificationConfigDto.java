@@ -30,6 +30,10 @@ public class EmailNotificationConfigDto {
 
     private int pastDueRepeatIntervalDays;
 
+    private boolean includeApplicationNames;
+
+    private boolean includeVulnerabilityNames;
+
     private List<EventDto> events;
 
     @Data
@@ -56,6 +60,7 @@ public class EmailNotificationConfigDto {
         private boolean notifyAppOwner;
         private boolean includeMentionedUsers;
         private boolean notifyOrgUsers;
+        private boolean notifyAssignedUsers;
 
         private String customMessage;
 

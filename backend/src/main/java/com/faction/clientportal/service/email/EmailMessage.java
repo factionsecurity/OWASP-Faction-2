@@ -38,4 +38,11 @@ public class EmailMessage {
      * and what keeps bulk mail out of spam folders.
      */
     String unsubscribeUrl;
+
+    /**
+     * The conversation this email belongs to, from {@link EmailThread#threadId}. Sent as
+     * {@code References} and {@code In-Reply-To} so clients group every email about one
+     * item together; null leaves the email standing alone.
+     */
+    String threadId;
 }

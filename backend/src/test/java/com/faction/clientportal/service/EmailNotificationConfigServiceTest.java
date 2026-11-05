@@ -9,6 +9,7 @@ import com.faction.clientportal.model.EmailNotificationConfig;
 import com.faction.clientportal.model.EmailNotificationConfig.EventSettings;
 import com.faction.clientportal.model.EmailNotificationEvent;
 import com.faction.clientportal.repository.EmailNotificationConfigRepository;
+import com.faction.clientportal.service.email.EmailNaming;
 import com.faction.clientportal.service.email.EmailService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -70,13 +71,17 @@ class EmailNotificationConfigServiceTest {
 
         assertThat(dto.isEnabled()).isFalse();
         assertThat(dto.getEvents()).isNotEmpty();
-        assertThat(dto.getEvents()).allSatisfy(e -> {
-            assertThat(e.isNotifyAssessors()).isFalse();
-            assertThat(e.isNotifyStakeholders()).isFalse();
-            assertThat(e.isNotifyAppOwner()).isFalse();
-            assertThat(e.isIncludeMentionedUsers()).isFalse();
-            assertThat(e.isNotifyOrgUsers()).isFalse();
-        });
+        assertThat(dto.getEvents())
+                .filteredOn(e -> !EmailNotificationEvent.valueOf(e.getEvent()).isOnByDefault())
+                .isNotEmpty()
+                .allSatisfy(e -> {
+                    assertThat(e.isNotifyAssessors()).isFalse();
+                    assertThat(e.isNotifyStakeholders()).isFalse();
+                    assertThat(e.isNotifyAppOwner()).isFalse();
+                    assertThat(e.isIncludeMentionedUsers()).isFalse();
+                    assertThat(e.isNotifyOrgUsers()).isFalse();
+                    assertThat(e.isNotifyAssignedUsers()).isFalse();
+                });
     }
 
     @Test
@@ -209,6 +214,27 @@ class EmailNotificationConfigServiceTest {
     }
 
     @Test
+    void namesInEmailsAreOnByDefaultAndEachSwitchesOffAlone() {
+        EmailNotificationConfigDto before = service.getConfig();
+        assertThat(before.isIncludeApplicationNames()).isTrue();
+        assertThat(before.isIncludeVulnerabilityNames()).isTrue();
+
+        UpdateEmailNotificationConfigRequest request = new UpdateEmailNotificationConfigRequest();
+        request.setIncludeVulnerabilityNames(false);
+        EmailNotificationConfigDto after = service.updateConfig(request);
+
+        assertThat(after.isIncludeVulnerabilityNames()).isFalse();
+        assertThat(after.isIncludeApplicationNames()).isTrue();
+    }
+
+    @Test
+    void unreadableSettingsHideEveryName() {
+        when(repository.findById(EmailNotificationConfig.SINGLETON_ID)).thenThrow(new RuntimeException("db down"));
+
+        assertThat(service.naming()).isEqualTo(EmailNaming.HIDDEN);
+    }
+
+    @Test
     void isEnabledRequiresBothTheMasterSwitchAndAnAudience() {
         UpdateEmailNotificationConfigRequest request = new UpdateEmailNotificationConfigRequest();
         UpdateEmailNotificationConfigRequest.EventUpdate on = update("ASSESSMENT_CREATED");
@@ -294,5 +320,63 @@ class EmailNotificationConfigServiceTest {
         assertThat(perStage).filteredOn(e -> "d-stg".equals(e.getStageId()))
                 .singleElement()
                 .satisfies(e -> assertThat(e.getWorkflowId()).isEqualTo(AssessmentWorkflow.DEFAULT_ID));
+    }
+
+    @Test
+    void commentEventsStartWithEveryAudienceTheyOfferSwitchedOn() {
+        EmailNotificationConfigDto dto = service.getConfig();
+
+        assertThat(dto.getEvents())
+                .filteredOn(e -> e.getEvent().equals("APPLICATION_COMMENT")
+                        || e.getEvent().equals("VULNERABILITY_COMMENT"))
+                .hasSize(2)
+                .allSatisfy(e -> {
+                    assertThat(e.getAudiences()).containsExactly(EmailNotificationAudience.APP_OWNER,
+                            EmailNotificationAudience.ORG_USERS, EmailNotificationAudience.ASSIGNED_USERS);
+                    assertThat(e.isNotifyAppOwner()).isTrue();
+                    assertThat(e.isNotifyOrgUsers()).isTrue();
+                    assertThat(e.isNotifyAssignedUsers()).isTrue();
+                    assertThat(e.isNotifyStakeholders()).isFalse();
+                });
+    }
+
+    @Test
+    void commentEventsStillObeyTheMasterSwitch() {
+        assertThat(service.isEnabled(EmailNotificationEvent.APPLICATION_COMMENT)).isFalse();
+
+        stored.setEnabled(true);
+
+        assertThat(service.isEnabled(EmailNotificationEvent.APPLICATION_COMMENT)).isTrue();
+        assertThat(service.isEnabled(EmailNotificationEvent.ASSESSMENT_CREATED)).isFalse();
+    }
+
+    @Test
+    void switchingOneCommentAudienceOffKeepsTheOtherDefaults() {
+        UpdateEmailNotificationConfigRequest.EventUpdate u = update("APPLICATION_COMMENT");
+        u.setNotifyAppOwner(false);
+        UpdateEmailNotificationConfigRequest request = new UpdateEmailNotificationConfigRequest();
+        request.setEvents(List.of(u));
+
+        service.updateConfig(request);
+
+        EventSettings saved = stored.settingsFor("APPLICATION_COMMENT");
+        assertThat(saved.isNotifyAppOwner()).isFalse();
+        assertThat(saved.isNotifyOrgUsers()).isTrue();
+        assertThat(saved.isNotifyAssignedUsers()).isTrue();
+    }
+
+    @Test
+    void aCommentEventSwitchedFullyOffStaysOff() {
+        UpdateEmailNotificationConfigRequest.EventUpdate u = update("VULNERABILITY_COMMENT");
+        u.setNotifyAppOwner(false);
+        u.setNotifyOrgUsers(false);
+        u.setNotifyAssignedUsers(false);
+        UpdateEmailNotificationConfigRequest request = new UpdateEmailNotificationConfigRequest();
+        request.setEnabled(true);
+        request.setEvents(List.of(u));
+
+        service.updateConfig(request);
+
+        assertThat(service.isEnabled(EmailNotificationEvent.VULNERABILITY_COMMENT)).isFalse();
     }
 }

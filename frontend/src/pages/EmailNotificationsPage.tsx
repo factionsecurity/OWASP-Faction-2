@@ -19,14 +19,40 @@ const AUDIENCES: Array<{ key: EmailNotificationAudience; label: string; field: S
   { key: 'APP_OWNER', label: 'App owner', field: 'notifyAppOwner' },
   { key: 'MENTIONED_USERS', label: 'Mentioned users', field: 'includeMentionedUsers' },
   { key: 'ORG_USERS', label: 'Org access', field: 'notifyOrgUsers' },
+  { key: 'ASSIGNED_USERS', label: 'Assigned users', field: 'notifyAssignedUsers' },
 ];
+
+/** Whether notification emails may name what they are about. */
+const NAME_SWITCHES: Array<{ field: NameField; label: string; hint: string }> = [
+  {
+    field: 'includeApplicationNames',
+    label: 'Application names',
+    hint: 'Off, emails say "an application" instead of its name.',
+  },
+  {
+    field: 'includeVulnerabilityNames',
+    label: 'Vulnerability names',
+    hint: 'Off, emails say "a vulnerability" or "a finding" instead of its name.',
+  },
+];
+
+type NameField = 'includeApplicationNames' | 'includeVulnerabilityNames';
 
 type SwitchField =
   | 'notifyAssessors'
   | 'notifyStakeholders'
   | 'notifyAppOwner'
   | 'includeMentionedUsers'
-  | 'notifyOrgUsers';
+  | 'notifyOrgUsers'
+  | 'notifyAssignedUsers';
+
+/**
+ * Comment emails are the discussion thread's own email, which carries the comment itself and
+ * has no place for added wording, so these events offer no custom message.
+ */
+function isCommentEvent(e: EmailNotificationEvent): boolean {
+  return e.event.endsWith('_COMMENT');
+}
 
 /** Sections, in the order they read: the assessment lifecycle, then what follows from it. */
 const GROUPS: Array<{ title: string; hint: string; match: (e: EmailNotificationEvent) => boolean }> = [
@@ -41,11 +67,18 @@ const GROUPS: Array<{ title: string; hint: string; match: (e: EmailNotificationE
     match: e => e.event.startsWith('RETEST_'),
   },
   {
+    title: 'Comments',
+    hint: 'Sent when someone comments on an application or a finding, to the people below as '
+        + 'well as everyone following the discussion. Finding comments only go out once the '
+        + 'assessment is finalized. Nobody gets the same comment twice.',
+    match: isCommentEvent,
+  },
+  {
     title: 'Vulnerabilities',
     hint: 'Due-date reminders are digests — one email covering every finding across all '
         + 'applications and organizations, never one email per finding. Findings in the '
         + 'Exception state are never included.',
-    match: e => e.event.startsWith('VULNERABILITY_'),
+    match: e => e.event.startsWith('VULNERABILITY_') && !isCommentEvent(e),
   },
 ];
 
@@ -108,6 +141,11 @@ export default function EmailNotificationsPage() {
   const toggleMaster = (enabled: boolean) => {
     setConfig(prev => prev && { ...prev, enabled }); // optimistic, so the switch responds at once
     save({ enabled }, 'master');
+  };
+
+  const toggleNames = (field: NameField, next: boolean) => {
+    setConfig(prev => prev && { ...prev, [field]: next });
+    save({ [field]: next }, field);
   };
 
   const toggleAudience = (event: EmailNotificationEvent, field: SwitchField, next: boolean) => {
@@ -201,6 +239,35 @@ export default function EmailNotificationsPage() {
               up under Email Config first.
             </div>
           )}
+
+          <div className="email-notifications-names">
+            <div className="email-notifications-label">Names in emails</div>
+            <p className="email-notifications-hint">
+              Emails name the applications and vulnerabilities they are about, in the subject
+              and the message. Switch either off to keep those names out of inboxes — the link
+              in the email still opens the item. Assessment names are always shown.
+            </p>
+            {NAME_SWITCHES.map(s => (
+              <div className="email-notifications-name-row" key={s.field}>
+                <label className="notif-toggle">
+                  <input
+                    type="checkbox"
+                    checked={config[s.field]}
+                    disabled={saving.has(s.field)}
+                    onChange={e => toggleNames(s.field, e.target.checked)}
+                    aria-label={s.label}
+                  />
+                  <span className="notif-toggle-track" />
+                </label>
+                <div>
+                  <div className="email-notifications-name-label">
+                    {s.label}{saving.has(s.field) && ' — Saving…'}
+                  </div>
+                  <div className="email-notifications-description">{s.hint}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -269,16 +336,20 @@ export default function EmailNotificationsPage() {
                       ))}
 
                       <td className="email-notifications-audience">
-                        <button
-                          type="button"
-                          className={`email-notifications-message-btn${
-                            event.customMessage ? ' email-notifications-message-btn--set' : ''}`}
-                          onClick={() => toggleMessageEditor(event)}
-                          title={event.customMessage || 'Add wording of your own'}
-                          aria-label={`${eventLabel} — custom message`}
-                        >
-                          {editing ? <X size={14} /> : <MessageSquareText size={14} />}
-                        </button>
+                        {isCommentEvent(event) ? (
+                          <span className="email-notifications-na" aria-hidden="true">—</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className={`email-notifications-message-btn${
+                              event.customMessage ? ' email-notifications-message-btn--set' : ''}`}
+                            onClick={() => toggleMessageEditor(event)}
+                            title={event.customMessage || 'Add wording of your own'}
+                            aria-label={`${eventLabel} — custom message`}
+                          >
+                            {editing ? <X size={14} /> : <MessageSquareText size={14} />}
+                          </button>
+                        )}
                       </td>
                     </tr>,
 

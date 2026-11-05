@@ -66,6 +66,34 @@ class EmailServiceTest {
     }
 
     @Test
+    void aThreadIdIsSentAsReferencesAndInReplyTo() throws Exception {
+        JavaMailSenderImpl sender = mock(JavaMailSenderImpl.class);
+        jakarta.mail.internet.MimeMessage mime = new jakarta.mail.internet.MimeMessage(
+                jakarta.mail.Session.getInstance(new java.util.Properties()));
+        when(sender.createMimeMessage()).thenReturn(mime);
+        when(emailConfigService.buildActiveSender()).thenReturn(sender);
+
+        emailService.send(EmailMessage.builder().to("a@example.com").subject("s").htmlBody("b")
+                .threadId("<vulnerability.v1@thread.faction>").build());
+
+        assertThat(mime.getHeader("References")).containsExactly("<vulnerability.v1@thread.faction>");
+        assertThat(mime.getHeader("In-Reply-To")).containsExactly("<vulnerability.v1@thread.faction>");
+    }
+
+    @Test
+    void withoutAThreadIdTheEmailStandsAlone() throws Exception {
+        JavaMailSenderImpl sender = mock(JavaMailSenderImpl.class);
+        jakarta.mail.internet.MimeMessage mime = new jakarta.mail.internet.MimeMessage(
+                jakarta.mail.Session.getInstance(new java.util.Properties()));
+        when(sender.createMimeMessage()).thenReturn(mime);
+        when(emailConfigService.buildActiveSender()).thenReturn(sender);
+
+        emailService.send(EmailMessage.builder().to("a@example.com").subject("s").htmlBody("b").build());
+
+        assertThat(mime.getHeader("References")).isNull();
+    }
+
+    @Test
     void shellEscapesTheTitleButNotTheBody() {
         String html = emailService.renderShell(
                 "<script>alert(1)</script>", "<p>trusted body</p>", null, null, null);

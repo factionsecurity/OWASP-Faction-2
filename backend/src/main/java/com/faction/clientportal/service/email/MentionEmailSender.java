@@ -14,9 +14,7 @@ import org.owasp.html.PolicyFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.Base64;
 import java.util.Optional;
 
 /**
@@ -57,7 +55,6 @@ public class MentionEmailSender {
     public static final String LEGACY_REPLY_SENTINEL =
             "##- Please type your reply above this line -##";
 
-    private static final int TOKEN_BYTES = 24;          // 32 chars base64url
     private static final int TOKEN_TTL_DAYS = 30;
     private static final int MAX_BODY_CHARS = 4000;
 
@@ -80,6 +77,7 @@ public class MentionEmailSender {
     private final UserRepository userRepository;
     private final ReplyMailboxProvider replyMailboxProvider;
     private final NotificationPreferenceService preferenceService;
+    private final EmailThread emailThread;
 
     @Async("mailExecutor")
     public void send(MentionQueue entry) {
@@ -122,7 +120,7 @@ public class MentionEmailSender {
 
         EmailMessage message = EmailMessage.builder()
                 .to(to)
-                .subject(subjectFor(entry, authorName))
+                .subject(emailThread.subject(entry.getTargetType(), entry.getTargetName(), entry.getAssessmentId()))
                 // Through the shared shell, like every other email: logo header, branded
                 // card, and a "View in Faction" button onto the exact comment. Replying
                 // is not always the right move — the thread may have moved on, or the
@@ -136,6 +134,7 @@ public class MentionEmailSender {
                         footer(unsubscribeUrl)))
                 .replyTo(replyable ? replyToAddress(replyAddress, token.getId()) : null)
                 .unsubscribeUrl(unsubscribeUrl)
+                .threadId(EmailThread.threadId(entry.getTargetType(), entry.getTargetId()))
                 .build();
 
         Optional<String> messageId = emailService.send(message);
@@ -192,10 +191,7 @@ public class MentionEmailSender {
     }
 
     private EmailReplyToken createToken(MentionQueue entry) {
-        byte[] raw = new byte[TOKEN_BYTES];
-        new SecureRandom().nextBytes(raw);
-        // base64url without padding: safe in an email local part, unlike '+' or '/'.
-        String id = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
+        String id = ReplyTokenService.newTokenId();
 
         LocalDateTime now = LocalDateTime.now();
         return replyTokenRepository.save(EmailReplyToken.builder()
@@ -212,15 +208,6 @@ public class MentionEmailSender {
     }
 
     // ── Content ───────────────────────────────────────────────────────────────
-
-    private String subjectFor(MentionQueue entry, String authorName) {
-        String where = switch (entry.getTargetType() == null ? MentionTargetType.APPLICATION : entry.getTargetType()) {
-            case APPLICATION -> "an application comment";
-            case VULNERABILITY -> "a vulnerability comment";
-            case NOTEBOOK -> "an assessment note";
-        };
-        return "Faction — " + authorName + " mentioned you in " + where;
-    }
 
     /**
      * The shell already renders "{author} mentioned you" as the heading, so this does not
