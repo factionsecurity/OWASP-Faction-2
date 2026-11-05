@@ -729,6 +729,16 @@ export default function Applications() {
                   New sub-organizations: {importResult.createdSubOrganizations.join(', ')}
                 </p>
               )}
+              {importResult.createdInternalUsers.length > 0 && (
+                <p className="text-sm">
+                  New internal users: {importResult.createdInternalUsers.join(', ')}
+                </p>
+              )}
+              {importResult.createdExternalUsers.length > 0 && (
+                <p className="text-sm">
+                  New external users: {importResult.createdExternalUsers.join(', ')}
+                </p>
+              )}
 
               {importResult.errors.length > 0 && (
                 <table className="app-import-errors">

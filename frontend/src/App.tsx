@@ -9,7 +9,7 @@ import { TerminologyProvider } from './context/TerminologyContext';
 import { WorkflowsProvider } from './context/WorkflowsContext';
 import UpgradeDialog from './components/UpgradeDialog';
 import { PaidFeature } from './components/PaidFeature';
-import { SsoConfig, BrandingPage, InboundEmailConfigPage, AvailabilityAdminPage } from '@enterprise';
+import { SsoConfig, BrandingPage, InboundEmailConfigPage, AvailabilityAdminPage, UserConfigPage } from '@enterprise';
 import Login from './components/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -717,6 +717,27 @@ function App() {
                     description="Replace the shipped logos, sign-in backgrounds and favicon with your own."
                   >
                     <BrandingPage />
+                  </PaidFeature>
+                </ProtectedRoute>
+              </DashboardLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        <Route
+          path="/user-config"
+          element={
+            isAuthenticated ? (
+              <DashboardLayout>
+                <ProtectedRoute requiredPermission="canViewOrgConfig">
+                  <PaidFeature
+                    feature="user_fields"
+                    title="User Config"
+                    description="Custom fields recorded on each user, set by whoever can edit that user."
+                  >
+                    <UserConfigPage />
                   </PaidFeature>
                 </ProtectedRoute>
               </DashboardLayout>

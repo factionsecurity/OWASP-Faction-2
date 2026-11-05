@@ -10,7 +10,8 @@
  * feature is unavailable — so a stub that drew its own placeholder would be a second,
  * inconsistent version of that screen. Returning null keeps one upgrade experience.
  */
-import type { AssessmentPrefillActionProps, AssessorTimelineProps, AvailabilityProfileCardProps } from '../types';
+import { forwardRef } from 'react';
+import type { AssessmentPrefillActionProps, AssessorTimelineProps, AvailabilityProfileCardProps, UserFieldValuesSectionHandle, UserFieldValuesSectionProps } from '../types';
 
 const Unavailable = () => null;
 
@@ -28,3 +29,6 @@ export const AssessorTimeline: (props: AssessorTimelineProps) => null = () => nu
 /** The profile's availability card and the admin page; call sites wrap them in PaidFeature or a feature check. */
 export const AvailabilityProfileCard: (props: AvailabilityProfileCardProps) => null = () => null;
 export const AvailabilityAdminPage = Unavailable;
+/** User custom fields: the admin page and the per-user values section on the Users form. */
+export const UserConfigPage = Unavailable;
+export const UserFieldValuesSection = forwardRef<UserFieldValuesSectionHandle, UserFieldValuesSectionProps>(() => null);

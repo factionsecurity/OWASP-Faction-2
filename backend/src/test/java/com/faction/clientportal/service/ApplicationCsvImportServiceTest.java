@@ -1,6 +1,7 @@
 package com.faction.clientportal.service;
 
 import com.faction.clientportal.config.TestContainersConfig;
+import com.faction.clientportal.model.AppOwner;
 import com.faction.clientportal.model.Application;
 import com.faction.clientportal.model.ApplicationStatus;
 import com.faction.clientportal.model.ApplicationUrl;
@@ -28,6 +29,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -205,6 +207,22 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
         // A three-column sync file must not blank out everything it doesn't mention.
         assertThat(app.getDescription()).isEqualTo("Keep me");
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.PRODUCTION);
+    }
+
+    @Test
+    void ownerColumnsReplaceTheAppOwner() throws IOException {
+        applicationRepository.save(Application.builder()
+                .name("Payments").appOwner(new AppOwner("Old Owner", "old@x.test")).build());
+
+        upload("""
+                name,ownerName,ownerEmail
+                Payments,Jane Doe,jane.doe@x.test
+                """);
+
+        Application app = applicationRepository.findByName("Payments").orElseThrow();
+        assertThat(app.getAppOwner().getFullName()).isEqualTo("Jane Doe");
+        assertThat(app.getAppOwner().getEmail()).isEqualTo("jane.doe@x.test");
+        assertThat(app.getOwnerEmail()).isEqualTo("jane.doe@x.test");
     }
 
     @Test
@@ -606,5 +624,247 @@ class ApplicationCsvImportServiceTest extends TestContainersConfig {
                 Checkout
                 """);
         assertThat(result.getFormat()).isNull();
+    }
+
+    /** A format whose rows are "name,status" and whose hook resolves the owner itself. */
+    private ApplicationCsvImportService withProvisioningFormat(AtomicInteger calls, String ownerId) {
+        StaticListableBeanFactory beans = new StaticListableBeanFactory();
+        beans.addBean("provisioningFormat", new ApplicationCsvFormat() {
+            @Override public String name() { return "Provisioning export"; }
+
+            @Override public boolean recognizes(List<String> header) {
+                return header.contains("Prov_Name");
+            }
+
+            @Override public List<List<String>> toTemplate(List<List<String>> rows) {
+                List<List<String>> out = new ArrayList<>();
+                out.add(List.of("name", "status"));
+                for (List<String> row : rows.subList(1, rows.size())) {
+                    out.add(List.of(row.get(0), row.get(1)));
+                }
+                return out;
+            }
+
+            @Override public String provisionOwners(RowValues row, int line,
+                    com.faction.clientportal.dto.ApplicationImportResultDto result) {
+                calls.incrementAndGet();
+                result.addCreatedInternalUser("x");
+                return ownerId;
+            }
+        });
+        return new ApplicationCsvImportService(applicationRepository, organizationRepository,
+                subOrganizationRepository, subOrganizationService, entityFieldConfigService, userRepository,
+                beans.getBeanProvider(ApplicationCsvFormat.class));
+    }
+
+    private com.faction.clientportal.dto.ApplicationImportResultDto uploadProvisioning(
+            ApplicationCsvImportService svc, String csv) throws IOException {
+        return svc.importCsv(new MockMultipartFile(
+                "file", "apps.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)), "admin");
+    }
+
+    @Test
+    void aFormatCanResolveTheRemediationOwnerItself() throws IOException {
+        User owner = user("provowner", "Pro", "Vowner", true);
+        AtomicInteger calls = new AtomicInteger();
+
+        var result = uploadProvisioning(withProvisioningFormat(calls, owner.getId()), """
+                Prov_Name,Prov_Status
+                Payroll,PRODUCTION
+                """);
+
+        assertThat(result.getCreated()).isEqualTo(1);
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll").orElseThrow().getRemediationOwnerId())
+                .isEqualTo(owner.getId());
+        assertThat(result.getCreatedInternalUsers()).containsExactly("x");
+    }
+
+    @Test
+    void provisioningIsSkippedForARowThatFails() throws IOException {
+        User owner = user("provowner", "Pro", "Vowner", true);
+        AtomicInteger calls = new AtomicInteger();
+
+        var result = uploadProvisioning(withProvisioningFormat(calls, owner.getId()), """
+                Prov_Name,Prov_Status
+                Payroll,NOPE
+                """);
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(calls.get()).isZero();
+        assertThat(result.getCreatedInternalUsers()).isEmpty();
+    }
+
+    /** Rows are "name,tier[,status]"; the format declares Application Tier as an open dropdown. */
+    private ApplicationCsvImportService withOpenDropdownFormat() {
+        return withOpenDropdownFormat(false);
+    }
+
+    /** With {@code failAfterFields}, provisioning throws: after custom fields are applied, before save. */
+    private ApplicationCsvImportService withOpenDropdownFormat(boolean failAfterFields) {
+        StaticListableBeanFactory beans = new StaticListableBeanFactory();
+        beans.addBean("openFormat", new ApplicationCsvFormat() {
+            @Override public String name() { return "Open dropdown export"; }
+
+            @Override public boolean recognizes(List<String> header) {
+                return header.contains("Open_Name");
+            }
+
+            @Override public List<UserDefinedField> openDropdowns() {
+                return List.of(UserDefinedField.builder()
+                        .variableName("application_tier").displayName("Application Tier")
+                        .fieldType(FieldType.DROPDOWN).build());
+            }
+
+            @Override public List<List<String>> toTemplate(List<List<String>> rows) {
+                List<List<String>> out = new ArrayList<>();
+                out.add(List.of("name", FIELD_COLUMN_PREFIX + "application_tier", "status"));
+                for (List<String> row : rows.subList(1, rows.size())) {
+                    out.add(List.of(row.get(0), row.get(1), row.size() > 2 ? row.get(2) : ""));
+                }
+                return out;
+            }
+
+            @Override public String provisionOwners(RowValues row, int line,
+                    com.faction.clientportal.dto.ApplicationImportResultDto result) {
+                if (failAfterFields) {
+                    throw new IllegalArgumentException("owner provisioning failed");
+                }
+                return null;
+            }
+        });
+        return new ApplicationCsvImportService(applicationRepository, organizationRepository,
+                subOrganizationRepository, subOrganizationService, entityFieldConfigService, userRepository,
+                beans.getBeanProvider(ApplicationCsvFormat.class));
+    }
+
+    private com.faction.clientportal.dto.ApplicationImportResultDto uploadOpen(String csv) throws IOException {
+        return withOpenDropdownFormat().importCsv(new MockMultipartFile(
+                "file", "apps.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8)), "admin");
+    }
+
+    private UserDefinedField storedField(String displayName) {
+        return entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION).stream()
+                .filter(f -> f.getDisplayName().equalsIgnoreCase(displayName)).findFirst().orElseThrow();
+    }
+
+    private UserDefinedField addField(UserDefinedField field) {
+        return entityFieldConfigService.ensureFields(FieldScope.APPLICATION, List.of(field), "admin").stream()
+                .filter(f -> f.getVariableName().equals(field.getVariableName())).findFirst().orElseThrow();
+    }
+
+    @Test
+    void titleCaseCapitalizesEveryWord() {
+        assertThat(ApplicationCsvImportService.titleCase("  gold   TIER ")).isEqualTo("Gold Tier");
+    }
+
+    @Test
+    void anOpenDropdownIsCreatedWhenMissing() throws IOException {
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Payroll,tier 1
+                """);
+
+        UserDefinedField tier = storedField("Application Tier");
+        assertThat(tier.getFieldType()).isEqualTo(FieldType.DROPDOWN);
+        assertThat(tier.getDropdownOptions()).containsExactly("Tier 1");
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll").orElseThrow().getFieldValues())
+                .containsEntry(tier.getId(), "Tier 1");
+    }
+
+    @Test
+    void anOpenDropdownIsFoundByDisplayName() throws IOException {
+        UserDefinedField made = addField(UserDefinedField.builder()
+                .variableName("apptier").displayName("application tier")
+                .fieldType(FieldType.DROPDOWN).dropdownOptions(new ArrayList<>()).build());
+
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Payroll,gold
+                """);
+
+        assertThat(entityFieldConfigService.getFieldDefinitions(FieldScope.APPLICATION)).hasSize(1);
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll").orElseThrow().getFieldValues())
+                .containsEntry(made.getId(), "Gold");
+    }
+
+    @Test
+    void existingOptionsMatchIgnoringCase() throws IOException {
+        UserDefinedField made = addField(field("application_tier", FieldType.DROPDOWN, "Gold"));
+
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Payroll,gold
+                Billing,GOLD
+                """);
+
+        UserDefinedField tier = storedField("application_tier");
+        assertThat(tier.getDropdownOptions()).containsExactly("Gold");
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll").orElseThrow().getFieldValues())
+                .containsEntry(made.getId(), "Gold");
+        assertThat(applicationRepository.findByNameIgnoreCase("Billing").orElseThrow().getFieldValues())
+                .containsEntry(made.getId(), "Gold");
+    }
+
+    @Test
+    void twoRowsAddingTheSameNewValueAddOneOption() throws IOException {
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Payroll,silver
+                Billing,SILVER
+                """);
+
+        assertThat(storedField("Application Tier").getDropdownOptions()).containsExactly("Silver");
+    }
+
+    @Test
+    void aTextFieldIsConvertedOnce() throws IOException {
+        UserDefinedField text = addField(UserDefinedField.builder()
+                .variableName("application_tier").displayName("Application Tier")
+                .fieldType(FieldType.STRING).build());
+        for (String[] app : new String[][] {{"One", "tier 2"}, {"Two", "Tier 2"}}) {
+            applicationRepository.save(Application.builder().name(app[0])
+                    .fieldValues(new java.util.HashMap<>(java.util.Map.of(text.getId(), app[1]))).build());
+        }
+
+        uploadOpen("""
+                Open_Name,Open_Tier
+                Three,tier 2
+                """);
+
+        UserDefinedField tier = storedField("Application Tier");
+        assertThat(tier.getFieldType()).isEqualTo(FieldType.DROPDOWN);
+        assertThat(tier.getDropdownOptions()).containsExactly("Tier 2");
+        for (String name : List.of("One", "Two", "Three")) {
+            assertThat(applicationRepository.findByNameIgnoreCase(name).orElseThrow().getFieldValues())
+                    .containsEntry(text.getId(), "Tier 2");
+        }
+    }
+
+    @Test
+    void aFailingRowAddsNoOption() throws IOException {
+        var result = withOpenDropdownFormat(true).importCsv(new MockMultipartFile(
+                "file", "apps.csv", "text/csv", """
+                Open_Name,Open_Tier
+                Payroll,platinum
+                """.getBytes(StandardCharsets.UTF_8)), "admin");
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getErrors()).hasSize(1);
+        assertThat(storedField("Application Tier").getDropdownOptions()).isEmpty();
+        assertThat(applicationRepository.findByNameIgnoreCase("Payroll")).isEmpty();
+    }
+
+    @Test
+    void otherDropdownsStayStrict() throws IOException {
+        UserDefinedField strict = addField(field("risk", FieldType.DROPDOWN, "Low"));
+
+        var result = upload("""
+                name,field:risk
+                Payroll,Extreme
+                """);
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(storedField(strict.getDisplayName()).getDropdownOptions()).containsExactly("Low");
     }
 }

@@ -2,6 +2,8 @@ package com.faction.clientportal.service;
 
 import com.faction.clientportal.model.UserDefinedField;
 
+import com.faction.clientportal.dto.ApplicationImportResultDto;
+
 import java.util.List;
 
 /**
@@ -42,6 +44,34 @@ public interface ApplicationCsvFormat {
      */
     default List<UserDefinedField> customFields() {
         return List.of();
+    }
+
+    /**
+     * Application dropdowns that grow instead of rejecting unknown values. Each is found by display
+     * name (ignoring case and surrounding spaces), then by variable name, and created from this
+     * definition when neither exists. A field found as STRING is converted to a dropdown once,
+     * its stored values becoming title-cased options. The format writes the column as
+     * {@link #FIELD_COLUMN_PREFIX} + variableName of the definition returned here, whatever the found
+     * field's own variable name is.
+     */
+    default List<UserDefinedField> openDropdowns() {
+        return List.of();
+    }
+
+    /** One template row, read by template column name ignoring case; "" when absent or blank. */
+    @FunctionalInterface
+    interface RowValues {
+        String get(String column);
+    }
+
+    /**
+     * Runs for each row once it has passed validation (status, custom fields, organization), just
+     * before its remediation owner is applied. A format may create accounts here. Returns the
+     * remediation owner's user id when the format resolved it itself, or null to match the
+     * remediationOwner column as usual.
+     */
+    default String provisionOwners(RowValues row, int line, ApplicationImportResultDto result) {
+        return null;
     }
 
     /**

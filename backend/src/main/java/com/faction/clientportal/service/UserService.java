@@ -154,6 +154,21 @@ public class UserService {
     }
 
     /**
+     * Load a user and apply the access check {@link #updateUserDto} applies to its target:
+     * all-scope and super admins pass, team-scoped callers must share a team with the user.
+     * For edits that live beside the user record (custom field values) and so must be held
+     * to the same rule as the record itself.
+     *
+     * @throws AccessDeniedException when the caller may not edit this user
+     */
+    public User requireCanEdit(String userId, Authentication authentication) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+        validateUserAccess(user, authentication);
+        return user;
+    }
+
+    /**
      * Validate that the current user can access the target user
      * - Super admins and users with 'all' scope can access any user
      * - Users with 'team' scope can only access users in their teams

@@ -6,6 +6,7 @@ import com.faction.clientportal.dto.UserDefinedFieldDto;
 import com.faction.clientportal.model.Application;
 import com.faction.clientportal.model.EntityFieldConfig;
 import com.faction.clientportal.model.FieldScope;
+import com.faction.clientportal.model.FieldType;
 import com.faction.clientportal.model.Organization;
 import com.faction.clientportal.model.UserDefinedField;
 import com.faction.clientportal.repository.ApplicationRepository;
@@ -130,6 +131,53 @@ public class EntityFieldConfigService {
         config.setLastUpdatedBy(userId);
         config.setUpdatedAt(LocalDateTime.now());
         return entityFieldConfigRepository.save(config).getFieldDefinitions();
+    }
+
+    /**
+     * Appends an option to a dropdown field unless it already has one equal ignoring case.
+     * Returns the field as stored.
+     */
+    public UserDefinedField addDropdownOption(FieldScope scope, String fieldId, String option, String userId) {
+        EntityFieldConfig config = configWithField(scope, fieldId);
+        UserDefinedField field = findField(config, fieldId);
+        List<String> options = field.getDropdownOptions() == null
+                ? new ArrayList<>() : new ArrayList<>(field.getDropdownOptions());
+        if (options.stream().noneMatch(option::equalsIgnoreCase)) {
+            options.add(option);
+            field.setDropdownOptions(options);
+            return findField(save(config, userId), fieldId);
+        }
+        return field;
+    }
+
+    /** Turns a field into a dropdown with exactly these options. Returns the field as stored. */
+    public UserDefinedField convertToDropdown(FieldScope scope, String fieldId, List<String> options,
+                                              String userId) {
+        EntityFieldConfig config = configWithField(scope, fieldId);
+        UserDefinedField field = findField(config, fieldId);
+        field.setFieldType(FieldType.DROPDOWN);
+        field.setDropdownOptions(new ArrayList<>(options));
+        return findField(save(config, userId), fieldId);
+    }
+
+    private EntityFieldConfig configWithField(FieldScope scope, String fieldId) {
+        EntityFieldConfig config = entityFieldConfigRepository.findByScope(scope)
+                .orElseThrow(() -> new IllegalArgumentException("No fields are defined for " + scope));
+        findField(config, fieldId);
+        return config;
+    }
+
+    private static UserDefinedField findField(EntityFieldConfig config, String fieldId) {
+        return config.getFieldDefinitions().stream()
+                .filter(f -> fieldId.equals(f.getId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unknown field " + fieldId));
+    }
+
+    private EntityFieldConfig save(EntityFieldConfig config, String userId) {
+        config.setLastUpdatedBy(userId);
+        config.setUpdatedAt(LocalDateTime.now());
+        return entityFieldConfigRepository.save(config);
     }
 
     /**

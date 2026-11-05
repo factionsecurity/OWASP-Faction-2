@@ -119,6 +119,7 @@ const menuItems: MenuItem[] = [
       { name: 'Teams', path: '/teams', icon: UserCog },
       { name: 'Availability', path: '/availability', icon: CalendarOff, feature: 'team_scheduling' },
       { name: 'Roles', path: '/roles', icon: Shield },
+      { name: 'User Config', path: '/user-config', icon: DatabaseZap, feature: 'user_fields' },
       { name: 'Password Policy', path: '/password-policy', icon: KeyRound },
       { name: 'SSO Config', path: '/sso-config', icon: Shield, feature: 'sso' },
 
