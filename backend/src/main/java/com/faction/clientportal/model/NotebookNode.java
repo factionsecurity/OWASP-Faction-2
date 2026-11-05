@@ -44,10 +44,12 @@ public class NotebookNode {
 
     private String title;
 
-    /** HTML from RichTextEditor */
+    /** HTML from RichTextEditor — needs TEXT, not the default varchar(255). */
+    @Column(columnDefinition = "TEXT")
     private String content;
 
-    /** HTML-stripped plain text for full-text search */
+    /** HTML-stripped plain text for full-text search — as long as the content, so TEXT too. */
+    @Column(columnDefinition = "TEXT")
     private String contentText;
 
     /** Sibling ordering */

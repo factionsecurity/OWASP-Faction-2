@@ -259,6 +259,27 @@ class NotebookControllerTest extends TestContainersConfig {
                 .andExpect(jsonPath("$.data.modifiedBy[0].userId").value(testUser.getUsername()));
     }
 
+    @Test
+    void testUpdateNode_PastedToolOutputLongerThan255Chars() throws Exception {
+        String nodeId = createNodeViaApi(testApplication.getId(), "Scan notes", null);
+
+        StringBuilder pasted = new StringBuilder("<pre>");
+        for (int port = 1; port <= 40; port++) {
+            pasted.append(port).append("/tcp   open  service-").append(port)
+                    .append("   Example Server httpd 2.4.").append(port).append('\n');
+        }
+        pasted.append("</pre>");
+        UpdateNotebookNodeRequest update = new UpdateNotebookNodeRequest();
+        update.setContent(pasted.toString());
+
+        mockMvc.perform(put("/api/v1/notebook/nodes/" + nodeId)
+                        .header("Authorization", "Bearer " + jwtToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(update)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").value(pasted.toString()));
+    }
+
     // -------------------------------------------------------------------------
     // 6. Delete node (soft delete)
     // -------------------------------------------------------------------------
