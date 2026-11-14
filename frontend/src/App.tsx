@@ -290,19 +290,20 @@ function App() {
           }
         />
 
-        <Route path="/password-policy" element={
-
-
-          <ProtectedRoute requiredPermission="canManageAssessmentWorkflow">
-
-
-            <PasswordPolicyPage />
-
-
-          </ProtectedRoute>
-
-
-        } />
+        <Route
+          path="/password-policy"
+          element={
+            isAuthenticated ? (
+              <DashboardLayout>
+                <ProtectedRoute requiredPermission="canManageAssessmentWorkflow">
+                  <PasswordPolicyPage />
+                </ProtectedRoute>
+              </DashboardLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
 
         <Route
           path="/assessment-config"
