@@ -44,7 +44,12 @@ public enum EmailNotificationAudience {
      * That matters because every one of these emails links into the platform: mailing
      * someone about a finding they would get a 403 on is worse than not mailing them.
      */
-    ORG_USERS("Organization access");
+    ORG_USERS("Organization access"),
+    /**
+     * Users assigned directly to the application, at either access level. Live accounts only:
+     * an assignment outlives the account it names when a user is deleted or disabled.
+     */
+    ASSIGNED_USERS("Assigned users");
 
     private final String label;
 

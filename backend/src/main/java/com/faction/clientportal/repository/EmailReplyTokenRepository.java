@@ -12,5 +12,11 @@ public interface EmailReplyTokenRepository extends JpaRepository<EmailReplyToken
     /** Fallback lookup when the provider stripped sub-addressing from the Reply-To. */
     Optional<EmailReplyToken> findByOutboundMessageId(String outboundMessageId);
 
+    /**
+     * Case-insensitive id lookup, for a reply whose address was lower-cased in transit.
+     * A list because ids issued before tokens went lowercase can differ only by case.
+     */
+    List<EmailReplyToken> findAllByIdIgnoreCase(String id);
+
     List<EmailReplyToken> findByExpiresAtBefore(LocalDateTime cutoff);
 }

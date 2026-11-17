@@ -8,6 +8,7 @@ import com.faction.clientportal.model.EmailNotificationConfig;
 import com.faction.clientportal.model.EmailNotificationConfig.EventSettings;
 import com.faction.clientportal.model.EmailNotificationEvent;
 import com.faction.clientportal.repository.EmailNotificationConfigRepository;
+import com.faction.clientportal.service.email.EmailNaming;
 import com.faction.clientportal.service.email.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -72,6 +73,16 @@ public class EmailNotificationConfigService {
         return isEnabled(event.key());
     }
 
+    /** Which names emails may carry. Every name is hidden when the settings cannot be read. */
+    public EmailNaming naming() {
+        try {
+            return EmailNaming.from(getOrCreate());
+        } catch (Exception e) {
+            log.warn("Could not read the email naming settings: {}", e.getMessage());
+            return EmailNaming.HIDDEN;
+        }
+    }
+
     // ── Admin API ─────────────────────────────────────────────────────────────
 
     public EmailNotificationConfigDto getConfig() {
@@ -89,6 +100,12 @@ public class EmailNotificationConfigService {
             // At least a day: a zero-day interval would re-send the digest on every run.
             config.setPastDueRepeatIntervalDays(Math.max(1, request.getPastDueRepeatIntervalDays()));
         }
+        if (request.getIncludeApplicationNames() != null) {
+            config.setIncludeApplicationNames(request.getIncludeApplicationNames());
+        }
+        if (request.getIncludeVulnerabilityNames() != null) {
+            config.setIncludeVulnerabilityNames(request.getIncludeVulnerabilityNames());
+        }
 
         if (request.getEvents() != null) {
             // getEvents() hands back a defensive copy, so the map has to be mutated locally
@@ -100,14 +117,17 @@ public class EmailNotificationConfigService {
                 if (update.getKey() == null || update.getKey().isBlank()) continue;
                 if (EmailNotificationEvent.fromKey(update.getKey()) == null) continue; // unknown key
 
-                EventSettings settings = events
-                        .getOrDefault(update.getKey(), EventSettings.builder().build());
+                // An unsaved event starts from its defaults, so switching one audience off on a
+                // default-on event leaves the others on rather than resetting them all.
+                EventSettings settings = events.containsKey(update.getKey())
+                        ? events.get(update.getKey()) : config.settingsFor(update.getKey());
 
                 if (update.getNotifyAssessors() != null)      settings.setNotifyAssessors(update.getNotifyAssessors());
                 if (update.getNotifyStakeholders() != null)   settings.setNotifyStakeholders(update.getNotifyStakeholders());
                 if (update.getNotifyAppOwner() != null)       settings.setNotifyAppOwner(update.getNotifyAppOwner());
                 if (update.getIncludeMentionedUsers() != null) settings.setIncludeMentionedUsers(update.getIncludeMentionedUsers());
                 if (update.getNotifyOrgUsers() != null)       settings.setNotifyOrgUsers(update.getNotifyOrgUsers());
+                if (update.getNotifyAssignedUsers() != null)  settings.setNotifyAssignedUsers(update.getNotifyAssignedUsers());
                 if (update.getCustomMessage() != null) {
                     settings.setCustomMessage(update.getCustomMessage().isBlank()
                             ? null : update.getCustomMessage().trim());
@@ -141,6 +161,7 @@ public class EmailNotificationConfigService {
                         .notifyAppOwner(source.isNotifyAppOwner())
                         .includeMentionedUsers(source.isIncludeMentionedUsers())
                         .notifyOrgUsers(source.isNotifyOrgUsers())
+                        .notifyAssignedUsers(source.isNotifyAssignedUsers())
                         .customMessage(source.getCustomMessage())
                         .build());
                 changed = true;
@@ -196,6 +217,8 @@ public class EmailNotificationConfigService {
                 .smtpConfigured(emailService.isConfigured())
                 .pastDueRepeatCount(config.getPastDueRepeatCount())
                 .pastDueRepeatIntervalDays(config.getPastDueRepeatIntervalDays())
+                .includeApplicationNames(config.isIncludeApplicationNames())
+                .includeVulnerabilityNames(config.isIncludeVulnerabilityNames())
                 .events(events)
                 .build();
     }
@@ -219,6 +242,7 @@ public class EmailNotificationConfigService {
                 .notifyAppOwner(settings.isNotifyAppOwner())
                 .includeMentionedUsers(settings.isIncludeMentionedUsers())
                 .notifyOrgUsers(settings.isNotifyOrgUsers())
+                .notifyAssignedUsers(settings.isNotifyAssignedUsers())
                 .customMessage(settings.getCustomMessage())
                 .perStage(event.isPerStage())
                 .stageId(stageId)

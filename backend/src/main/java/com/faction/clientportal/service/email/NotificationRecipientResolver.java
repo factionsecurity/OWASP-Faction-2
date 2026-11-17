@@ -1,6 +1,7 @@
 package com.faction.clientportal.service.email;
 
 import com.faction.clientportal.model.AppOwner;
+import com.faction.clientportal.model.AssignedUser;
 import com.faction.clientportal.model.Application;
 import com.faction.clientportal.model.Assessment;
 import com.faction.clientportal.model.EmailNotificationAudience;
@@ -94,6 +95,29 @@ public class NotificationRecipientResolver {
         return new ArrayList<>(byEmail.values());
     }
 
+    /**
+     * Everyone a comment event reaches through its switches: the app owner, the users assigned
+     * to the application, and the users with access through its organization. The comment
+     * thread's own followers and @mentions are notified by the thread itself, not here.
+     */
+    public List<Recipient> resolveCommentAudience(EmailNotificationEvent event,
+                                                  EventSettings settings,
+                                                  Application application) {
+        if (application == null) return List.of();
+
+        Map<String, Recipient> byEmail = new LinkedHashMap<>();
+        if (enabled(event, settings, EmailNotificationAudience.APP_OWNER)) {
+            addAll(byEmail, appOwnerRecipients(application));
+        }
+        if (enabled(event, settings, EmailNotificationAudience.ASSIGNED_USERS)) {
+            addAll(byEmail, assignedUserRecipients(application));
+        }
+        if (enabled(event, settings, EmailNotificationAudience.ORG_USERS)) {
+            addAll(byEmail, organizationRecipients(application));
+        }
+        return new ArrayList<>(byEmail.values());
+    }
+
     /** The application an assessment belongs to, or null when it has none or it is gone. */
     public Application loadApplication(Assessment assessment) {
         if (assessment == null || assessment.getApplicationId() == null) return null;
@@ -142,6 +166,21 @@ public class NotificationRecipientResolver {
                     isBlank(s.getName()) ? s.getEmail().trim() : s.getName(),
                     EmailNotificationAudience.STAKEHOLDERS));
         }
+    }
+
+    /** Users assigned directly to the application. Deleted and disabled accounts are skipped. */
+    private List<Recipient> assignedUserRecipients(Application application) {
+        if (application == null || application.getAssignedUsers() == null) return List.of();
+
+        List<Recipient> out = new ArrayList<>();
+        for (AssignedUser assigned : application.getAssignedUsers()) {
+            if (assigned == null || isBlank(assigned.getUserId())) continue;
+            userRepository.findById(assigned.getUserId())
+                    .filter(u -> u.getDeletedAt() == null && u.getDisabledAt() == null)
+                    .map(u -> recipient(u, EmailNotificationAudience.ASSIGNED_USERS))
+                    .ifPresent(out::add);
+        }
+        return out;
     }
 
     /** The structured owner if there is one, falling back to the legacy ownerEmail field. */
