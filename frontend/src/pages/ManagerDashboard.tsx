@@ -44,11 +44,8 @@ import '../components/SearchableSelect.css';
 import { formatCompact as fmtStat } from '../utils/formatNumber';
 import './ManagerDashboard.css';
 import { useTerminology } from '../context/TerminologyContext';
-import { usePersistedState } from '../hooks/usePersistedState';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
 import { mergedStatusNames, workflowsForSelectedTypes } from '../utils/workflowLookup';
-
-const TABLE_KEY = 'managerDashboard';
 
 // Dashboard severity chips: lowercase keys + single-letter labels are presentational
 // and dashboard-specific; the color comes from the canonical palette.
@@ -173,8 +170,8 @@ export default function ManagerDashboard() {
 
   // Applied filters — the source of truth that drives getStats + the table. Inline filters
   // (severity/status/assessor/type) write here live; advanced filters land here on Apply.
-  const [applied, setApplied] = usePersistedState<FilterFormState>(TABLE_KEY, 'applied', defaultFilterForm());
-  const [appliedQuickRange, setAppliedQuickRange] = usePersistedState(TABLE_KEY, 'appliedQuickRange', '30days');
+  const [applied, setApplied] = useState<FilterFormState>(defaultFilterForm());
+  const [appliedQuickRange, setAppliedQuickRange] = useState('30days');
   // A saved quick range stores the dates it resolved to on the day it was applied. Re-resolve them
   // once on return so "Last 30 Days" still ends today. This is a render-phase update, so the first
   // fetch already uses the fresh dates.
@@ -189,7 +186,7 @@ export default function ManagerDashboard() {
     }
   }
   // Advanced panel draft (dates, team, campaign and the archived-workflows toggle), staged until
-  // Apply. Starts from the applied (possibly restored) values.
+  // Apply. Starts from the applied values.
   const advancedDraft = (f: FilterFormState) => ({
     startDate: f.startDate, endDate: f.endDate, teamId: f.teamId, campaignId: f.campaignId,
     includeArchivedWorkflows: f.includeArchivedWorkflows, incompleteOnly: f.incompleteOnly,
@@ -211,12 +208,12 @@ export default function ManagerDashboard() {
   // Results table
   const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>([]);
   const [assessmentsLoading, setAssessmentsLoading] = useState(false);
-  const [assessmentPagination, setAssessmentPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
+  const [assessmentPagination, setAssessmentPagination] = useState<PaginationInfo>({
     page: 0, pageSize: 25, total: 0, totalPages: 0,
   });
   // Free-text search from the DataTable search box
-  const [assessmentSearch, setAssessmentSearch] = usePersistedState(TABLE_KEY, 'search', '');
-  const [assessmentSort, setAssessmentSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [assessmentSearch, setAssessmentSearch] = useState('');
+  const [assessmentSort, setAssessmentSort] = useState<SortState | null>(null);
 
   useEffect(() => {
     setPageTitle('Operational Dashboard');
@@ -410,8 +407,8 @@ export default function ManagerDashboard() {
   }, [workflows, assessmentTypes, applied.assessmentTypeId, applied.includeArchivedWorkflows]);
 
   // Clear a selected status the list no longer offers, so the table is never filtered by a value
-  // the status select can't show. Waits for types and workflows: a persisted selection is restored
-  // before either loads, and clearing it in that window would wipe a saved filter on reload.
+  // the status select can't show. Waits for types and workflows: until both load the list offers
+  // nothing, and clearing in that window would drop a status that is still valid.
   useEffect(() => {
     if (!applied.status || assessmentTypes.length === 0 || workflows.length === 0) return;
     if (statusOptions.some((o) => o.value === applied.status)) return;

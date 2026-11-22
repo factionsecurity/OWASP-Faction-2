@@ -54,12 +54,8 @@ import Logs from './pages/Logs';
 import ApplicationIdConfig from './pages/ApplicationIdConfig';
 
 /**
- * Your Assessments, remounted per assessment type.
- *
- * The key is not cosmetic. The page keeps its filters, sort and paging in localStorage under a
- * key derived from the type, and `usePersistedState` reads that store once on mount and writes
- * back whenever the key changes — so without a remount, switching between two types would restore
- * the wrong view and then save it over the other type's entry.
+ * Your Assessments, remounted per assessment type, so switching types starts from a fresh view
+ * instead of carrying over the previous type's filters, sort and paging.
  */
 function AssessmentsForType() {
   const { typeId } = useParams<{ typeId?: string }>();

@@ -22,7 +22,6 @@ import RichTextEditor from '../components/RichTextEditor';
 import Page from '../components/Page';
 import './RemediationPage.css';
 import { useTerminology } from '../context/TerminologyContext';
-import { usePersistedState } from '../hooks/usePersistedState';
 
 // 10 matches the app-wide default and is one of DataTable's page-size options.
 const PAGE_SIZE = 10;
@@ -34,12 +33,6 @@ const OPTION_LIMIT = 250;
  * to one kind, so the server's `type` filter is always set and the table never mixes the two.
  */
 export type RemediationAlertKind = 'VULNERABILITY' | 'RETEST';
-
-// localStorage key per kind, so each page keeps its own saved search, filters, sort and paging.
-const TABLE_KEYS: Record<RemediationAlertKind, string> = {
-  VULNERABILITY: 'remediation.vulnerabilities',
-  RETEST: 'remediation.retests',
-};
 
 // Stat badges above the table, in display order. Each (except Total) toggles a server-side bucket;
 // `count` picks the matching figure out of the summary response.
@@ -81,13 +74,12 @@ const formatAssessmentLabel = (a: Assessment): SelectOption => {
 
 export default function RemediationPage({ kind }: { kind: RemediationAlertKind }) {
   // Both alert routes render this page in the same spot, so React would otherwise keep one kind's
-  // state (restored from its own saved filters) when you switch to the other. The key remounts it.
+  // filters, sort and paging when you switch to the other. The key remounts it.
   return <RemediationAlerts key={kind} kind={kind} />;
 }
 
 function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   const isRetest = kind === 'RETEST';
-  const tableKey = TABLE_KEYS[kind];
   // Handed to the assessment page so its breadcrumb leads back here instead of to Your Assessments.
   const alertsCrumb = isRetest
     ? { label: 'Retest Alerts', to: '/remediation/retests' }
@@ -112,10 +104,10 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   // Starts true so DataTable doesn't clamp a restored page against the empty pre-load total.
   const [loading, setLoading] = useState(true);
 
-  const [search, setSearch] = usePersistedState(tableKey, 'search', '');
-  const [page, setPage] = usePersistedState(tableKey, 'page', 0);
-  const [sort, setSort] = usePersistedState<SortState | null>(tableKey, 'sort', null);
-  const [pageSize, setPageSize] = usePersistedState(tableKey, 'pageSize', PAGE_SIZE);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [total, setTotal] = useState(0);
 
   // Header filters — the same set the vulnerabilities list offers, minus "show closed" (a closed
@@ -123,20 +115,20 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   // which is what the Status column shows for both row types.
   // Every filter is multi-select: several values in one filter match any of them, and separate
   // filters must all match.
-  const [filterSeverities, setFilterSeverities] = usePersistedState<string[]>(tableKey, 'severities', []);
-  const [filterOrganizationIds, setFilterOrganizationIds] = usePersistedState<string[]>(tableKey, 'organizationIds', []);
-  const [filterApplicationIds, setFilterApplicationIds] = usePersistedState<string[]>(tableKey, 'applicationIds', []);
-  const [filterAssessmentIds, setFilterAssessmentIds] = usePersistedState<string[]>(tableKey, 'assessmentIds', []);
-  const [filterStatuses, setFilterStatuses] = usePersistedState<string[]>(tableKey, 'statuses', []);
+  const [filterSeverities, setFilterSeverities] = useState<string[]>([]);
+  const [filterOrganizationIds, setFilterOrganizationIds] = useState<string[]>([]);
+  const [filterApplicationIds, setFilterApplicationIds] = useState<string[]>([]);
+  const [filterAssessmentIds, setFilterAssessmentIds] = useState<string[]>([]);
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
   // The queue is a worklist, so verified retests are off by default; on, it becomes a record of
   // what has been checked as well as what is outstanding.
-  const [showCompletedRetests, setShowCompletedRetests] = usePersistedState(tableKey, 'showCompletedRetests', false);
+  const [showCompletedRetests, setShowCompletedRetests] = useState(false);
   // Assessment and (on Retest Alerts) Show Completed Retests live in the advanced panel — staged until Apply.
   const [draftAssessmentIds, setDraftAssessmentIds] = useState<string[]>([]);
   const [draftShowCompletedRetests, setDraftShowCompletedRetests] = useState(false);
   // Stat-badge selection: empty means "Total" (no bucket narrowing); several may be active at once.
-  const [buckets, setBuckets] = usePersistedState<string[]>(tableKey, 'buckets', []);
+  const [buckets, setBuckets] = useState<string[]>([]);
   const [summary, setSummary] = useState<RemediationQueueSummary>(EMPTY_SUMMARY);
 
   // Dropdown options (orgs loaded fully; apps/assessments server-searched)
@@ -145,10 +137,10 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   const [appLoading, setAppLoading] = useState(false);
   // Labels for selected ids are saved with the filters, so a restored app/assessment shows its
   // name rather than its id when it falls outside the starter option list.
-  const [appLabels, setAppLabels] = usePersistedState<Record<string, string>>(tableKey, 'appLabels', {});
+  const [appLabels, setAppLabels] = useState<Record<string, string>>({});
   const [assessmentOptions, setAssessmentOptions] = useState<SelectOption[]>([]);
   const [assessmentLoading, setAssessmentLoading] = useState(false);
-  const [assessmentLabels, setAssessmentLabels] = usePersistedState<Record<string, string>>(tableKey, 'assessmentLabels', {});
+  const [assessmentLabels, setAssessmentLabels] = useState<Record<string, string>>({});
 
   // Vulnerability detail drawer (full vuln + assessment fetched on demand)
   const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
@@ -157,7 +149,7 @@ function RemediationAlerts({ kind }: { kind: RemediationAlertKind }) {
   // Off by default: an archived workflow's statuses still stay filterable on request, but
   // shouldn't clutter the everyday dropdown. Coloring a row still always uses the full
   // `workflows` list — an archived workflow's rows still need their colors resolved.
-  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = usePersistedState(tableKey, 'includeArchivedWorkflows', false);
+  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = useState(false);
   // Built-ins plus every workflow's configured statuses, merged — the built-ins are still
   // built in, they just aren't part of `mergedVulnerabilityStatuses`.
   const configuredStatuses = [

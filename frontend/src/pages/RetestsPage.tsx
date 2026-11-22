@@ -9,7 +9,6 @@ import AssessmentReportsDialog from '../components/AssessmentReportsDialog';
 import DataTable, { Column, PaginationInfo, SortState } from '../components/DataTable';
 import { applyClientSort, SortAccessors } from '../utils/tableSort';
 import Page from '../components/Page';
-import { usePersistedState } from '../hooks/usePersistedState';
 import './RetestsPage.css';
 
 const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString() : '-');
@@ -62,8 +61,6 @@ const SORT_ACCESSORS: SortAccessors<Retest> = {
 const PAGE_SIZE = 15;
 // The Completed tab's default window: retests completed in the last this-many days.
 const RECENT_DAYS = 30;
-// localStorage key for this table's saved search, sort and paging.
-const TABLE_KEY = 'retests';
 
 /** One assessment's completed retests, folded into a single card for the Completed tab. */
 interface RetestGroup {
@@ -214,21 +211,21 @@ export default function RetestsPage() {
   const [allRetests, setAllRetests] = useState<Retest[]>([]);
   // Starts true so DataTable doesn't clamp a restored page against the empty pre-load list.
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = usePersistedState(TABLE_KEY, 'search', '');
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
-  const [page, setPage] = usePersistedState(TABLE_KEY, 'page', 0);
-  const [pageSize, setPageSize] = usePersistedState(TABLE_KEY, 'pageSize', PAGE_SIZE);
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
 
   const [completedRetests, setCompletedRetests] = useState<Retest[]>([]);
   const [readyReports, setReadyReports] = useState<RetestReportReady[]>([]);
   const [untestedCounts, setUntestedCounts] = useState<Record<string, number>>({});
   const [completedLoading, setCompletedLoading] = useState(false);
   // Off: only retests completed in the last RECENT_DAYS. On: every completed retest.
-  const [showAllDates, setShowAllDates] = usePersistedState(TABLE_KEY, 'completedAllDates', false);
+  const [showAllDates, setShowAllDates] = useState(false);
   // Both tabs. Off: retests assigned to me. On: every retest I can see, so a tester can find and
   // pick up one assigned to someone else — the server scopes the list to the caller's teams or
   // own assessments where their role is restricted.
-  const [showAllAssessors, setShowAllAssessors] = usePersistedState(TABLE_KEY, 'allAssessors', false);
+  const [showAllAssessors, setShowAllAssessors] = useState(false);
   const [reportsFor, setReportsFor] = useState<RetestGroup | null>(null);
 
   useEffect(() => {

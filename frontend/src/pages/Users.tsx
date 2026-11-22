@@ -6,7 +6,6 @@ import { usersApi, rolesApi, teamsApi, organizationsApi, subOrganizationsApi, ap
 import type { User, Role, Team, Organization, SubOrganization, Application, CreateUserRequest, UpdateUserRequest, AzureDirectoryUser, UserFieldValuesSectionHandle } from '../types';
 import { AvailabilityProfileCard, UserFieldValuesSection } from '@enterprise';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
-import { usePersistedState } from '../hooks/usePersistedState';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
 import {
   Modal,
@@ -27,9 +26,6 @@ import {
 import Page from '../components/Page';
 import './Users.css';
 import { useTerminology } from '../context/TerminologyContext';
-
-// Table view state (search, filters, sort, page) is remembered under this key across navigation.
-const TABLE_KEY = 'users';
 
 export default function Users() {
   const { organizationLower, organizationPlural, organizationSingular } = useTerminology();
@@ -55,20 +51,20 @@ export default function Users() {
   const [roleSearchQuery, setRoleSearchQuery] = useState('');
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
 
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
+  const [pagination, setPagination] = useState<PaginationInfo>({
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = usePersistedState(TABLE_KEY, 'searchQuery', '');
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
   // Table filters, mirroring the vulnerabilities page: each narrows the server-side query.
-  const [filterRoleId, setFilterRoleId] = usePersistedState(TABLE_KEY, 'filterRoleId', '');
-  const [filterTeamId, setFilterTeamId] = usePersistedState(TABLE_KEY, 'filterTeamId', '');
-  const [filterOrganizationId, setFilterOrganizationId] = usePersistedState(TABLE_KEY, 'filterOrganizationId', '');
-  const [filterType, setFilterType] = usePersistedState<'INTERNAL' | 'EXTERNAL' | ''>(TABLE_KEY, 'filterType', '');
+  const [filterRoleId, setFilterRoleId] = useState('');
+  const [filterTeamId, setFilterTeamId] = useState('');
+  const [filterOrganizationId, setFilterOrganizationId] = useState('');
+  const [filterType, setFilterType] = useState<'INTERNAL' | 'EXTERNAL' | ''>('');
   const [resetSentId, setResetSentId] = useState<string | null>(null);
 
   // Azure (Entra ID) directory typeahead — active when Graph lookup is

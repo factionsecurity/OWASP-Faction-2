@@ -7,7 +7,6 @@ import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../comp
 import { Badge } from '../components';
 import { usePageTitle } from '../context/PageTitleContext';
 import Page from '../components/Page';
-import { usePersistedState } from '../hooks/usePersistedState';
 import './PeerReviewQueue.css';
 
 const STATUS_COLORS: Record<PeerReviewStatus, 'warning' | 'info' | 'success'> = {
@@ -16,8 +15,6 @@ const STATUS_COLORS: Record<PeerReviewStatus, 'warning' | 'info' | 'success'> = 
   COMPLETED: 'success',
 };
 
-const TABLE_KEY = 'peerReviewQueue';
-
 export default function PeerReviewQueue() {
   const navigate = useNavigate();
   const { setPageTitle } = usePageTitle();
@@ -25,7 +22,7 @@ export default function PeerReviewQueue() {
   const [reviews, setReviews] = useState<PeerReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
+  const [pagination, setPagination] = useState<PaginationInfo>({
     page: 0,
     pageSize: 20,
     total: 0,
@@ -37,7 +34,7 @@ export default function PeerReviewQueue() {
     return () => setPageTitle(null);
   }, []);
 
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [sort, setSort] = useState<SortState | null>(null);
 
   useEffect(() => {
     loadQueue(pagination.page, pagination.pageSize);

@@ -14,14 +14,10 @@ import { useWorkflowsContext } from '../context/WorkflowsContext';
 import { mergedVulnerabilityStatuses, mergedStageNames, stageIdForName } from '../utils/workflowLookup';
 import './Applications.css';
 import { useTerminology } from '../context/TerminologyContext';
-import { usePersistedState } from '../hooks/usePersistedState';
 
 const PAGE_SIZE = 10; // must match a DataTable page-size option (10/25/50/100)
 // App/assessment dropdowns default to a starter list; typing server-searches the rest.
 const OPTION_LIMIT = 250;
-// localStorage key for the saved search, filters, sort and paging. Shared by the /vulnerabilities
-// route and the Applications "All Vulnerabilities" tab — both render the same unscoped list.
-const TABLE_KEY = 'vulnerabilities';
 
 const formatAssessmentLabel = (a: Assessment): SelectOption => {
   const raw = a.startDate ?? a.createdAt;
@@ -57,13 +53,13 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
   const { workflows } = useWorkflowsContext();
   const [vulns, setVulns] = useState<VulnerabilityListItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [pageSize, setPageSize] = usePersistedState(TABLE_KEY, 'pageSize', PAGE_SIZE);
-  // Starts true so DataTable doesn't clamp a restored page against the empty pre-load total.
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  // Starts true so DataTable doesn't clamp the page against the empty pre-load total.
   const [loading, setLoading] = useState(true);
   // Off by default: an archived workflow's statuses still stay filterable on request, but
   // shouldn't clutter the everyday dropdown. Coloring a row still always uses the full
   // `workflows` list — an archived workflow's rows still need their colors resolved.
-  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = usePersistedState(TABLE_KEY, 'includeArchivedWorkflows', false);
+  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = useState(false);
   // Built-ins plus every workflow's configured statuses, merged — the built-ins are still
   // built in, they just aren't part of `mergedVulnerabilityStatuses`.
   const configuredStatuses = [
@@ -73,35 +69,36 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
   ];
 
   // Filters
-  const [search, setSearch] = usePersistedState(TABLE_KEY, 'search', '');
-  const [showClosed, setShowClosed] = usePersistedState(TABLE_KEY, 'showClosed', false);
-  const [filterSeverities, setFilterSeverities] = usePersistedState<string[]>(TABLE_KEY, 'severities', []);
-  const [filterOrganizationIds, setFilterOrganizationIds] = usePersistedState<string[]>(TABLE_KEY, 'organizationIds', []);
-  const [filterApplicationId, setFilterApplicationId] = usePersistedState(TABLE_KEY, 'applicationId', '');
-  const [filterAssessmentId, setFilterAssessmentId] = usePersistedState(TABLE_KEY, 'assessmentId', '');
+  const [search, setSearch] = useState('');
+  // Open and closed findings are both listed by default; unticking Show Closed narrows to open ones.
+  const [showClosed, setShowClosed] = useState(true);
+  const [filterSeverities, setFilterSeverities] = useState<string[]>([]);
+  const [filterOrganizationIds, setFilterOrganizationIds] = useState<string[]>([]);
+  const [filterApplicationId, setFilterApplicationId] = useState('');
+  const [filterAssessmentId, setFilterAssessmentId] = useState('');
   // Opened-date range (date-only YYYY-MM-DD). Advanced filter — applied set below.
-  const [filterOpenedFrom, setFilterOpenedFrom] = usePersistedState(TABLE_KEY, 'openedFrom', '');
-  const [filterOpenedTo, setFilterOpenedTo] = usePersistedState(TABLE_KEY, 'openedTo', '');
+  const [filterOpenedFrom, setFilterOpenedFrom] = useState('');
+  const [filterOpenedTo, setFilterOpenedTo] = useState('');
   // Assessment, Opened range and Show Closed live in the advanced panel — staged here until Apply.
   const [draftAssessmentId, setDraftAssessmentId] = useState('');
-  const [draftShowClosed, setDraftShowClosed] = useState(false);
+  const [draftShowClosed, setDraftShowClosed] = useState(true);
   const [draftOpenedFrom, setDraftOpenedFrom] = useState('');
   const [draftOpenedTo, setDraftOpenedTo] = useState('');
-  const [filterStatuses, setFilterStatuses] = usePersistedState<string[]>(TABLE_KEY, 'statuses', []);
-  const [tablePage, setTablePage] = usePersistedState(TABLE_KEY, 'page', 0);
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
+  const [tablePage, setTablePage] = useState(0);
+  const [sort, setSort] = useState<SortState | null>(null);
   const [exporting, setExporting] = useState(false);
 
   // Dropdown options (org loaded fully; app/assessment server-searched)
   const [orgOptions, setOrgOptions] = useState<SelectOption[]>([]);
   const [appOptions, setAppOptions] = useState<SelectOption[]>([]);
   const [appLoading, setAppLoading] = useState(false);
-  // Labels for selected ids are saved with the filters, so a restored app/assessment shows its
-  // name rather than its id when it falls outside the starter option list.
-  const [appLabels, setAppLabels] = usePersistedState<Record<string, string>>(TABLE_KEY, 'appLabels', {});
+  // Labels for selected ids, so a selected app/assessment shows its name rather than its id
+  // when it falls outside the starter option list.
+  const [appLabels, setAppLabels] = useState<Record<string, string>>({});
   const [assessmentOptions, setAssessmentOptions] = useState<SelectOption[]>([]);
   const [assessmentLoading, setAssessmentLoading] = useState(false);
-  const [assessmentLabels, setAssessmentLabels] = usePersistedState<Record<string, string>>(TABLE_KEY, 'assessmentLabels', {});
+  const [assessmentLabels, setAssessmentLabels] = useState<Record<string, string>>({});
 
   // Retest multi-select + detail drawer. Keyed by id → row so the selection survives paging
   // (the current page's `vulns` no longer holds every selected row once you page away).
@@ -248,7 +245,7 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
   const clearAllFilters = () => {
     setFilterOrganizationIds([]); setFilterSeverities([]); setFilterApplicationId('');
     setFilterAssessmentId(''); setDraftAssessmentId(''); setFilterStatuses([]);
-    setShowClosed(false); setDraftShowClosed(false);
+    setShowClosed(true); setDraftShowClosed(true);
     setFilterOpenedFrom(''); setFilterOpenedTo(''); setDraftOpenedFrom(''); setDraftOpenedTo('');
     setTablePage(0);
   };
@@ -272,10 +269,10 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
       onRemove: () => { setFilterAssessmentId(''); setDraftAssessmentId(''); setTablePage(0); },
     });
   }
-  if (showClosed) {
+  if (!showClosed) {
     filterChips.push({
-      key: 'showClosed', label: 'Show closed',
-      onRemove: () => { setShowClosed(false); setDraftShowClosed(false); setTablePage(0); },
+      key: 'openOnly', label: 'Open only',
+      onRemove: () => { setShowClosed(true); setDraftShowClosed(true); setTablePage(0); },
     });
   }
 

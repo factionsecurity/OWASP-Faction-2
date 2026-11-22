@@ -8,7 +8,6 @@ import { applicationsApi, organizationsApi, entityFieldsApi, regionConfigApi, su
 import type { Application, CreateApplicationRequest, UpdateApplicationRequest, ApplicationStatus, ApplicationUrl, Stakeholder, AppOwner, Organization, SubOrganization, ApplicationImportResult, UserDefinedField } from '../types';
 import RichTextEditor from '../components/RichTextEditor';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
-import { usePersistedState } from '../hooks/usePersistedState';
 import { MultiSelect } from '../components/SearchableSelect';
 import Page from '../components/Page';
 import {
@@ -49,9 +48,6 @@ const COMMON_TECHNOLOGIES = [
 
 type ApplicationsTab = 'applications' | 'assessments' | 'vulnerabilities';
 
-// Table view state (search, filters, sort, page) is remembered under this key across navigation.
-const TABLE_KEY = 'applications';
-
 export default function Applications() {
   const { organizationPlural, organizationSingular, subOrganizationPlural } = useTerminology();
   const navigate = useNavigate();
@@ -71,20 +67,20 @@ export default function Applications() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const authorities: string[] = user.authorities || [];
 
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
+  const [pagination, setPagination] = useState<PaginationInfo>({
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = usePersistedState(TABLE_KEY, 'searchQuery', '');
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
   // Multi-select filters, each matched as "any of". New field names, so a single value saved by the
   // earlier single-select build is simply ignored rather than mis-read.
-  const [filterOrganizations, setFilterOrganizations] = usePersistedState<string[]>(TABLE_KEY, 'filterOrganizations', []);
-  const [filterSubOrganizations, setFilterSubOrganizations] = usePersistedState<string[]>(TABLE_KEY, 'filterSubOrganizations', []);
-  const [filterStatuses, setFilterStatuses] = usePersistedState<ApplicationStatus[]>(TABLE_KEY, 'filterStatuses', []);
+  const [filterOrganizations, setFilterOrganizations] = useState<string[]>([]);
+  const [filterSubOrganizations, setFilterSubOrganizations] = useState<string[]>([]);
+  const [filterStatuses, setFilterStatuses] = useState<ApplicationStatus[]>([]);
   // Every division the user can see, so the picker works with or without an organization chosen.
   const [subOrganizations, setSubOrganizations] = useState<SubOrganization[]>([]);
 

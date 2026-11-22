@@ -28,17 +28,12 @@ import SeverityNamesConfig from './SeverityNamesConfig';
 import SurveyConfig from './SurveyConfig';
 import Campaigns from './Campaigns';
 import './AssessmentConfig.css';
-import { usePersistedState } from '../hooks/usePersistedState';
 import { useEdition } from '../context/EditionContext';
 import { PaidBadge } from '../components/PaidFeature';
 import { DEFAULT_WORKFLOW_ID, useWorkflows } from '../hooks/useWorkflow';
 import { workflowErrorMessages } from '../utils/workflowErrors';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
 import WorkflowsTab from './workflows/WorkflowsTab';
-
-const TYPES_TABLE_KEY = 'assessmentConfig.assessmentTypes';
-const CATEGORIES_TABLE_KEY = 'assessmentConfig.vulnerabilityCategories';
-const CHECKLISTS_TABLE_KEY = 'assessmentConfig.checklistTemplates';
 
 export default function AssessmentConfig() {
   const { permissions } = usePermissions();
@@ -62,19 +57,19 @@ export default function AssessmentConfig() {
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedType, setSelectedType] = useState<AssessmentType | null>(null);
-  const [showInactive, setShowInactive] = usePersistedState(TYPES_TABLE_KEY, 'showInactive', false);
+  const [showInactive, setShowInactive] = useState(false);
 
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TYPES_TABLE_KEY, 'pagination', {
+  const [pagination, setPagination] = useState<PaginationInfo>({
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = usePersistedState(TYPES_TABLE_KEY, 'search', '');
-  const [typeSort, setTypeSort] = usePersistedState<SortState | null>(TYPES_TABLE_KEY, 'sort', null);
-  const [catSort, setCatSort] = usePersistedState<SortState | null>(CATEGORIES_TABLE_KEY, 'sort', null);
-  const [checklistSort, setChecklistSort] = usePersistedState<SortState | null>(CHECKLISTS_TABLE_KEY, 'sort', null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeSort, setTypeSort] = useState<SortState | null>(null);
+  const [catSort, setCatSort] = useState<SortState | null>(null);
+  const [checklistSort, setChecklistSort] = useState<SortState | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -93,8 +88,8 @@ export default function AssessmentConfig() {
   const [showCatModal, setShowCatModal] = useState(false);
   const [catModalMode, setCatModalMode] = useState<'create' | 'edit'>('create');
   const [selectedCategory, setSelectedCategory] = useState<VulnerabilityCategory | null>(null);
-  const [catSearchQuery, setCatSearchQuery] = usePersistedState(CATEGORIES_TABLE_KEY, 'search', '');
-  const [catPagination, setCatPagination] = usePersistedState<PaginationInfo>(CATEGORIES_TABLE_KEY, 'pagination', {
+  const [catSearchQuery, setCatSearchQuery] = useState('');
+  const [catPagination, setCatPagination] = useState<PaginationInfo>({
     page: 0,
     pageSize: 10,
     total: 0,
@@ -123,7 +118,7 @@ export default function AssessmentConfig() {
   const [selectedChecklist, setSelectedChecklist] = useState<ChecklistTemplate | null>(null);
   const [checklistToDelete, setChecklistToDelete] = useState<string | null>(null);
   const [deletingChecklist, setDeletingChecklist] = useState(false);
-  const [checklistTypeFilter, setChecklistTypeFilter] = usePersistedState(CHECKLISTS_TABLE_KEY, 'typeFilter', '');
+  const [checklistTypeFilter, setChecklistTypeFilter] = useState('');
   const [checklistFormData, setChecklistFormData] = useState({
     name: '',
     assessmentTypeId: '',

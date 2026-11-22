@@ -5,7 +5,6 @@ import { Edit2, Trash2, Plus, Copy } from 'lucide-react';
 import { rolesApi, permissionsApi } from '../api';
 import type { Role, CreateRoleRequest, UpdateRoleRequest, ResourcePermissions, PermissionInfo } from '../types';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
-import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Modal,
   Button,
@@ -166,9 +165,6 @@ function buildMatrix(group: ResourcePermissions): { actions: string[]; rows: Mat
   };
 }
 
-// Table view state (search, filters, sort, page) is remembered under this key across navigation.
-const TABLE_KEY = 'roles';
-
 export default function Roles() {
   const canCustomiseRoles = useEdition().hasFeature('custom_roles');
   const [roles, setRoles] = useState<Role[]>([]);
@@ -178,15 +174,15 @@ export default function Roles() {
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
 
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
+  const [pagination, setPagination] = useState<PaginationInfo>({
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = usePersistedState(TABLE_KEY, 'searchQuery', '');
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
 
   // Assignable permissions, grouped by resource — served from the backend
   // Permission enum so newly added permissions appear without a UI change.

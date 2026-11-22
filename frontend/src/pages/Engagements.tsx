@@ -26,7 +26,6 @@ import DiamondIcon from '../components/DiamondIcon';
 import { useEdition } from '../context/EditionContext';
 import AssessmentImportModal from '../components/AssessmentImportModal';
 import Page from '../components/Page';
-import { usePersistedState } from '../hooks/usePersistedState';
 import { usePermissions } from '../utils/permissions';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
 import { colorFor, isAmbiguous, mergedStatusNames, statusLabel, workflowsForSelectedTypes } from '../utils/workflowLookup';
@@ -49,9 +48,6 @@ const defaultCalendarWindow = (): { start: string; end: string } => {
   };
 };
 
-// localStorage key for the list view's saved search, filters, sort and paging.
-const TABLE_KEY = 'scheduling';
-
 export default function Engagements() {
   const navigate = useNavigate();
   // The View action opens the assessment detail page, which sits behind its own permission —
@@ -73,9 +69,9 @@ export default function Engagements() {
     return (saved === 'list' || saved === 'calendar' || saved === 'people') ? saved : 'list';
   });
   // The By User timeline's range and team filter survive leaving the page, like the view itself.
-  const [timelineSpan, setTimelineSpan] = usePersistedState<TimelineSpan>('engagements-timeline', 'span', 'month');
-  const [timelineTeamId, setTimelineTeamId] = usePersistedState<string>('engagements-timeline', 'teamId', '');
-  const [timelineActiveOnly, setTimelineActiveOnly] = usePersistedState<boolean>('engagements-timeline', 'activeAssessmentsOnly', true);
+  const [timelineSpan, setTimelineSpan] = useState<TimelineSpan>('month');
+  const [timelineTeamId, setTimelineTeamId] = useState<string>('');
+  const [timelineActiveOnly, setTimelineActiveOnly] = useState<boolean>(true);
   // The timeline's rows: the user directory and teams, when the viewer may read them.
   const [timelineUsers, setTimelineUsers] = useState<User[] | null>(null);
   const [timelineTeams, setTimelineTeams] = useState<Team[]>([]);
@@ -106,14 +102,14 @@ export default function Engagements() {
   // contribute new stat pills or filter options.
   const activeWorkflows = useMemo(() => workflows.filter((w) => !w.archived), [workflows]);
 
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
+  const [pagination, setPagination] = useState<PaginationInfo>({
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [sort, setSort] = useState<SortState | null>(null);
 
   // Date ranges live in the advanced panel and are staged in `draft` until Apply; everything
   // else applies live. Date-only strings (YYYY-MM-DD); widened to full days when sent.
@@ -122,7 +118,7 @@ export default function Engagements() {
     endDateFrom: '', endDateTo: '',
     completedDateFrom: '', completedDateTo: '',
   };
-  const [filters, setFilters] = usePersistedState(TABLE_KEY, 'filters', {
+  const [filters, setFilters] = useState({
     statuses: [] as string[],
     applicationId: '',
     assessmentTypeIds: [] as string[],
@@ -155,8 +151,8 @@ export default function Engagements() {
   const mergedNames = useMemo(() => mergedStatusNames(pillWorkflows), [pillWorkflows]);
 
   // Deselect a status pill the selected types no longer offer, so the calendar and list are never
-  // filtered by a pill that has disappeared. Waits for types and workflows: a persisted selection is
-  // restored before either loads, and clearing it in that window would wipe a saved filter on reload.
+  // filtered by a pill that has disappeared. Waits for types and workflows: until both load there
+  // are no pills, and clearing in that window would drop a selection that is still valid.
   useEffect(() => {
     if (assessmentTypes.length === 0 || workflows.length === 0) return;
     const offered = new Set(mergedNames);
