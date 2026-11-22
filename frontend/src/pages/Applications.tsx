@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { initialSearchFromUrl } from '../utils/searchParam';
 import { Eye, Trash2, Plus, Network, X, ShieldCheck, ShieldAlert, Upload, Download } from 'lucide-react';
 import ApplicationsAssessmentsTab from './ApplicationsAssessmentsTab';
 import VulnerabilitiesView from './VulnerabilitiesView';
@@ -74,7 +75,7 @@ export default function Applications() {
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchFromUrl);
   const [sort, setSort] = useState<SortState | null>(null);
   // Multi-select filters, each matched as "any of". New field names, so a single value saved by the
   // earlier single-select build is simply ignored rather than mis-read.

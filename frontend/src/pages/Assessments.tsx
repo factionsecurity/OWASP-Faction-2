@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { initialSearchFromUrl } from '../utils/searchParam';
 import { Eye, Download, AlertCircle } from 'lucide-react';
 import { assessmentsApi, applicationsApi, assessmentTypesApi } from '../api';
 import type {
@@ -44,7 +45,7 @@ export default function Assessments() {
   // Applied filters — what actually drives the query. Inline filters (search, application, type,
   // status) write here directly (live-apply); advanced filters land here only on Apply.
   const [filters, setFilters] = useState({
-    search: '',
+    search: initialSearchFromUrl(),
     startDateFrom: '',
     startDateTo: '',
     endDateFrom: '',

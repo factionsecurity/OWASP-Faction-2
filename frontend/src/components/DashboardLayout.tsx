@@ -39,6 +39,7 @@ import {
   CalendarOff,
 } from 'lucide-react';
 import NotificationBell from './NotificationBell';
+import GlobalSearch from './GlobalSearch';
 import GliderIcon from './icons/GliderIcon';
 import { permissions } from '../utils/permissions';
 import UserAvatar from './UserAvatar';
@@ -854,6 +855,7 @@ function DashboardChrome({ children }: DashboardLayoutProps) {
           </div>
 
           <div className="top-bar-right">
+            <GlobalSearch />
             <NotificationBell />
             <div className="user-dropdown" ref={dropdownRef}>
               <button
