@@ -16,10 +16,8 @@ import type {
 } from '../types';
 import './AppOwnerDashboard.css';
 import { useTerminology } from '../context/TerminologyContext';
-import { usePersistedState } from '../hooks/usePersistedState';
 
 const DAY_MS = 86_400_000;
-const TABLE_KEY = 'appOwnerDashboard';
 
 // The due-soon table is a view of the remediation queue's vulnerability half — server-paginated
 // and server-filtered, so the page never holds more than one screenful of findings.
@@ -58,26 +56,26 @@ export default function AppOwnerDashboard() {
   // Due-date table: server-paginated, -sorted and -filtered off the remediation queue.
   const [dueSoon, setDueSoon] = useState<RemediationQueueRow[]>([]);
   const [tableLoading, setTableLoading] = useState(true);
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
+  const [pagination, setPagination] = useState<PaginationInfo>({
     page: 0, pageSize: PAGE_SIZE, total: 0, totalPages: 0,
   });
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
-  const [search, setSearch] = usePersistedState(TABLE_KEY, 'search', '');
-  const [filterSeverity, setFilterSeverity] = usePersistedState(TABLE_KEY, 'filterSeverity', '');
-  const [filterApplicationId, setFilterApplicationId] = usePersistedState(TABLE_KEY, 'filterApplicationId', '');
-  const [filterStatuses, setFilterStatuses] = usePersistedState<string[]>(TABLE_KEY, 'filterStatuses', []);
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterSeverity, setFilterSeverity] = useState('');
+  const [filterApplicationId, setFilterApplicationId] = useState('');
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
 
   // Dropdown options
   const [appOptions, setAppOptions] = useState<SelectOption[]>([]);
   const [appLoading, setAppLoading] = useState(false);
-  // Saved with the filter so a restored application still shows its name when it is not in the
+  // Kept with the filter so the selected application still shows its name when it is not in the
   // starter option list. Only the selected application's label is kept, so it never grows.
-  const [appLabels, setAppLabels] = usePersistedState<Record<string, string>>(TABLE_KEY, 'appLabels', {});
+  const [appLabels, setAppLabels] = useState<Record<string, string>>({});
   const { workflows } = useWorkflowsContext();
   // Off by default: an archived workflow's statuses still stay filterable on request, but
   // shouldn't clutter the everyday dropdown. Coloring a row still always uses the full
   // `workflows` list — an archived workflow's rows still need their colors resolved.
-  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = usePersistedState(TABLE_KEY, 'includeArchivedWorkflows', false);
+  const [includeArchivedWorkflows, setIncludeArchivedWorkflows] = useState(false);
   // Built-ins plus every workflow's configured statuses, merged — the built-ins are still
   // built in, they just aren't part of `mergedVulnerabilityStatuses`.
   const configuredStatuses = [

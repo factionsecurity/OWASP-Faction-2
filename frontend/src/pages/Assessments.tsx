@@ -12,21 +12,14 @@ import SearchableSelect, { MultiSelect, SelectOption } from '../components/Searc
 import { Button, Badge, FormLabel, Input, Checkbox } from '../components';
 import { usePermissions } from '../utils/permissions';
 import Page from '../components/Page';
-import { usePersistedState } from '../hooks/usePersistedState';
 import { useWorkflowsContext } from '../context/WorkflowsContext';
 import { colorFor, statusLabel, mergedStatusNames, workflowsForSelectedTypes } from '../utils/workflowLookup';
 import './Assessments.css';
-
-// localStorage key for this table's saved search, filters, sort and paging.
-const TABLE_KEY = 'assessments';
 
 export default function Assessments() {
   const navigate = useNavigate();
   // Present when the sidebar's assessment type menu routed here: this page is then that one type.
   const { typeId } = useParams<{ typeId?: string }>();
-  // Each type keeps its own filters, sort and paging. App.tsx remounts the page when the type
-  // changes, which is what makes a per-type key safe to read once on mount.
-  const tableKey = typeId ? `${TABLE_KEY}:${typeId}` : TABLE_KEY;
   const { hasAnyPermission } = usePermissions();
   const { workflows } = useWorkflowsContext();
 
@@ -39,18 +32,18 @@ export default function Assessments() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
 
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(tableKey, 'pagination', {
+  const [pagination, setPagination] = useState<PaginationInfo>({
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [sort, setSort] = usePersistedState<SortState | null>(tableKey, 'sort', null);
+  const [sort, setSort] = useState<SortState | null>(null);
 
   // Applied filters — what actually drives the query. Inline filters (search, application, type,
   // status) write here directly (live-apply); advanced filters land here only on Apply.
-  const [filters, setFilters] = usePersistedState(tableKey, 'filters', {
+  const [filters, setFilters] = useState({
     search: '',
     startDateFrom: '',
     startDateTo: '',
@@ -113,8 +106,8 @@ export default function Assessments() {
   // Drop selected statuses the list no longer offers. MultiSelect labels a lone selection it can't
   // find among its options as the placeholder ("All Statuses") while still filtering by it, so a
   // stale selection would empty the table behind a label claiming no status filter at all.
-  // Waits for types and workflows: a persisted selection is restored before either loads, and
-  // pruning in that window would wipe a saved status filter on every reload.
+  // Waits for types and workflows: until both load the list offers nothing, and pruning in that
+  // window would clear every selected status.
   useEffect(() => {
     if (assessmentTypes.length === 0 || workflows.length === 0) return;
     const offered = new Set(statusOptions.map((o) => o.value));

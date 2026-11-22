@@ -7,9 +7,6 @@ import DataTable, { sortParam } from '../components/DataTable';
 import type { Column, SortState } from '../components/DataTable';
 import { SeverityBadge } from '../components';
 import { useTerminology } from '../context/TerminologyContext';
-import { usePersistedState } from '../hooks/usePersistedState';
-
-const TABLE_KEY = 'retestActivityLog';
 
 /** yyyy-MM-dd for a date input, in local time — `toISOString` would shift the day near midnight. */
 function isoDate(d: Date): string {
@@ -58,19 +55,19 @@ export default function RetestActivityLog() {
   const { organizationSingular } = useTerminology();
   const navigate = useNavigate();
 
-  const [range, setRange] = usePersistedState<DateRange>(TABLE_KEY, 'range', { days: 6, from: '', to: '' });
+  const [range, setRange] = useState<DateRange>({ days: 6, from: '', to: '' });
   const from = range.days !== null ? daysAgo(range.days) : range.from;
   const to = range.days !== null ? isoDate(new Date()) : range.to;
-  const [result, setResult] = usePersistedState<'' | 'PASS' | 'FAIL'>(TABLE_KEY, 'result', '');
+  const [result, setResult] = useState<'' | 'PASS' | 'FAIL'>('');
 
   const [rows, setRows] = useState<RetestCompletionLog[]>([]);
   const [summary, setSummary] = useState<RetestActivitySummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = usePersistedState(TABLE_KEY, 'page', 0);
-  const [pageSize, setPageSize] = usePersistedState(TABLE_KEY, 'pageSize', 25);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [sort, setSort] = useState<SortState | null>(null);
 
   useEffect(() => {
     let cancelled = false;

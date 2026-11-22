@@ -20,14 +20,12 @@ import {
   Toast,
 } from '../components';
 import Page from '../components/Page';
-import { usePersistedState } from '../hooks/usePersistedState';
 import { usePermissions } from '../utils/permissions';
 import { useEdition } from '../context/EditionContext';
 import { McpConnectCard } from '@enterprise';
 import './MyApiKeys.css';
 
 const PAGE_SIZE = 10;
-const TABLE_KEY = 'myApiKeys';
 
 function formatDate(value?: string): string {
   if (!value) return '—';
@@ -55,10 +53,10 @@ export default function MyApiKeys() {
   const [toast, setToast] = useState<string | null>(null);
 
   // Client-side paging/search — a user's own key list is small and returned unpaginated.
-  const [search, setSearch] = usePersistedState(TABLE_KEY, 'search', '');
-  const [page, setPage] = usePersistedState(TABLE_KEY, 'page', 0);
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
-  const [pageSize, setPageSize] = usePersistedState(TABLE_KEY, 'pageSize', PAGE_SIZE);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
 
   // Create dialog
   const [showCreate, setShowCreate] = useState(false);

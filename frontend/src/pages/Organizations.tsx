@@ -5,7 +5,6 @@ import { organizationsApi, entityFieldsApi } from '../api';
 import type { Organization, CreateOrganizationRequest, UserDefinedField } from '../types';
 import RichTextEditor from '../components/RichTextEditor';
 import DataTable, { Column, PaginationInfo, SortState, sortParam } from '../components/DataTable';
-import { usePersistedState } from '../hooks/usePersistedState';
 import Page from '../components/Page';
 import {
   Modal,
@@ -22,9 +21,6 @@ import {
 import './Organizations.css';
 import { useTerminology } from '../context/TerminologyContext';
 
-// Table view state (search, filters, sort, page) is remembered under this key across navigation.
-const TABLE_KEY = 'organizations';
-
 export default function Organizations() {
   const { organizationLower, organizationSingular, organizationsLower } = useTerminology();
   const navigate = useNavigate();
@@ -33,15 +29,15 @@ export default function Organizations() {
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
 
-  const [pagination, setPagination] = usePersistedState<PaginationInfo>(TABLE_KEY, 'pagination', {
+  const [pagination, setPagination] = useState<PaginationInfo>({
     page: 0,
     pageSize: 10,
     total: 0,
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = usePersistedState(TABLE_KEY, 'searchQuery', '');
-  const [sort, setSort] = usePersistedState<SortState | null>(TABLE_KEY, 'sort', null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
