@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { initialSearchFromUrl } from '../utils/searchParam';
 import { Download, Eye, RefreshCw } from 'lucide-react';
 import { assessmentsApi, applicationsApi, organizationsApi, vulnerabilitiesApi } from '../api';
 import type { Assessment, Vulnerability, VulnerabilityListItem } from '../types';
@@ -69,7 +70,7 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
   ];
 
   // Filters
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearchFromUrl);
   // Open and closed findings are both listed by default; unticking Show Closed narrows to open ones.
   const [showClosed, setShowClosed] = useState(true);
   const [filterSeverities, setFilterSeverities] = useState<string[]>([]);
@@ -310,14 +311,20 @@ export default function VulnerabilitiesView({ onFiltersChange }: Vulnerabilities
     });
   };
 
-  // Auto-open the drawer when a notification deep-links ?vuln=. The link carries only the vuln id
-  // (no assessment), so we resolve it server-side by id — which also works for links already sent.
-  const autoOpenDoneRef = useRef(false);
+  // Auto-open the drawer when a notification or global search deep-links ?vuln=. The link carries
+  // only the vuln id (no assessment), so we resolve it server-side by id — which also works for
+  // links already sent. Tracked per id, not once per visit: global search can deep-link here again
+  // while this page is already open. The param is removed once read, which resets the tracking, so
+  // the same finding can be opened again later; the ref only stops a double run of one link.
+  const autoOpenedVulnRef = useRef<string | null>(null);
   useEffect(() => {
-    if (autoOpenDoneRef.current) return;
     const vulnId = searchParams.get('vuln');
-    if (!vulnId) return;
-    autoOpenDoneRef.current = true;
+    if (!vulnId) {
+      autoOpenedVulnRef.current = null;
+      return;
+    }
+    if (autoOpenedVulnRef.current === vulnId) return;
+    autoOpenedVulnRef.current = vulnId;
     vulnerabilitiesApi.getByIdGlobal(vulnId)
       .then(res => { if (res.data) handleView(res.data); })
       .catch(() => { /* out of scope / not found — leave the drawer closed */ });

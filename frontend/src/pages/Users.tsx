@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { usePermissions } from '../utils/permissions';
+import { initialSearchFromUrl } from '../utils/searchParam';
 import { Edit2, Trash2, Plus, X, Search, Mail, Check, UserX, UserCheck, CalendarOff } from 'lucide-react';
 import { usersApi, rolesApi, teamsApi, organizationsApi, subOrganizationsApi, applicationsApi, azureUsersApi } from '../api';
 import type { User, Role, Team, Organization, SubOrganization, Application, CreateUserRequest, UpdateUserRequest, AzureDirectoryUser, UserFieldValuesSectionHandle } from '../types';
@@ -58,7 +59,7 @@ export default function Users() {
     totalPages: 0,
   });
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchFromUrl);
   const [sort, setSort] = useState<SortState | null>(null);
   // Table filters, mirroring the vulnerabilities page: each narrows the server-side query.
   const [filterRoleId, setFilterRoleId] = useState('');

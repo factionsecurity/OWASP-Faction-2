@@ -1,0 +1,207 @@
+/* ── Trigger: same footprint as the notification bell beside it ── */
+.global-search {
+  position: relative;
+}
+
+.global-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.global-search-btn:hover,
+.global-search-btn[aria-expanded='true'] {
+  background: var(--tertiary-bg);
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+}
+
+/* ── Panel ── */
+.global-search-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(560px, calc(100vw - 32px));
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.global-search-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.global-search-input-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Scoped to the panel so it outranks the app-wide input styling, which would draw a second
+   box inside the one the panel already provides. */
+.global-search-panel .global-search-input {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 2px 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.global-search-panel .global-search-input:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.global-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.global-search-spinner {
+  color: var(--text-muted);
+  animation: global-search-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes global-search-spin {
+  to { transform: rotate(360deg); }
+}
+
+.global-search-clear {
+  display: flex;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-sm, 4px);
+}
+
+.global-search-clear:hover {
+  color: var(--text-primary);
+}
+
+/* ── Results ── */
+.global-search-results {
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.global-search-hint {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.global-search-error {
+  color: #ef4444;
+}
+
+.global-search-group + .global-search-group {
+  border-top: 1px solid var(--border-color);
+}
+
+.global-search-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 4px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.global-search-group-count {
+  margin-left: auto;
+  font-weight: 500;
+}
+
+.global-search-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.global-search-item.active,
+.global-search-more.active {
+  background: var(--tertiary-bg);
+}
+
+.global-search-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.global-search-item-title {
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.global-search-item-subtitle {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.global-search-more {
+  padding: 6px 14px 8px;
+  color: var(--primary-color);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* ── Footer ── */
+.global-search-footer {
+  display: flex;
+  gap: 14px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.global-search-footer kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  margin-right: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.68rem;
+  text-align: center;
+}

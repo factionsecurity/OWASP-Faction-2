@@ -1365,6 +1365,31 @@ export interface VulnerabilityComment {
  * vulnerability read — the detail panel opens from the global list, where no application or
  * organization has been loaded.
  */
+/** One kind of record in a global search answer. */
+export type GlobalSearchGroupType = 'vulnerabilities' | 'assessments' | 'applications' | 'users' | 'assessmentTypes';
+
+export interface GlobalSearchItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  /** Severity, status, or the record's own id. */
+  badge?: string;
+  /** A vulnerability's assessment. */
+  assessmentId?: string;
+}
+
+export interface GlobalSearchGroup {
+  type: GlobalSearchGroupType;
+  /** Everything that matched; more than `items` holds when the group was cut short. */
+  total: number;
+  items: GlobalSearchItem[];
+}
+
+export interface GlobalSearchResult {
+  query: string;
+  groups: GlobalSearchGroup[];
+}
+
 export interface VulnerabilityContext {
   applicationId?: string;
   /** Human-readable application id (e.g. APP-0042), not the primary key. */
