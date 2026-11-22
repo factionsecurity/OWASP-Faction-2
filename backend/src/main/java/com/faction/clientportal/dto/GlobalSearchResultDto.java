@@ -1,56 +1,58 @@
 package com.faction.clientportal.dto;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.Value;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Global search's answer: one group per kind of record the caller may read, in a fixed order,
  * each holding its first few matches and how many matched in all. A kind the caller may not read
  * is left out rather than returned empty, so the panel never advertises a category they cannot see.
+ *
+ * <p>Immutable: the lists are copied in, so nothing that holds the answer can change it.
  */
-@Data
+@Value
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class GlobalSearchResultDto {
 
     /** The text that was searched, trimmed. */
-    private String query;
+    String query;
 
-    @Builder.Default
-    private List<Group> groups = new ArrayList<>();
+    List<Group> groups;
 
-    @Data
+    public GlobalSearchResultDto(String query, List<Group> groups) {
+        this.query = query;
+        this.groups = groups == null ? List.of() : List.copyOf(groups);
+    }
+
+    @Value
     @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class Group {
         /** {@code vulnerabilities}, {@code assessments}, {@code applications}, {@code users} or
          *  {@code assessmentTypes}. */
-        private String type;
+        String type;
         /** Everything that matched; more than {@code items} holds when the group was cut short. */
-        private long total;
-        @Builder.Default
-        private List<Item> items = new ArrayList<>();
+        long total;
+        List<Item> items;
+
+        public Group(String type, long total, List<Item> items) {
+            this.type = type;
+            this.total = total;
+            this.items = items == null ? List.of() : List.copyOf(items);
+        }
     }
 
-    @Data
+    @Value
     @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class Item {
-        private String id;
-        private String title;
+        String id;
+        String title;
         /** Where it sits or how to tell it apart, e.g. "VULN-12 · Payments API · Q3 Pentest". */
-        private String subtitle;
+        String subtitle;
         /** A short label shown beside the title: severity, status, or the record's own id. */
-        private String badge;
+        String badge;
         /** For a vulnerability, its assessment, which the details panel loads it through. */
-        private String assessmentId;
+        String assessmentId;
     }
 }

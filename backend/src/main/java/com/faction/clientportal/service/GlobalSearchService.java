@@ -21,6 +21,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -79,44 +80,44 @@ public class GlobalSearchService {
         }
 
         String query = normalize(text);
-        GlobalSearchResultDto result = GlobalSearchResultDto.builder().query(query).build();
         if (query.length() < MIN_QUERY_LENGTH) {
-            return result;
+            return new GlobalSearchResultDto(query, List.of());
         }
+        List<Group> groups = new ArrayList<>();
         int size = limit == null ? DEFAULT_LIMIT : Math.max(1, Math.min(limit, MAX_LIMIT));
         Set<String> authorities = authorities(authentication);
 
         if (mayRead(authorities, VULNERABILITY_READ)) {
-            group(result, "vulnerabilities",
+            group(groups, "vulnerabilities",
                     () -> globalVulnerabilityService.quickSearch(query, size, authentication),
                     GlobalSearchService::vulnerabilityItem);
         }
         if (mayRead(authorities, ASSESSMENT_READ)) {
             // The assessments list's own scoped search: name or application name, completed ones
             // included, newest first.
-            group(result, "assessments",
+            group(groups, "assessments",
                     () -> assessmentService.searchAssessmentsAdvanced(query, null, null, null, null, null, null,
                             null, null, null, null, null, Boolean.TRUE, null, null,
                             PageRequest.of(0, size, Sort.by(Sort.Direction.DESC, "startDate")), authentication),
                     GlobalSearchService::assessmentItem);
         }
         if (mayRead(authorities, APPLICATION_READ)) {
-            group(result, "applications",
+            group(groups, "applications",
                     () -> applicationService.searchApplications(query, PageRequest.of(0, size, Sort.by("name")),
                             authentication),
                     GlobalSearchService::applicationItem);
         }
         if (mayRead(authorities, USER_READ)) {
-            group(result, "users",
+            group(groups, "users",
                     () -> userService.searchUsersPaginated(query, PageRequest.of(0, size, Sort.by("firstName")),
                             authentication),
                     GlobalSearchService::userItem);
         }
         // Readable by any signed-in user through its own endpoint; staff is all that is checked.
-        group(result, "assessmentTypes",
+        group(groups, "assessmentTypes",
                 () -> assessmentTypeService.searchAssessmentTypes(query, PageRequest.of(0, size, Sort.by("name"))),
                 GlobalSearchService::assessmentTypeItem);
-        return result;
+        return new GlobalSearchResultDto(query, groups);
     }
 
     /**
@@ -124,7 +125,7 @@ public class GlobalSearchService {
      * left out, so one broken source does not take the whole box down with it; a refusal is not a
      * failure and is passed on.
      */
-    private <T> void group(GlobalSearchResultDto result, String type, Supplier<Page<T>> search,
+    private <T> void group(List<Group> groups, String type, Supplier<Page<T>> search,
                            Function<T, Item> toItem) {
         Page<T> page;
         try {
@@ -138,7 +139,7 @@ public class GlobalSearchService {
         if (page == null || page.getContent().isEmpty()) {
             return;
         }
-        result.getGroups().add(Group.builder()
+        groups.add(Group.builder()
                 .type(type)
                 .total(Math.max(page.getTotalElements(), page.getContent().size()))
                 .items(page.getContent().stream().map(toItem).toList())
