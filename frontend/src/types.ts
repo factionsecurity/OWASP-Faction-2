@@ -2018,7 +2018,8 @@ export type EmailNotificationAudience =
   | 'STAKEHOLDERS'
   | 'APP_OWNER'
   | 'MENTIONED_USERS'
-  | 'ORG_USERS';
+  | 'ORG_USERS'
+  | 'ASSIGNED_USERS';
 
 export interface EmailNotificationEvent {
   /** Settings key, e.g. `ASSESSMENT_CREATED` or `VULNERABILITY_CLOSED:staging`. */
@@ -2034,6 +2035,7 @@ export interface EmailNotificationEvent {
   notifyAppOwner: boolean;
   includeMentionedUsers: boolean;
   notifyOrgUsers: boolean;
+  notifyAssignedUsers: boolean;
   customMessage?: string | null;
   perStage: boolean;
   stageId?: string | null;
@@ -2048,6 +2050,10 @@ export interface EmailNotificationConfig {
   smtpConfigured: boolean;
   pastDueRepeatCount: number;
   pastDueRepeatIntervalDays: number;
+  /** Whether notification emails name applications. */
+  includeApplicationNames: boolean;
+  /** Whether notification emails name vulnerabilities. */
+  includeVulnerabilityNames: boolean;
   events: EmailNotificationEvent[];
 }
 
@@ -2055,6 +2061,8 @@ export interface UpdateEmailNotificationConfigRequest {
   enabled?: boolean;
   pastDueRepeatCount?: number;
   pastDueRepeatIntervalDays?: number;
+  includeApplicationNames?: boolean;
+  includeVulnerabilityNames?: boolean;
   events?: Array<{
     key: string;
     /** Omitted means "leave this switch unchanged". */
@@ -2063,6 +2071,7 @@ export interface UpdateEmailNotificationConfigRequest {
     notifyAppOwner?: boolean;
     includeMentionedUsers?: boolean;
     notifyOrgUsers?: boolean;
+    notifyAssignedUsers?: boolean;
     /** Empty string clears the wording; omitted leaves it unchanged. */
     customMessage?: string;
   }>;

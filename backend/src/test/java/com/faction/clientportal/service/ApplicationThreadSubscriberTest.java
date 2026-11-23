@@ -44,6 +44,7 @@ class ApplicationThreadSubscriberTest {
     @Mock private MentionQueueService mentionQueueService;
     @Mock private NotificationService notificationService;
     @Mock private ThreadCommentEmailSender threadCommentEmailSender;
+    @Mock private com.faction.clientportal.service.email.CommentAudienceNotifier commentAudienceNotifier;
 
     @InjectMocks private ApplicationService service;
 
@@ -162,5 +163,35 @@ class ApplicationThreadSubscriberTest {
     void accessIsCheckedBeforeMembershipCanBeRead() {
         service.getSubscribers("app-1", null);
         verify(accessScopeService).checkApplicationAccess(null, application);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void aCommentReachesTheApplicationsPeopleExceptThoseTheThreadAlreadyTold() {
+        application.getSubscribers().add("carol");
+
+        service.addComment("app-1", new AddCommentRequest(MENTION_HTML), "bob");
+
+        var comment = ArgumentCaptor.forClass(
+                com.faction.clientportal.service.email.CommentAudienceNotifier.Comment.class);
+        var told = ArgumentCaptor.forClass(java.util.Set.class);
+        verify(commentAudienceNotifier).notify(
+                eq(com.faction.clientportal.model.EmailNotificationEvent.APPLICATION_COMMENT),
+                eq(application), comment.capture(), told.capture());
+        assertThat(comment.getValue().targetType()).isEqualTo(MentionTargetType.APPLICATION);
+        assertThat(comment.getValue().contextLink()).startsWith("/applications/app-1/edit?comment=");
+        // Followers, the mentioned and the author have been handled by the thread already.
+        assertThat(told.getValue()).contains("carol", "alice", "bob");
+    }
+
+    @Test
+    void aCommentWithNoFollowersStillReachesTheApplicationsPeople() {
+        application.setSubscribers(null);
+
+        service.addComment("app-1", new AddCommentRequest("<p>hello</p>"), "bob");
+
+        verify(commentAudienceNotifier).notify(
+                eq(com.faction.clientportal.model.EmailNotificationEvent.APPLICATION_COMMENT),
+                eq(application), any(), any());
     }
 }

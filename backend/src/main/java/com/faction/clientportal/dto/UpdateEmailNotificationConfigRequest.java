@@ -18,6 +18,10 @@ public class UpdateEmailNotificationConfigRequest {
 
     private Integer pastDueRepeatIntervalDays;
 
+    private Boolean includeApplicationNames;
+
+    private Boolean includeVulnerabilityNames;
+
     private List<EventUpdate> events;
 
     @Data
@@ -31,6 +35,7 @@ public class UpdateEmailNotificationConfigRequest {
         private Boolean notifyAppOwner;
         private Boolean includeMentionedUsers;
         private Boolean notifyOrgUsers;
+        private Boolean notifyAssignedUsers;
 
         /** Empty string clears the custom wording; null leaves it unchanged. */
         private String customMessage;
