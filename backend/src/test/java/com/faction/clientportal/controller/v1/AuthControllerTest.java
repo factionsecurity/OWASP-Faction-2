@@ -145,6 +145,63 @@ class AuthControllerTest extends TestContainersConfig {
     }
 
     @Test
+    void login_WithDifferentCaseUsername_SignsInAsTheStoredUsername() throws Exception {
+        String token = loginAndReturnToken("TestUser", "testpass", "testuser");
+
+        // The token must carry the stored username, or every later lookup by it would miss.
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("testuser"));
+    }
+
+    @Test
+    void login_WhenUsernamesDifferOnlyInCase_TheExactOneWins() throws Exception {
+        userRepository.save(caseVariant("TestUser", "otherpass"));
+
+        String token = loginAndReturnToken("TestUser", "otherpass", "TestUser");
+
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.username").value("TestUser"));
+    }
+
+    @Test
+    void login_WhenSeveralUsernamesMatchOnlyIgnoringCase_Returns401() throws Exception {
+        userRepository.save(caseVariant("TestUser", "testpass"));
+
+        // Neither stored name is "TESTUSER"; signing in as either would be a guess.
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(LoginRequest.builder()
+                                .username("TESTUSER").password("testpass").build())))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private User caseVariant(String username, String password) {
+        return User.builder()
+                .username(username)
+                .password(passwordEncoder.encode(password))
+                .loginOption(LoginOption.NATIVE)
+                .roleIds(List.of(testRole.getId()))
+                .isInternal(true)
+                .createdAt(LocalDateTime.now())
+                .failedLoginAttempts(0)
+                .build();
+    }
+
+    private String loginAndReturnToken(String username, String password, String expectedUsername)
+            throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(LoginRequest.builder()
+                                .username(username).password(password).build())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value(expectedUsername))
+                .andReturn();
+        return objectMapper.readValue(result.getResponse().getContentAsString(), LoginResponse.class)
+                .getToken();
+    }
+
+    @Test
     void login_WithNonExistentUser_Returns401() throws Exception {
         LoginRequest loginRequest = LoginRequest.builder()
                 .username("nonexistent")

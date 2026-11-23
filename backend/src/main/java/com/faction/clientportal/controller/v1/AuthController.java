@@ -67,7 +67,7 @@ public class AuthController {
                                                HttpServletRequest servletRequest) {
         String token = authService.login(loginRequest.getUsername(), loginRequest.getPassword());
 
-        User user = userService.findByUsername(loginRequest.getUsername())
+        User user = userService.findByUsernameAsTyped(loginRequest.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         List<String> authorities = authService.getPermissions(user);

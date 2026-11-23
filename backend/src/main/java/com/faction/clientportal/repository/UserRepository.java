@@ -25,6 +25,31 @@ public interface UserRepository extends JpaRepository<User, String> {
     boolean existsByUsername(String username);
 
     /**
+     * Case-insensitive by design, like email: people type their username however they remember
+     * it, so Bob and bob must be one account. Accounts created before this rule that differ only
+     * in case are left as they are; see {@link #findByUsernameAsTyped}.
+     */
+    boolean existsByUsernameIgnoreCase(String username);
+
+    /** {@link #existsByUsernameIgnoreCase}, ignoring the user being renamed. */
+    boolean existsByUsernameIgnoreCaseAndIdNot(String username, String id);
+
+    /**
+     * The account a person means when they type a username, ignoring case. An exact match wins,
+     * so accounts from before usernames were case-insensitive that differ only in case can each
+     * still sign in. Otherwise one case-insensitive match is used, and several are treated as
+     * none rather than guessed between.
+     */
+    default Optional<User> findByUsernameAsTyped(String username) {
+        Optional<User> exact = findByUsername(username);
+        if (exact.isPresent()) {
+            return exact;
+        }
+        List<User> matches = findAllByUsernameIgnoreCaseAndDeletedAtIsNull(username);
+        return matches.size() == 1 ? Optional.of(matches.get(0)) : Optional.empty();
+    }
+
+    /**
      * Case-insensitive by design. SMTP treats the domain as case-insensitive and every
      * mainstream provider treats the local part that way too, so Bob@x.com and bob@x.com
      * are one mailbox. Allowing both to exist made reply-by-email attribution ambiguous:

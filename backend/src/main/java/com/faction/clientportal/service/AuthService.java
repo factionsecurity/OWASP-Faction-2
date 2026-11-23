@@ -33,7 +33,7 @@ public class AuthService {
 
 
     public String login(String username, String password) {
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameAsTyped(username)
                 .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
 
         // Checked before the password, so a locked account cannot have its counter driven higher
@@ -59,8 +59,9 @@ public class AuthService {
         user.setLastLogin(LocalDateTime.now());
         userRepository.save(user);
 
-        String token = jwtService.generateToken(username, authorities);
-        log.info("User {} logged in successfully", username);
+        // The stored username, not the typed one: everything downstream looks the user up by it.
+        String token = jwtService.generateToken(user.getUsername(), authorities);
+        log.info("User {} logged in successfully", user.getUsername());
         return token;
     }
 
