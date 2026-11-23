@@ -56,6 +56,10 @@ public class UserService {
         return userRepository.findByUsername(username);
     }
 
+    public Optional<User> findByUsernameAsTyped(String username) {
+        return userRepository.findByUsernameAsTyped(username);
+    }
+
     public UserDto findDtoByUsername(String username) {
         return userRepository.findByUsername(username)
                 .map(this::toDto)
@@ -92,7 +96,7 @@ public class UserService {
     }
 
     public boolean existsByUsername(String username) {
-        return userRepository.existsByUsername(username);
+        return userRepository.existsByUsernameIgnoreCase(username);
     }
 
     public long count() {
@@ -253,7 +257,7 @@ public class UserService {
         }
 
         // Check if username already exists
-        if (userRepository.existsByUsername(request.getUsername())) {
+        if (userRepository.existsByUsernameIgnoreCase(request.getUsername())) {
             throw new IllegalArgumentException("Username '" + request.getUsername() + "' already exists");
         }
 
@@ -321,7 +325,10 @@ public class UserService {
         }
 
         // Check if updating to a username that already exists (and it's not the same user)
-        if (!user.getUsername().equals(request.getUsername()) && userRepository.existsByUsername(request.getUsername())) {
+        // Only when the name changes: an unrelated edit must not trip over a case-only duplicate
+        // from before usernames were case-insensitive.
+        if (!user.getUsername().equals(request.getUsername())
+                && userRepository.existsByUsernameIgnoreCaseAndIdNot(request.getUsername(), user.getId())) {
             throw new IllegalArgumentException("Username '" + request.getUsername() + "' already exists");
         }
 

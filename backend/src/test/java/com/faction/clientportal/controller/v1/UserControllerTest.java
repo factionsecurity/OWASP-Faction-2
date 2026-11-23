@@ -727,6 +727,58 @@ class UserControllerTest extends TestContainersConfig {
                 .andExpect(jsonPath("$.message").value("Username 'alphamember' already exists"));
     }
 
+    @Test
+    void createUser_WithUsernameDifferingOnlyInCase_ReturnsBadRequest() throws Exception {
+        String token = generateToken(superAdminUser, List.of("super_admin"));
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(userBody("AlphaMember", "duplicate@test.com", null)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Username 'AlphaMember' already exists"));
+    }
+
+    @Test
+    void updateUser_ToAnotherUsersNameInDifferentCase_ReturnsBadRequest() throws Exception {
+        String token = generateToken(superAdminUser, List.of("super_admin"));
+
+        mockMvc.perform(put("/api/v1/users/" + teamBetaMemberUser.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(userBody("ALPHAMEMBER", "betamember@test.com", teamBeta.getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Username 'ALPHAMEMBER' already exists"));
+    }
+
+    @Test
+    void updateUser_ChangingOnlyTheCaseOfItsOwnUsername_Succeeds() throws Exception {
+        String token = generateToken(superAdminUser, List.of("super_admin"));
+
+        mockMvc.perform(put("/api/v1/users/" + teamAlphaMemberUser.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(userBody("AlphaMember", "alphamember@test.com", teamAlpha.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("AlphaMember"));
+    }
+
+    private String userBody(String username, String email, String teamId) {
+        return String.format("""
+                {
+                    "username": "%s",
+                    "email": "%s",
+                    "firstName": "Case",
+                    "lastName": "Test",
+                    "password": "Case-Test-Passw0rd!",
+                    "loginOption": "NATIVE",
+                    "roleIds": ["%s"],
+                    "teamIds": [%s],
+                    "isInternal": true
+                }
+                """, username, email, pentesterRole.getId(), teamId == null ? "" : "\"" + teamId + "\"");
+    }
+
     // ==================== UPDATE USER TESTS ====================
 
     @Test
